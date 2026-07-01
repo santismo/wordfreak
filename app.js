@@ -54,6 +54,7 @@
     sourceVoiceLabel: document.getElementById("sourceVoiceLabel"),
     sourceVoiceSelect: document.getElementById("sourceVoiceSelect"),
     enVoiceSelect: document.getElementById("enVoiceSelect"),
+    enLangSelect: document.getElementById("enLangSelect"),
     sourceRateLabel: document.getElementById("sourceRateLabel"),
     ruRate: document.getElementById("ruRate"),
     ruRateValue: document.getElementById("ruRateValue"),
@@ -95,6 +96,7 @@
       fa: "",
       en: ""
     },
+    enLang: "",
     ttsEngine: "system",
     rowHeight: 42,
     activeAudio: null,
@@ -130,6 +132,7 @@
       if (prefs.voicePrefs && typeof prefs.voicePrefs === "object") {
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
+      state.enLang = typeof prefs.enLang === "string" ? prefs.enLang : state.enLang;
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
       els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
@@ -150,6 +153,7 @@
       currentPos: state.currentPos,
       ttsEngine: state.ttsEngine,
       voicePrefs: state.voicePrefs,
+      enLang: state.enLang,
       ruRate: els.ruRate.value,
       enRate: els.enRate.value,
       pageVolume: els.pageVolume.value,
@@ -239,10 +243,11 @@
   function matchingVoices(lang) {
     const lower = String(lang || "").toLowerCase();
     const prefix = langPrefix(lang);
+    const exactLang = lower.includes("-");
     return state.voices
       .filter((voice) => {
         const voiceLang = String(voice.lang || "").toLowerCase();
-        return voiceLang === lower || voiceLang.startsWith(prefix);
+        return voiceLang === lower || (!exactLang && voiceLang.startsWith(prefix));
       })
       .sort((a, b) => {
         const aLang = String(a.lang || "").toLowerCase();
@@ -281,7 +286,7 @@
 
   function updateVoiceSelectors() {
     populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto default");
-    populateVoiceSelect(els.enVoiceSelect, "en-US", "Auto default");
+    populateVoiceSelect(els.enVoiceSelect, state.enLang || "en", "Auto default");
   }
 
   function normalizeCacheWord(value, language = state.language) {
@@ -1240,7 +1245,7 @@
         utterance.voice = voice;
         utterance.lang = voice.lang || lang;
       } else if (shouldSetSystemLanguage(lang)) {
-        utterance.lang = lang;
+        utterance.lang = systemSpeechLang(lang);
       }
       const timeout = window.setTimeout(() => {
         reject(new Error("Speech did not start"));
@@ -1263,7 +1268,14 @@
   }
 
   function shouldSetSystemLanguage(lang) {
-    return !(langPrefix(lang) === "en" && !state.voicePrefs.en);
+    return Boolean(systemSpeechLang(lang));
+  }
+
+  function systemSpeechLang(lang) {
+    if (langPrefix(lang) === "en") {
+      return state.voicePrefs.en ? lang : state.enLang;
+    }
+    return lang;
   }
 
   function findVoice(lang) {
@@ -1493,6 +1505,13 @@
       savePrefs();
     });
 
+    els.enLangSelect.addEventListener("change", () => {
+      state.enLang = els.enLangSelect.value;
+      state.voicePrefs.en = "";
+      updateVoiceSelectors();
+      savePrefs();
+    });
+
     [els.ruRate, els.enRate, els.pageVolume, els.gapMs, els.piperAhead, els.backgroundBatch].forEach((input) => {
       input.addEventListener("input", () => {
         updateSettingLabels();
@@ -1561,6 +1580,7 @@
     loadPrefs();
     els.languageSelect.value = state.language;
     els.bandSelect.value = state.band;
+    els.enLangSelect.value = state.enLang;
     updateShuffleButton();
     els.engineSelect.value = state.ttsEngine;
     updateSettingLabels();
