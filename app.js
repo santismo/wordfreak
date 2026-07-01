@@ -279,8 +279,8 @@
   }
 
   function updateVoiceSelectors() {
-    populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto");
-    populateVoiceSelect(els.enVoiceSelect, "en-US", "Auto");
+    populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto default");
+    populateVoiceSelect(els.enVoiceSelect, "en-US", "Auto default");
   }
 
   function normalizeCacheWord(value, language = state.language) {
@@ -1180,25 +1180,13 @@
   }
 
   function findVoice(lang) {
-    const lower = lang.toLowerCase();
-    const prefix = langPrefix(lang);
     const prefKey = voicePrefKeyForLang(lang);
     const selected = prefKey ? state.voicePrefs[prefKey] : "";
     if (selected) {
       const selectedVoice = state.voices.find((voice) => voiceId(voice) === selected);
       if (selectedVoice) return selectedVoice;
     }
-
-    const preferred = matchingVoices(lang);
-    if (!preferred.length) return null;
-    const namePattern = prefix === "ru"
-      ? /milena|irina|russian|ru-/i
-      : prefix === "fa"
-        ? /persian|farsi|fa-/i
-        : /samantha|ava|alex|english|en-/i;
-    return preferred.find((voice) => namePattern.test(voice.name || ""))
-      || preferred.find((voice) => voice.localService)
-      || preferred[0];
+    return null;
   }
 
   async function refreshVoices() {
