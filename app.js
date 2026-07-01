@@ -64,6 +64,7 @@
     translationCache: loadTranslationCache(),
     scrollTimer: 0,
     programmaticScroll: false,
+    ruFitRaf: 0,
     raf: 0
   };
 
@@ -211,6 +212,7 @@
     const entry = currentEntry();
     if (!entry) {
       els.ruWord.textContent = "";
+      els.ruWord.style.fontSize = "";
       els.enWord.textContent = "";
       els.progressText.textContent = "0 / 0";
       return;
@@ -223,7 +225,40 @@
     els.enWord.classList.toggle("missing", !entry.en && !state.translationCache[entry.word]);
     els.meaningState.textContent = entry.translationSource ? "English" : "English pending";
     els.progressText.textContent = `${state.currentPos + 1} / ${state.order.length}`;
+    fitRussianFocusWord();
     savePrefs();
+  }
+
+  function fitRussianFocusWord() {
+    if (state.ruFitRaf) {
+      window.cancelAnimationFrame(state.ruFitRaf);
+    }
+
+    state.ruFitRaf = window.requestAnimationFrame(() => {
+      state.ruFitRaf = 0;
+      const node = els.ruWord;
+      if (!node.textContent) return;
+
+      node.style.fontSize = "";
+      const maxSize = Number.parseFloat(window.getComputedStyle(node).fontSize) || 48;
+      const minSize = 10;
+      if (node.scrollWidth <= node.clientWidth) return;
+
+      let low = minSize;
+      let high = maxSize;
+      let best = minSize;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const size = (low + high) / 2;
+        node.style.fontSize = `${size}px`;
+        if (node.scrollWidth <= node.clientWidth) {
+          best = size;
+          low = size;
+        } else {
+          high = size;
+        }
+      }
+      node.style.fontSize = `${Math.floor(best)}px`;
+    });
   }
 
   function setCurrentPos(pos, options = {}) {
@@ -900,7 +935,10 @@
       }, 140);
     });
 
-    window.addEventListener("resize", renderVisibleRows);
+    window.addEventListener("resize", () => {
+      renderVisibleRows();
+      fitRussianFocusWord();
+    });
     if (window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = () => {
         state.voices = window.speechSynthesis.getVoices();

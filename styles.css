@@ -160,15 +160,22 @@ select {
 #enWord {
   margin: 10px 0 0;
   line-height: 1.04;
-  overflow-wrap: anywhere;
 }
 
 #ruWord {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: nowrap;
+  word-break: normal;
   font-size: clamp(2.3rem, 12vw, 5.9rem);
   font-weight: 850;
 }
 
 #enWord {
+  overflow-wrap: anywhere;
   font-size: clamp(1.6rem, 6vw, 3.5rem);
   font-weight: 760;
   color: var(--soft);
