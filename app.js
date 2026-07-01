@@ -51,6 +51,9 @@
     nextBtn: document.getElementById("nextBtn"),
     shuffleBtn: document.getElementById("shuffleBtn"),
     engineSelect: document.getElementById("engineSelect"),
+    sourceVoiceLabel: document.getElementById("sourceVoiceLabel"),
+    sourceVoiceSelect: document.getElementById("sourceVoiceSelect"),
+    enVoiceSelect: document.getElementById("enVoiceSelect"),
     sourceRateLabel: document.getElementById("sourceRateLabel"),
     ruRate: document.getElementById("ruRate"),
     ruRateValue: document.getElementById("ruRateValue"),
@@ -87,6 +90,11 @@
     shuffle: false,
     band: "20000",
     voices: [],
+    voicePrefs: {
+      ru: "",
+      fa: "",
+      en: ""
+    },
     ttsEngine: "system",
     rowHeight: 42,
     activeAudio: null,
@@ -118,6 +126,9 @@
       state.shuffle = Boolean(prefs.shuffle);
       state.currentPos = Number.isFinite(prefs.currentPos) ? prefs.currentPos : 0;
       state.ttsEngine = prefs.ttsEngine || state.ttsEngine;
+      if (prefs.voicePrefs && typeof prefs.voicePrefs === "object") {
+        state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
+      }
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
       els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
@@ -137,6 +148,7 @@
       shuffle: state.shuffle,
       currentPos: state.currentPos,
       ttsEngine: state.ttsEngine,
+      voicePrefs: state.voicePrefs,
       ruRate: els.ruRate.value,
       enRate: els.enRate.value,
       pageVolume: els.pageVolume.value,
@@ -159,6 +171,7 @@
 
   function updateSettingLabels() {
     els.sourceRateLabel.textContent = `${activeLanguage().shortLabel} speed`;
+    els.sourceVoiceLabel.textContent = `${activeLanguage().shortLabel} voice`;
     els.ruRateValue.textContent = `${Number(els.ruRate.value).toFixed(2)}x`;
     els.enRateValue.textContent = `${Number(els.enRate.value).toFixed(2)}x`;
     els.pageVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
@@ -202,6 +215,72 @@
 
   function sourceLangCode() {
     return activeLanguage().speechLang.split("-")[0];
+  }
+
+  function langPrefix(lang) {
+    return String(lang || "").toLowerCase().split("-")[0];
+  }
+
+  function voicePrefKeyForLang(lang) {
+    const prefix = langPrefix(lang);
+    return prefix === "fa" || prefix === "ru" || prefix === "en" ? prefix : "";
+  }
+
+  function voiceId(voice) {
+    return voice ? `${voice.voiceURI || voice.name}|${voice.lang}` : "";
+  }
+
+  function voiceLabel(voice) {
+    const quality = voice.localService ? "local" : "network";
+    return `${voice.name} (${voice.lang}, ${quality})`;
+  }
+
+  function matchingVoices(lang) {
+    const lower = String(lang || "").toLowerCase();
+    const prefix = langPrefix(lang);
+    return state.voices
+      .filter((voice) => {
+        const voiceLang = String(voice.lang || "").toLowerCase();
+        return voiceLang === lower || voiceLang.startsWith(prefix);
+      })
+      .sort((a, b) => {
+        const aLang = String(a.lang || "").toLowerCase();
+        const bLang = String(b.lang || "").toLowerCase();
+        if (aLang === lower && bLang !== lower) return -1;
+        if (aLang !== lower && bLang === lower) return 1;
+        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      });
+  }
+
+  function populateVoiceSelect(select, lang, emptyLabel) {
+    const key = voicePrefKeyForLang(lang);
+    const selected = key ? state.voicePrefs[key] || "" : "";
+    const voices = matchingVoices(lang);
+    select.replaceChildren();
+
+    const auto = document.createElement("option");
+    auto.value = "";
+    auto.textContent = emptyLabel;
+    select.appendChild(auto);
+
+    voices.forEach((voice) => {
+      const option = document.createElement("option");
+      option.value = voiceId(voice);
+      option.textContent = voiceLabel(voice);
+      select.appendChild(option);
+    });
+
+    if (selected && voices.some((voice) => voiceId(voice) === selected)) {
+      select.value = selected;
+    } else {
+      select.value = "";
+    }
+  }
+
+  function updateVoiceSelectors() {
+    populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto");
+    populateVoiceSelect(els.enVoiceSelect, "en-US", "Auto");
   }
 
   function normalizeCacheWord(value, language = state.language) {
@@ -1102,11 +1181,15 @@
 
   function findVoice(lang) {
     const lower = lang.toLowerCase();
-    const prefix = lower.split("-")[0];
-    const preferred = state.voices.filter((voice) => {
-      const voiceLang = String(voice.lang || "").toLowerCase();
-      return voiceLang === lower || voiceLang.startsWith(prefix);
-    });
+    const prefix = langPrefix(lang);
+    const prefKey = voicePrefKeyForLang(lang);
+    const selected = prefKey ? state.voicePrefs[prefKey] : "";
+    if (selected) {
+      const selectedVoice = state.voices.find((voice) => voiceId(voice) === selected);
+      if (selectedVoice) return selectedVoice;
+    }
+
+    const preferred = matchingVoices(lang);
     if (!preferred.length) return null;
     const namePattern = prefix === "ru"
       ? /milena|irina|russian|ru-/i
@@ -1123,6 +1206,7 @@
     let voices = window.speechSynthesis.getVoices();
     if (voices.length) {
       state.voices = voices;
+      updateVoiceSelectors();
       return;
     }
     for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -1130,6 +1214,7 @@
       voices = window.speechSynthesis.getVoices();
       if (voices.length) {
         state.voices = voices;
+        updateVoiceSelectors();
         return;
       }
     }
@@ -1300,6 +1385,7 @@
       state.currentPos = 0;
       state.playDirection = 1;
       updateSettingLabels();
+      updateVoiceSelectors();
       savePrefs();
       try {
         await loadData();
@@ -1317,6 +1403,19 @@
       state.ttsEngine = els.engineSelect.value;
       savePrefs();
       warmPiperQueue(state.currentPos);
+    });
+
+    els.sourceVoiceSelect.addEventListener("change", () => {
+      const key = voicePrefKeyForLang(activeLanguage().speechLang);
+      if (key) {
+        state.voicePrefs[key] = els.sourceVoiceSelect.value;
+        savePrefs();
+      }
+    });
+
+    els.enVoiceSelect.addEventListener("change", () => {
+      state.voicePrefs.en = els.enVoiceSelect.value;
+      savePrefs();
     });
 
     [els.ruRate, els.enRate, els.pageVolume, els.gapMs, els.piperAhead, els.backgroundBatch].forEach((input) => {
@@ -1368,6 +1467,7 @@
     if (window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = () => {
         state.voices = window.speechSynthesis.getVoices();
+        updateVoiceSelectors();
       };
     }
   }
@@ -1388,10 +1488,12 @@
     updateShuffleButton();
     els.engineSelect.value = state.ttsEngine;
     updateSettingLabels();
+    updateVoiceSelectors();
     els.backgroundAudioPlayer.volume = pageVolume();
     bindEvents();
     await loadData();
     await refreshVoices();
+    updateVoiceSelectors();
     registerServiceWorker();
   }
 
