@@ -1,6 +1,7 @@
 # Wordfreak
 
 Wordfreak is a mobile-first Russian vocabulary player for GitHub Pages. It loads a frequency-ranked Russian deck, shows the focused Russian word beside its English meaning, and autoplays Russian text-to-speech followed by English text-to-speech.
+https://santismo.github.io/wordfreak/
 
 ## Features
 
