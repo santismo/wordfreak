@@ -147,14 +147,7 @@ def spoken_translation(value: str, pos_codes: list[str] | None = None) -> str:
     words = re.findall(r"[A-Za-z]+(?:[-'][A-Za-z]+)?|\d+", first)
     if not words:
         return re.sub(r"\s+", " ", first).strip()
-
-    is_verb = bool(pos_codes and "v" in pos_codes)
-    if words[0].lower() == "to" and len(words) > 1 and is_verb:
-        second = words[1].lower()
-        if second in {"be", "have", "get", "become"} and len(words) > 2:
-            return " ".join(words[:3])
-        return " ".join(words[:2])
-    return words[0]
+    return " ".join(words)
 
 
 def parse_rnc(raw: str) -> list[dict]:

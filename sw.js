@@ -1,9 +1,9 @@
-const CACHE_NAME = "wordfreak-v9";
+const CACHE_NAME = "wordfreak-v10";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css?v=9",
-  "./app.js?v=9",
+  "./app.js?v=10",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./data/ru-core.json",

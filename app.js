@@ -277,25 +277,11 @@
     throw lastError || new Error(`${label} failed`);
   }
 
-  function isVerbEntry(entry) {
-    return Array.isArray(entry?.pos) && entry.pos.includes("v");
-  }
-
   function makeSpokenEnglish(value, entry = null) {
     const clean = stripForSpeech(value);
     const firstSense = clean.split(/[;,]/)[0].trim();
     const words = firstSense.match(/[A-Za-z]+(?:[-'][A-Za-z]+)?|\d+/g) || [];
-    if (!words.length) return firstSense || clean;
-
-    const first = words[0].toLowerCase();
-    if (first === "to" && words[1] && isVerbEntry(entry)) {
-      const second = words[1].toLowerCase();
-      if (["be", "have", "get", "become"].includes(second) && words[2]) {
-        return words.slice(0, 3).join(" ");
-      }
-      return words.slice(0, 2).join(" ");
-    }
-    return words[0];
+    return words.length ? words.join(" ") : firstSense || clean;
   }
 
   function currentEntry() {

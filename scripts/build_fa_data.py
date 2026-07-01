@@ -56,7 +56,7 @@ def spoken_translation(value: str) -> str:
         return ""
     first = re.split(r"[;,]", text, maxsplit=1)[0]
     words = re.findall(r"[A-Za-z]+(?:[-'][A-Za-z]+)?|\d+", first)
-    return words[0] if words else first
+    return " ".join(words) if words else first
 
 
 def parse_frequency(raw: str, limit: int = 20000) -> list[dict]:
