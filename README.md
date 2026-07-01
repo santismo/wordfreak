@@ -1,18 +1,20 @@
 # Wordfreak
 
-Wordfreak is a mobile-first Russian vocabulary player for GitHub Pages. It loads a frequency-ranked Russian deck, shows the focused Russian word beside its English meaning, and autoplays Russian text-to-speech followed by English text-to-speech.
+Wordfreak is a mobile-first vocabulary player for GitHub Pages. It loads frequency-ranked Russian or Farsi decks, shows the focused source word beside its English meaning, and autoplays source-language text-to-speech followed by English text-to-speech.
 https://santismo.github.io/wordfreak/
 
 ## Features
 
 - Russian National Corpus-based core deck, about 20k unique words
-- English glosses from OpenRussian where available
+- Farsi deck from a Persian Wikipedia frequency corpus, 20k words
+- English glosses from OpenRussian and machine-translation cache files
 - Live browser translation fallback for missing glosses
 - Ordered and shuffle playback
-- Frequency bands: 500, 1.5k, 3k, 5k, 10k, 16k, 20k
+- Language and frequency-band controls in the settings panel
 - Dense two-column virtual list for mobile scrolling
-- System TTS by default, optional Piper web TTS with loudness normalization
-- Piper queue control for pre-rendering upcoming words in the current order
+- System TTS by default, optional Piper web TTS with loudness normalization for available voices
+- Page volume, Piper queue control, and lock-audio batching for pre-rendering upcoming Russian playback
+- Prev during playback switches into reverse through the current selected or shuffled order
 - Concise English speech cues while still displaying full definitions
 - PWA manifest and service worker for home-screen use
 
@@ -20,6 +22,7 @@ https://santismo.github.io/wordfreak/
 
 ```bash
 python3 scripts/build_ru_data.py
+python3 scripts/build_fa_data.py
 python3 -m http.server 8000
 ```
 
@@ -27,12 +30,14 @@ Open `http://localhost:8000`.
 
 ## Data
 
-The generated data file is `data/ru-core.json`.
+The generated data files are `data/ru-core.json` and `data/fa-core.json`.
 
 Sources:
 
 - Russian frequency order: Russian National Corpus frequency dictionary via Wiktionary
 - English glosses and stress data: OpenRussian dictionary data
+- Farsi frequency order: Persian Words Frequency Database, Persian Wikipedia corpus
 - Manual patch list: small Wordfreak-maintained high-frequency fixes
+- Machine translation cache files for remaining English glosses
 
 See `NOTICE.md` for attribution and licensing details.

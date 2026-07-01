@@ -22,9 +22,26 @@ https://github.com/Badestrand/russian-dictionary
 
 OpenRussian data is licensed under Creative Commons Attribution-ShareAlike 4.0 International.
 
+## Farsi Frequency Ranking
+
+The Farsi ranking is derived from the Persian Words Frequency Database, using its Persian Wikipedia corpus:
+
+https://github.com/behnam/persian-words-frequency
+
+The Persian Words Frequency Database is licensed under Creative Commons Attribution-ShareAlike 3.0.
+
+## Machine Translation Cache
+
+Some English glosses are generated through the Google Translate web endpoint and stored in:
+
+- `data/ru-machine-translations.json`
+- `data/fa-machine-translations.json`
+
+Treat these glosses as convenience study aids, not authoritative dictionary entries.
+
 ## Generated Deck
 
-`data/ru-core.json` combines and adapts the sources above. Treat the generated data as CC-BY-SA-compatible material and preserve this notice when sharing modified versions.
+`data/ru-core.json` and `data/fa-core.json` combine and adapt the sources above. Treat the generated data as CC-BY-SA-compatible material and preserve this notice when sharing modified versions.
 
 ## TTS
 

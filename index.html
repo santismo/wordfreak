@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
   <main class="app-shell">
@@ -21,17 +21,7 @@
         <div id="datasetMeta" class="dataset-meta">Loading</div>
       </div>
       <div class="top-controls">
-        <select id="bandSelect" aria-label="Word band">
-          <option value="500">500</option>
-          <option value="1500">1.5k</option>
-          <option value="3000">3k</option>
-          <option value="5000">5k</option>
-          <option value="10000">10k</option>
-          <option value="16000">16k</option>
-          <option value="20000" selected>20k</option>
-          <option value="all">All</option>
-        </select>
-        <button id="settingsToggle" class="icon-btn" type="button" aria-label="Settings" title="Settings">Set</button>
+        <button id="settingsToggle" class="icon-btn" type="button" aria-label="Settings" title="Settings">&#9881;</button>
       </div>
     </header>
 
@@ -58,6 +48,26 @@
 
     <section id="settingsPanel" class="settings-panel" hidden>
       <label>
+        Language
+        <select id="languageSelect">
+          <option value="ru" selected>Russian</option>
+          <option value="fa">Farsi</option>
+        </select>
+      </label>
+      <label>
+        Band
+        <select id="bandSelect" aria-label="Word band">
+          <option value="500">500</option>
+          <option value="1500">1.5k</option>
+          <option value="3000">3k</option>
+          <option value="5000">5k</option>
+          <option value="10000">10k</option>
+          <option value="16000">16k</option>
+          <option value="20000" selected>20k</option>
+          <option value="all">All</option>
+        </select>
+      </label>
+      <label>
         TTS
         <select id="engineSelect">
           <option value="system" selected>System</option>
@@ -66,7 +76,7 @@
       </label>
       <label>
         <span class="setting-title">
-          RU speed
+          <span id="sourceRateLabel">RU speed</span>
           <output id="ruRateValue">0.82x</output>
         </span>
         <input id="ruRate" type="range" min="0.55" max="1.25" step="0.05" value="0.82">
@@ -77,6 +87,13 @@
           <output id="enRateValue">0.95x</output>
         </span>
         <input id="enRate" type="range" min="0.65" max="1.35" step="0.05" value="0.95">
+      </label>
+      <label>
+        <span class="setting-title">
+          Volume
+          <output id="pageVolumeValue">80%</output>
+        </span>
+        <input id="pageVolume" type="range" min="0" max="1" step="0.05" value="0.8">
       </label>
       <label>
         <span class="setting-title">
@@ -92,14 +109,28 @@
         </span>
         <input id="piperAhead" type="range" min="0" max="8" step="1" value="4">
       </label>
+      <label class="checkbox-setting">
+        <span class="setting-title">
+          Lock audio
+          <output id="backgroundAudioValue">Off</output>
+        </span>
+        <input id="backgroundAudio" type="checkbox">
+      </label>
+      <label>
+        <span class="setting-title">
+          Batch
+          <output id="backgroundBatchValue">32</output>
+        </span>
+        <input id="backgroundBatch" type="range" min="8" max="96" step="8" value="32">
+      </label>
     </section>
 
     <section class="list-shell">
       <div class="list-head" aria-hidden="true">
-        <span>Russian</span>
+        <span id="sourceHead">Russian</span>
         <span>English</span>
       </div>
-      <div id="wordList" class="word-list" tabindex="0" aria-label="Russian frequency list">
+      <div id="wordList" class="word-list" tabindex="0" aria-label="Frequency list">
         <div id="listSpacer" class="list-spacer">
           <div id="virtualRows" class="virtual-rows"></div>
         </div>
@@ -111,7 +142,8 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
+  <audio id="backgroundAudioPlayer" class="background-audio" preload="auto" playsinline></audio>
 
-  <script src="app.js?v=5" defer></script>
+  <script src="app.js?v=9" defer></script>
 </body>
 </html>

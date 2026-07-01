@@ -1,17 +1,43 @@
 (() => {
-  const DATA_URL = "data/ru-core.json";
   const STORE_KEY = "wordfreak:v2";
-  const TRANSLATION_CACHE_KEY = "wordfreak:ru-en-cache";
+  const TRANSLATION_CACHE_KEY = "wordfreak:translation-cache";
+  const LEGACY_RU_TRANSLATION_CACHE_KEY = "wordfreak:ru-en-cache";
   const PIPER_ESM_URL = "https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/+esm";
+  const PIPER_ESM_FALLBACK_URL = "https://esm.sh/@mintplex-labs/piper-tts-web@1.0.4";
   const PIPER_RU_VOICE_ID = "ru_RU-irina-medium";
   const PIPER_EN_VOICE_ID = "en_US-lessac-medium";
   const PIPER_TARGET_RMS = 0.13;
   const PIPER_MAX_GAIN = 2.4;
   const PIPER_MIN_GAIN = 0.45;
   const PIPER_CACHE_LIMIT = 96;
+  const PIPER_IMPORT_TIMEOUT_MS = 20000;
+  const PIPER_DOWNLOAD_TIMEOUT_MS = 90000;
+  const PIPER_PREDICT_TIMEOUT_MS = 45000;
+  const BACKGROUND_WAV_SAMPLE_RATE = 24000;
+  const LANGUAGES = {
+    ru: {
+      label: "Russian",
+      shortLabel: "RU",
+      sourceHead: "Russian",
+      dataUrl: "data/ru-core.json",
+      speechLang: "ru-RU",
+      translateSl: "ru",
+      dir: "ltr"
+    },
+    fa: {
+      label: "Farsi",
+      shortLabel: "FA",
+      sourceHead: "Farsi",
+      dataUrl: "data/fa-core.json",
+      speechLang: "fa-IR",
+      translateSl: "fa",
+      dir: "rtl"
+    }
+  };
 
   const els = {
     datasetMeta: document.getElementById("datasetMeta"),
+    languageSelect: document.getElementById("languageSelect"),
     bandSelect: document.getElementById("bandSelect"),
     settingsToggle: document.getElementById("settingsToggle"),
     settingsPanel: document.getElementById("settingsPanel"),
@@ -25,14 +51,23 @@
     nextBtn: document.getElementById("nextBtn"),
     shuffleBtn: document.getElementById("shuffleBtn"),
     engineSelect: document.getElementById("engineSelect"),
+    sourceRateLabel: document.getElementById("sourceRateLabel"),
     ruRate: document.getElementById("ruRate"),
     ruRateValue: document.getElementById("ruRateValue"),
     enRate: document.getElementById("enRate"),
     enRateValue: document.getElementById("enRateValue"),
+    pageVolume: document.getElementById("pageVolume"),
+    pageVolumeValue: document.getElementById("pageVolumeValue"),
     gapMs: document.getElementById("gapMs"),
     gapValue: document.getElementById("gapValue"),
     piperAhead: document.getElementById("piperAhead"),
     piperAheadValue: document.getElementById("piperAheadValue"),
+    backgroundAudio: document.getElementById("backgroundAudio"),
+    backgroundAudioValue: document.getElementById("backgroundAudioValue"),
+    backgroundBatch: document.getElementById("backgroundBatch"),
+    backgroundBatchValue: document.getElementById("backgroundBatchValue"),
+    backgroundAudioPlayer: document.getElementById("backgroundAudioPlayer"),
+    sourceHead: document.getElementById("sourceHead"),
     wordList: document.getElementById("wordList"),
     listSpacer: document.getElementById("listSpacer"),
     virtualRows: document.getElementById("virtualRows"),
@@ -44,7 +79,9 @@
     entries: [],
     meta: null,
     order: [],
+    language: "ru",
     currentPos: 0,
+    playDirection: 1,
     playing: false,
     playToken: 0,
     shuffle: false,
@@ -54,6 +91,7 @@
     rowHeight: 42,
     activeAudio: null,
     activeAudioUrl: "",
+    activeBackgroundUrl: "",
     activeSource: null,
     activeGain: null,
     audioUnlocked: false,
@@ -73,14 +111,20 @@
       const raw = window.localStorage.getItem(STORE_KEY);
       if (!raw) return;
       const prefs = JSON.parse(raw);
+      if (LANGUAGES[prefs.language]) {
+        state.language = prefs.language;
+      }
       state.band = String(prefs.band || state.band);
       state.shuffle = Boolean(prefs.shuffle);
       state.currentPos = Number.isFinite(prefs.currentPos) ? prefs.currentPos : 0;
       state.ttsEngine = prefs.ttsEngine || state.ttsEngine;
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
+      els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
       els.gapMs.value = prefs.gapMs || els.gapMs.value;
       els.piperAhead.value = prefs.piperAhead || els.piperAhead.value;
+      els.backgroundAudio.checked = Boolean(prefs.backgroundAudio);
+      els.backgroundBatch.value = prefs.backgroundBatch || els.backgroundBatch.value;
     } catch (error) {
       console.warn("Preference load failed:", error);
     }
@@ -88,14 +132,18 @@
 
   function savePrefs() {
     const prefs = {
+      language: state.language,
       band: state.band,
       shuffle: state.shuffle,
       currentPos: state.currentPos,
       ttsEngine: state.ttsEngine,
       ruRate: els.ruRate.value,
       enRate: els.enRate.value,
+      pageVolume: els.pageVolume.value,
       gapMs: els.gapMs.value,
-      piperAhead: els.piperAhead.value
+      piperAhead: els.piperAhead.value,
+      backgroundAudio: els.backgroundAudio.checked,
+      backgroundBatch: els.backgroundBatch.value
     };
     try {
       window.localStorage.setItem(STORE_KEY, JSON.stringify(prefs));
@@ -110,15 +158,27 @@
   }
 
   function updateSettingLabels() {
+    els.sourceRateLabel.textContent = `${activeLanguage().shortLabel} speed`;
     els.ruRateValue.textContent = `${Number(els.ruRate.value).toFixed(2)}x`;
     els.enRateValue.textContent = `${Number(els.enRate.value).toFixed(2)}x`;
+    els.pageVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
     els.gapValue.textContent = `${Number.parseInt(els.gapMs.value, 10)} ms`;
     els.piperAheadValue.textContent = els.piperAhead.value;
+    els.backgroundAudioValue.textContent = els.backgroundAudio.checked ? "On" : "Off";
+    els.backgroundBatchValue.textContent = els.backgroundBatch.value;
   }
 
   function loadTranslationCache() {
     try {
-      return JSON.parse(window.localStorage.getItem(TRANSLATION_CACHE_KEY) || "{}");
+      const cache = JSON.parse(window.localStorage.getItem(TRANSLATION_CACHE_KEY) || "{}");
+      const legacyRu = JSON.parse(window.localStorage.getItem(LEGACY_RU_TRANSLATION_CACHE_KEY) || "{}");
+      Object.entries(legacyRu).forEach(([word, meaning]) => {
+        const key = translationCacheKey(word, "ru");
+        if (!cache[key] && meaning) {
+          cache[key] = meaning;
+        }
+      });
+      return cache;
     } catch {
       return {};
     }
@@ -136,6 +196,35 @@
     els.statusText.textContent = message || "";
   }
 
+  function activeLanguage() {
+    return LANGUAGES[state.language] || LANGUAGES.ru;
+  }
+
+  function sourceLangCode() {
+    return activeLanguage().speechLang.split("-")[0];
+  }
+
+  function normalizeCacheWord(value, language = state.language) {
+    const word = normalizeSpaces(value);
+    return language === "ru" ? word.toLowerCase().replace(/ё/g, "е") : word;
+  }
+
+  function translationCacheKey(value, language = state.language) {
+    return `${language}:${normalizeCacheWord(value, language)}`;
+  }
+
+  function cachedMeaning(entry) {
+    if (!entry) return "";
+    return state.translationCache[translationCacheKey(entry.word)]
+      || state.translationCache[entry.word]
+      || "";
+  }
+
+  function setCachedMeaning(entry, meaning) {
+    if (!entry || !meaning) return;
+    state.translationCache[translationCacheKey(entry.word)] = meaning;
+  }
+
   function normalizeSpaces(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
   }
@@ -146,6 +235,46 @@
 
   function clamp(value, min, max) {
     return Math.min(Math.max(Number(value) || 0, min), max);
+  }
+
+  function pageVolume() {
+    return clamp(els.pageVolume.value, 0, 1);
+  }
+
+  function timeoutError(label, ms) {
+    return new Error(`${label} timed out after ${Math.round(ms / 1000)}s`);
+  }
+
+  function withTimeout(promise, ms, label) {
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => reject(timeoutError(label, ms)), ms);
+      promise.then(
+        (value) => {
+          window.clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          window.clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  }
+
+  async function retryAsync(label, attempts, run) {
+    let lastError = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await run(attempt);
+      } catch (error) {
+        lastError = error;
+        console.warn(`${label} attempt ${attempt + 1} failed:`, error);
+        if (attempt < attempts - 1) {
+          await delayPlain(350 * (attempt + 1));
+        }
+      }
+    }
+    throw lastError || new Error(`${label} failed`);
   }
 
   function isVerbEntry(entry) {
@@ -218,14 +347,18 @@
       return;
     }
 
+    const language = activeLanguage();
     els.rankLabel.textContent = `#${entry.rank}`;
     els.posLabel.textContent = entry.posLabel || entry.pos?.join(", ") || "";
-    const ruText = entry.display || entry.word;
-    prepareRussianFocusWord(ruText);
-    els.ruWord.textContent = ruText;
-    els.enWord.textContent = entry.en || state.translationCache[entry.word] || "translation pending";
-    els.enWord.classList.toggle("missing", !entry.en && !state.translationCache[entry.word]);
-    els.meaningState.textContent = entry.translationSource ? "English" : "English pending";
+    const sourceText = entry.display || entry.word;
+    const meaning = entry.en || cachedMeaning(entry);
+    prepareRussianFocusWord(sourceText);
+    els.ruWord.lang = sourceLangCode();
+    els.ruWord.dir = language.dir;
+    els.ruWord.textContent = sourceText;
+    els.enWord.textContent = meaning || "translation pending";
+    els.enWord.classList.toggle("missing", !meaning);
+    els.meaningState.textContent = meaning ? "English" : "English pending";
     els.progressText.textContent = `${state.currentPos + 1} / ${state.order.length}`;
     fitRussianFocusWord({ immediate: true });
     savePrefs();
@@ -319,6 +452,8 @@
 
   function renderVisibleRows() {
     if (!state.order.length) return;
+    const language = activeLanguage();
+    const langCode = sourceLangCode();
     const scrollTop = els.wordList.scrollTop;
     const viewport = els.wordList.clientHeight || 320;
     const overscan = 10;
@@ -329,14 +464,14 @@
 
     for (let pos = start; pos < end; pos += 1) {
       const entry = state.entries[state.order[pos]];
-      const en = entry.en || state.translationCache[entry.word] || "pending";
-      const missing = entry.en || state.translationCache[entry.word] ? "" : " missing";
+      const en = entry.en || cachedMeaning(entry) || "pending";
+      const missing = entry.en || cachedMeaning(entry) ? "" : " missing";
       const current = pos === state.currentPos ? " current" : "";
       rows.push(`
         <button class="word-row${current}" type="button" data-pos="${pos}" style="top:${pos * state.rowHeight}px">
           <span class="word-cell">
             <span class="rank-chip">${entry.rank}</span>
-            <span class="ru-text" lang="ru">${escapeHtml(entry.display || entry.word)}</span>
+            <span class="ru-text" lang="${langCode}" dir="${language.dir}">${escapeHtml(entry.display || entry.word)}</span>
           </span>
           <span class="word-cell">
             <span class="en-text${missing}">${escapeHtml(en)}</span>
@@ -360,13 +495,14 @@
   async function ensureMeaning(entry) {
     if (!entry) return "";
     if (entry.en) return entry.en;
-    if (state.translationCache[entry.word]) return state.translationCache[entry.word];
+    const cached = cachedMeaning(entry);
+    if (cached) return cached;
 
     els.meaningState.textContent = "Translating";
     setStatus(`Translating ${entry.word}`);
-    const translated = await translateRuToEn(entry.word);
+    const translated = await translateToEn(entry.word);
     if (translated && translated !== entry.word) {
-      state.translationCache[entry.word] = translated;
+      setCachedMeaning(entry, translated);
       entry.en = translated;
       entry.sayEn = makeSpokenEnglish(translated, entry);
       entry.translationSource = "live";
@@ -378,13 +514,14 @@
     return "";
   }
 
-  async function translateRuToEn(text) {
+  async function translateToEn(text) {
     const word = normalizeSpaces(text);
+    const source = activeLanguage().translateSl;
     const translators = [
       {
         name: "Lingva",
         run: async () => {
-          const url = `https://lingva.ml/api/v1/ru/en/${encodeURIComponent(word)}`;
+          const url = `https://lingva.ml/api/v1/${source}/en/${encodeURIComponent(word)}`;
           const response = await fetch(url, { cache: "no-store" });
           if (!response.ok) throw new Error(`Lingva ${response.status}`);
           const payload = await response.json();
@@ -394,7 +531,7 @@
       {
         name: "MyMemory",
         run: async () => {
-          const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=ru|en`;
+          const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=${source}|en`;
           const response = await fetch(url, { cache: "no-store" });
           if (!response.ok) throw new Error(`MyMemory ${response.status}`);
           const payload = await response.json();
@@ -404,7 +541,7 @@
       {
         name: "Google",
         run: async () => {
-          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ru&tl=en&dt=t&q=${encodeURIComponent(word)}`;
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${source}&tl=en&dt=t&q=${encodeURIComponent(word)}`;
           const response = await fetch(url, { cache: "no-store" });
           if (!response.ok) throw new Error(`Google ${response.status}`);
           const payload = await response.json();
@@ -477,6 +614,15 @@
       URL.revokeObjectURL(state.activeAudioUrl);
       state.activeAudioUrl = "";
     }
+    if (els.backgroundAudioPlayer) {
+      els.backgroundAudioPlayer.pause();
+      els.backgroundAudioPlayer.removeAttribute("src");
+      els.backgroundAudioPlayer.load();
+    }
+    if (state.activeBackgroundUrl) {
+      URL.revokeObjectURL(state.activeBackgroundUrl);
+      state.activeBackgroundUrl = "";
+    }
     if (state.activeSource) {
       try {
         state.activeSource.stop(0);
@@ -498,27 +644,28 @@
   async function speakEntry(entry, token) {
     if (!entry || token !== state.playToken) return;
     warmPiperQueue(state.currentPos);
-    const ru = entry.display || entry.word;
+    const language = activeLanguage();
+    const source = entry.display || entry.word;
     const en = await ensureMeaning(entry);
     if (token !== state.playToken) return;
 
-    setStatus(`#${entry.rank} Russian`);
-    await speakText(ru, "ru-RU", Number(els.ruRate.value), token);
-    warmPiperQueue(state.currentPos + 1);
+    setStatus(`#${entry.rank} ${language.label}`);
+    await speakText(source, language.speechLang, Number(els.ruRate.value), token);
+    warmPiperQueue(state.currentPos + state.playDirection);
     await delay(Number(els.gapMs.value), token);
 
     const englishSpeech = makeSpokenEnglish(en, entry);
     if (englishSpeech && token === state.playToken) {
       setStatus(`#${entry.rank} English`);
       await speakText(englishSpeech, "en-US", Number(els.enRate.value), token);
-      warmPiperQueue(state.currentPos + 1);
+      warmPiperQueue(state.currentPos + state.playDirection);
       await delay(Number(els.gapMs.value), token);
     }
   }
 
   async function speakText(text, lang, rate, token) {
     if (token !== state.playToken || !text) return;
-    if (state.ttsEngine === "piper") {
+    if (state.ttsEngine === "piper" && piperVoiceIdForLang(lang)) {
       try {
         await speakWithPiper(text, lang, rate, token);
         return;
@@ -537,7 +684,18 @@
   }
 
   function piperVoiceId(lang) {
-    return String(lang || "").toLowerCase().startsWith("ru") ? PIPER_RU_VOICE_ID : PIPER_EN_VOICE_ID;
+    const voiceId = piperVoiceIdForLang(lang);
+    if (!voiceId) {
+      throw new Error(`No Piper voice for ${lang}`);
+    }
+    return voiceId;
+  }
+
+  function piperVoiceIdForLang(lang) {
+    const lower = String(lang || "").toLowerCase();
+    if (lower.startsWith("ru")) return PIPER_RU_VOICE_ID;
+    if (lower.startsWith("en")) return PIPER_EN_VOICE_ID;
+    return "";
   }
 
   function piperCacheKey(voiceId, text) {
@@ -545,14 +703,22 @@
   }
 
   async function loadPiperModule(voiceId) {
-    let mod = state.piperModules.get(voiceId);
-    if (!mod) {
-      mod = await import(`${PIPER_ESM_URL}?voice=${encodeURIComponent(voiceId)}`);
-      state.piperModules.set(voiceId, mod);
-    }
-    if (typeof mod.download === "function") {
-      await mod.download(voiceId);
-    }
+    const cached = state.piperModules.get(voiceId);
+    if (cached) return cached;
+
+    const urls = [
+      `${PIPER_ESM_URL}?voice=${encodeURIComponent(voiceId)}`,
+      `${PIPER_ESM_FALLBACK_URL}?bundle&voice=${encodeURIComponent(voiceId)}`
+    ];
+    const mod = await retryAsync(`Piper ${voiceId} load`, urls.length, async (attempt) => {
+      const url = urls[attempt] || urls[0];
+      const loaded = await withTimeout(import(url), PIPER_IMPORT_TIMEOUT_MS, "Piper module load");
+      if (typeof loaded.download === "function") {
+        await withTimeout(loaded.download(voiceId), PIPER_DOWNLOAD_TIMEOUT_MS, "Piper voice download");
+      }
+      return loaded;
+    });
+    state.piperModules.set(voiceId, mod);
     return mod;
   }
 
@@ -570,7 +736,9 @@
 
     const pending = (async () => {
       const mod = await loadPiperModule(voiceId);
-      const wavBlob = await mod.predict({ text: clean, voiceId });
+      const wavBlob = await retryAsync(`Piper ${voiceId} speech`, 2, () => (
+        withTimeout(mod.predict({ text: clean, voiceId }), PIPER_PREDICT_TIMEOUT_MS, "Piper speech")
+      ));
       const clip = await preparePiperClip(wavBlob, voiceId, clean);
       state.piperAudioCache.set(key, clip);
       prunePiperCache();
@@ -647,15 +815,18 @@
 
   function warmPiperQueue(startPos = state.currentPos) {
     if (state.ttsEngine !== "piper" || !state.order.length) return;
+    const language = activeLanguage();
+    const sourceVoiceId = piperVoiceIdForLang(language.speechLang);
     const ahead = Math.max(0, Number.parseInt(els.piperAhead.value, 10) || 0);
-    const end = Math.min(state.order.length, Math.max(0, startPos) + ahead + 1);
+    const direction = state.playDirection || 1;
+    let pos = Math.min(Math.max(0, startPos), Math.max(0, state.order.length - 1));
 
-    for (let pos = Math.max(0, startPos); pos < end; pos += 1) {
+    for (let queued = 0; queued <= ahead && pos >= 0 && pos < state.order.length; queued += 1, pos += direction) {
       const entry = state.entries[state.order[pos]];
       if (!entry) continue;
-      const ru = entry.display || entry.word;
-      const en = makeSpokenEnglish(entry.en || state.translationCache[entry.word] || "", entry);
-      queuePiperClip(ru, "ru-RU");
+      const source = entry.display || entry.word;
+      const en = makeSpokenEnglish(entry.en || cachedMeaning(entry) || "", entry);
+      if (sourceVoiceId) queuePiperClip(source, language.speechLang);
       if (en) queuePiperClip(en, "en-US");
     }
   }
@@ -665,6 +836,171 @@
     getPiperClip(text, lang).catch((error) => {
       console.warn("Piper queue failed:", error);
     });
+  }
+
+  async function buildBackgroundBatch(startPos, token) {
+    const batchSize = clamp(Number.parseInt(els.backgroundBatch.value, 10) || 32, 8, 96);
+    const language = activeLanguage();
+    if (!piperVoiceIdForLang(language.speechLang)) {
+      throw new Error("Lock audio needs a Piper voice for the selected language");
+    }
+    const direction = state.playDirection || 1;
+    const positions = [];
+    for (
+      let pos = startPos;
+      positions.length < batchSize && pos >= 0 && pos < state.order.length;
+      pos += direction
+    ) {
+      positions.push(pos);
+    }
+    const chunks = [];
+    const timeline = [];
+    let cursor = 0;
+
+    for (const pos of positions) {
+      if (token !== state.playToken || !state.playing) break;
+      const entry = state.entries[state.order[pos]];
+      if (!entry) continue;
+      const entryStart = cursor;
+      setStatus(`Building audio #${entry.rank}`);
+
+      const source = entry.display || entry.word;
+      const en = await ensureMeaning(entry);
+      const sourceClip = await getPiperClip(source, language.speechLang);
+      cursor += appendClipChunk(chunks, sourceClip, Number(els.ruRate.value));
+      cursor += appendSilenceChunk(chunks, Number(els.gapMs.value));
+
+      const englishSpeech = makeSpokenEnglish(en, entry);
+      if (englishSpeech) {
+        const enClip = await getPiperClip(englishSpeech, "en-US");
+        cursor += appendClipChunk(chunks, enClip, Number(els.enRate.value));
+        cursor += appendSilenceChunk(chunks, Number(els.gapMs.value));
+      }
+      timeline.push({ pos, start: entryStart, end: cursor });
+    }
+
+    if (!chunks.length || !timeline.length) return null;
+    return {
+      blob: encodeWav(chunks, BACKGROUND_WAV_SAMPLE_RATE),
+      timeline,
+      nextPos: timeline[timeline.length - 1].pos + direction
+    };
+  }
+
+  function appendClipChunk(chunks, clip, rate) {
+    if (!clip?.buffer) {
+      throw new Error("Lock audio needs decoded Piper audio");
+    }
+    const rendered = renderClipToMono(clip.buffer, rate, clip.gain);
+    chunks.push(rendered);
+    return rendered.length / BACKGROUND_WAV_SAMPLE_RATE;
+  }
+
+  function appendSilenceChunk(chunks, ms) {
+    const frames = Math.max(0, Math.round(BACKGROUND_WAV_SAMPLE_RATE * Math.max(0, ms) / 1000));
+    if (!frames) return 0;
+    chunks.push(new Float32Array(frames));
+    return frames / BACKGROUND_WAV_SAMPLE_RATE;
+  }
+
+  function renderClipToMono(buffer, rate, gain) {
+    const playbackRate = clamp(rate || 1, 0.5, 2);
+    const outputFrames = Math.max(1, Math.ceil((buffer.duration / playbackRate) * BACKGROUND_WAV_SAMPLE_RATE));
+    const output = new Float32Array(outputFrames);
+    const channels = [];
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+      channels.push(buffer.getChannelData(channel));
+    }
+
+    for (let outIndex = 0; outIndex < outputFrames; outIndex += 1) {
+      const sourceFrame = (outIndex / BACKGROUND_WAV_SAMPLE_RATE) * playbackRate * buffer.sampleRate;
+      const left = Math.floor(sourceFrame);
+      const right = Math.min(left + 1, buffer.length - 1);
+      const mix = sourceFrame - left;
+      let sample = 0;
+      for (const data of channels) {
+        sample += data[left] + (data[right] - data[left]) * mix;
+      }
+      output[outIndex] = clamp((sample / Math.max(1, channels.length)) * gain, -0.98, 0.98);
+    }
+    return output;
+  }
+
+  function encodeWav(chunks, sampleRate) {
+    const frameCount = chunks.reduce((total, chunk) => total + chunk.length, 0);
+    const buffer = new ArrayBuffer(44 + frameCount * 2);
+    const view = new DataView(buffer);
+    writeAscii(view, 0, "RIFF");
+    view.setUint32(4, 36 + frameCount * 2, true);
+    writeAscii(view, 8, "WAVE");
+    writeAscii(view, 12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeAscii(view, 36, "data");
+    view.setUint32(40, frameCount * 2, true);
+
+    let offset = 44;
+    for (const chunk of chunks) {
+      for (let index = 0; index < chunk.length; index += 1) {
+        const sample = clamp(chunk[index], -1, 1);
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        offset += 2;
+      }
+    }
+    return new Blob([view], { type: "audio/wav" });
+  }
+
+  function writeAscii(view, offset, text) {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  }
+
+  async function playBackgroundBatch(batch, token) {
+    if (!batch || token !== state.playToken) return;
+    if (state.activeBackgroundUrl) {
+      URL.revokeObjectURL(state.activeBackgroundUrl);
+    }
+
+    const audio = els.backgroundAudioPlayer;
+    state.activeBackgroundUrl = URL.createObjectURL(batch.blob);
+    audio.src = state.activeBackgroundUrl;
+    audio.volume = pageVolume();
+    audio.playbackRate = 1;
+
+    let lastPos = -1;
+    const syncPosition = () => {
+      const current = audio.currentTime;
+      const segment = batch.timeline.find((item) => current >= item.start && current < item.end)
+        || batch.timeline[batch.timeline.length - 1];
+      if (segment && segment.pos !== lastPos && token === state.playToken) {
+        lastPos = segment.pos;
+        setCurrentPos(segment.pos, { scroll: true });
+      }
+    };
+    audio.ontimeupdate = syncPosition;
+    audio.onplay = syncPosition;
+
+    await audio.play();
+    await new Promise((resolve, reject) => {
+      audio.onended = resolve;
+      audio.onerror = () => reject(new Error("Lock audio playback failed"));
+      const poll = () => {
+        if (token !== state.playToken || !state.playing) resolve();
+        else window.setTimeout(poll, 250);
+      };
+      poll();
+    });
+
+    audio.ontimeupdate = null;
+    audio.onplay = null;
+    audio.onended = null;
+    audio.onerror = null;
   }
 
   async function playPiperClip(clip, token, rate) {
@@ -680,7 +1016,7 @@
     const gain = audioContext.createGain();
     source.buffer = clip.buffer;
     source.playbackRate.value = clamp(rate || 1, 0.5, 2);
-    gain.gain.value = clip.gain;
+    gain.gain.value = clip.gain * pageVolume();
     source.connect(gain);
     gain.connect(audioContext.destination);
     state.activeSource = source;
@@ -725,7 +1061,7 @@
     state.activeAudioUrl = url;
     audio.src = url;
     audio.playbackRate = clamp(rate || 1, 0.5, 2);
-    audio.volume = clamp(volume, 0, 1);
+    audio.volume = clamp(volume * pageVolume(), 0, 1);
     await audio.play();
     await new Promise((resolve, reject) => {
       audio.onended = resolve;
@@ -752,6 +1088,7 @@
       const utterance = new SpeechSynthesisUtterance(stripForSpeech(text));
       utterance.lang = lang;
       utterance.rate = rate;
+      utterance.volume = pageVolume();
       const voice = findVoice(lang);
       if (voice) {
         utterance.voice = voice;
@@ -787,7 +1124,9 @@
     if (!preferred.length) return null;
     const namePattern = prefix === "ru"
       ? /milena|irina|russian|ru-/i
-      : /samantha|ava|alex|english|en-/i;
+      : prefix === "fa"
+        ? /persian|farsi|fa-/i
+        : /samantha|ava|alex|english|en-/i;
     return preferred.find((voice) => namePattern.test(voice.name || ""))
       || preferred.find((voice) => voice.localService)
       || preferred[0];
@@ -835,14 +1174,29 @@
     warmPiperQueue(state.currentPos);
 
     try {
-      while (state.playing && token === state.playToken && state.currentPos < state.order.length) {
+      if (els.backgroundAudio.checked && piperVoiceIdForLang(activeLanguage().speechLang)) {
+        await startBackgroundPlayback(token);
+        return;
+      }
+      if (els.backgroundAudio.checked) {
+        setStatus("Lock audio unavailable for this language");
+        await delay(500, token);
+      }
+
+      while (
+        state.playing
+        && token === state.playToken
+        && state.currentPos >= 0
+        && state.currentPos < state.order.length
+      ) {
         const entry = currentEntry();
         updateFocus();
         scrollCurrentIntoView("near");
         await speakEntry(entry, token);
         if (token !== state.playToken || !state.playing) break;
-        if (state.currentPos >= state.order.length - 1) break;
-        setCurrentPos(state.currentPos + 1, { scroll: true });
+        const nextPos = state.currentPos + (state.playDirection || 1);
+        if (nextPos < 0 || nextPos >= state.order.length) break;
+        setCurrentPos(nextPos, { scroll: true });
       }
     } catch (error) {
       setStatus(error.message || "Playback failed");
@@ -856,14 +1210,39 @@
     }
   }
 
+  async function startBackgroundPlayback(token) {
+    state.ttsEngine = "piper";
+    els.engineSelect.value = "piper";
+    savePrefs();
+
+    while (
+      state.playing
+      && token === state.playToken
+      && state.currentPos >= 0
+      && state.currentPos < state.order.length
+    ) {
+      setStatus("Preparing lock audio");
+      const batch = await buildBackgroundBatch(state.currentPos, token);
+      if (!batch || token !== state.playToken || !state.playing) break;
+      setStatus("Playing lock audio");
+      await playBackgroundBatch(batch, token);
+      if (token !== state.playToken || !state.playing) break;
+      if (batch.nextPos < 0 || batch.nextPos >= state.order.length) break;
+      setCurrentPos(batch.nextPos, { scroll: true });
+    }
+  }
+
   async function loadData() {
-    setStatus("Loading Russian deck");
-    const response = await fetch(DATA_URL, { cache: "no-store" });
+    const language = activeLanguage();
+    setStatus(`Loading ${language.label} deck`);
+    const response = await fetch(language.dataUrl, { cache: "no-store" });
     if (!response.ok) throw new Error(`Data load failed: ${response.status}`);
     const payload = await response.json();
     state.entries = payload.entries || [];
     state.meta = payload.meta || {};
-    els.datasetMeta.textContent = `${state.entries.length.toLocaleString()} words`;
+    els.datasetMeta.textContent = `${language.label} ${state.entries.length.toLocaleString()} words`;
+    els.sourceHead.textContent = language.sourceHead;
+    els.wordList.setAttribute("aria-label", `${language.label} frequency list`);
     buildOrder();
     updateSpacer();
     updateFocus();
@@ -882,15 +1261,27 @@
       await startPlayback();
     });
 
-    els.prevBtn.addEventListener("click", () => {
+    els.prevBtn.addEventListener("click", async () => {
+      const wasPlaying = state.playing;
       stopSpeech();
+      state.playDirection = -1;
       setCurrentPos(state.currentPos - 1, { scroll: true });
+      if (wasPlaying) {
+        await startPlayback();
+        return;
+      }
       setStatus("Ready");
     });
 
-    els.nextBtn.addEventListener("click", () => {
+    els.nextBtn.addEventListener("click", async () => {
+      const wasPlaying = state.playing;
       stopSpeech();
+      state.playDirection = 1;
       setCurrentPos(state.currentPos + 1, { scroll: true });
+      if (wasPlaying) {
+        await startPlayback();
+        return;
+      }
       setStatus("Ready");
     });
 
@@ -917,6 +1308,21 @@
       savePrefs();
     });
 
+    els.languageSelect.addEventListener("change", async () => {
+      stopSpeech();
+      state.language = LANGUAGES[els.languageSelect.value] ? els.languageSelect.value : "ru";
+      state.currentPos = 0;
+      state.playDirection = 1;
+      updateSettingLabels();
+      savePrefs();
+      try {
+        await loadData();
+      } catch (error) {
+        setStatus(error.message || "Language load failed");
+        console.error(error);
+      }
+    });
+
     els.settingsToggle.addEventListener("click", () => {
       els.settingsPanel.hidden = !els.settingsPanel.hidden;
     });
@@ -927,9 +1333,10 @@
       warmPiperQueue(state.currentPos);
     });
 
-    [els.ruRate, els.enRate, els.gapMs, els.piperAhead].forEach((input) => {
+    [els.ruRate, els.enRate, els.pageVolume, els.gapMs, els.piperAhead, els.backgroundBatch].forEach((input) => {
       input.addEventListener("input", () => {
         updateSettingLabels();
+        els.backgroundAudioPlayer.volume = pageVolume();
         savePrefs();
         if (input === els.piperAhead) {
           warmPiperQueue(state.currentPos);
@@ -937,10 +1344,16 @@
       });
     });
 
+    els.backgroundAudio.addEventListener("change", () => {
+      updateSettingLabels();
+      savePrefs();
+    });
+
     els.virtualRows.addEventListener("click", (event) => {
       const row = event.target.closest(".word-row");
       if (!row) return;
       stopSpeech();
+      state.playDirection = 1;
       setCurrentPos(Number.parseInt(row.dataset.pos || "0", 10), { scroll: false });
       setStatus("Ready");
     });
@@ -984,10 +1397,12 @@
 
   async function init() {
     loadPrefs();
+    els.languageSelect.value = state.language;
     els.bandSelect.value = state.band;
     updateShuffleButton();
     els.engineSelect.value = state.ttsEngine;
     updateSettingLabels();
+    els.backgroundAudioPlayer.volume = pageVolume();
     bindEvents();
     await loadData();
     await refreshVoices();

@@ -2,8 +2,8 @@
 """Build the Wordfreak Russian core deck.
 
 The generated deck joins a Russian National Corpus frequency ranking with
-OpenRussian English glosses. Missing glosses are left blank so the app can
-resolve them lazily with the browser translation fallback.
+OpenRussian English glosses, manual high-frequency fixes, and an optional
+machine-translation cache for entries not covered by dictionary data.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "ru-core.json"
+MACHINE_TRANSLATIONS = ROOT / "data" / "ru-machine-translations.json"
 
 RNC_RAW_URL = (
     "https://en.wiktionary.org/w/index.php?"
@@ -216,13 +217,27 @@ def load_openrussian() -> tuple[dict[str, dict], dict[str, dict], dict[str, int]
     return exact, normalized, counts
 
 
+def load_machine_translations() -> dict[str, str]:
+    if not MACHINE_TRANSLATIONS.exists():
+        return {}
+    payload = json.loads(MACHINE_TRANSLATIONS.read_text(encoding="utf-8"))
+    translations = payload.get("translations", payload)
+    return {
+        normalize_key(word): clean_translation(translation)
+        for word, translation in translations.items()
+        if clean_translation(translation)
+    }
+
+
 def build() -> dict:
     rnc_entries = parse_rnc(fetch_text(RNC_RAW_URL))
     exact, normalized, openrussian_counts = load_openrussian()
+    machine_translations = load_machine_translations()
 
     output_entries = []
     translated = 0
     manual = 0
+    machine = 0
 
     for entry in rnc_entries:
         word = entry["word"]
@@ -250,6 +265,18 @@ def build() -> dict:
                 "sayEn": spoken_translation(meaning, entry["pos"]),
                 "translationSource": "wordfreak:manual",
             }
+        elif normalize_key(word) in machine_translations:
+            translated += 1
+            machine += 1
+            meaning = machine_translations[normalize_key(word)]
+            out = {
+                **entry,
+                "display": word,
+                "accented": "",
+                "en": meaning,
+                "sayEn": spoken_translation(meaning, entry["pos"]),
+                "translationSource": "machine:google-translate",
+            }
         else:
             out = {
                 **entry,
@@ -269,6 +296,7 @@ def build() -> dict:
             "totalEntries": len(output_entries),
             "translatedEntries": translated,
             "manualEntries": manual,
+            "machineEntries": machine,
             "coverage": round(translated / max(1, len(output_entries)), 4),
             "bands": [500, 1500, 3000, 5000, 10000, 16000, 20000],
             "openRussianRows": openrussian_counts,
@@ -281,6 +309,10 @@ def build() -> dict:
                     "name": "OpenRussian dictionary data",
                     "url": "https://github.com/Badestrand/russian-dictionary",
                     "license": "CC-BY-SA-4.0",
+                },
+                {
+                    "name": "Machine translations for dictionary gaps",
+                    "url": "data/ru-machine-translations.json",
                 },
             ],
         },

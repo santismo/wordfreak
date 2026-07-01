@@ -1,12 +1,13 @@
-const CACHE_NAME = "wordfreak-v6";
+const CACHE_NAME = "wordfreak-v9";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=5",
-  "./app.js?v=5",
+  "./styles.css?v=9",
+  "./app.js?v=9",
   "./manifest.webmanifest",
   "./assets/icon.svg",
-  "./data/ru-core.json"
+  "./data/ru-core.json",
+  "./data/fa-core.json"
 ];
 
 self.addEventListener("install", (event) => {
