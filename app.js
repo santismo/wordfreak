@@ -1,10 +1,14 @@
 (() => {
   const DATA_URL = "data/ru-core.json";
-  const STORE_KEY = "wordfreak:v1";
+  const STORE_KEY = "wordfreak:v2";
   const TRANSLATION_CACHE_KEY = "wordfreak:ru-en-cache";
   const PIPER_ESM_URL = "https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/+esm";
   const PIPER_RU_VOICE_ID = "ru_RU-irina-medium";
   const PIPER_EN_VOICE_ID = "en_US-lessac-medium";
+  const PIPER_TARGET_RMS = 0.13;
+  const PIPER_MAX_GAIN = 2.4;
+  const PIPER_MIN_GAIN = 0.45;
+  const PIPER_CACHE_LIMIT = 96;
 
   const els = {
     datasetMeta: document.getElementById("datasetMeta"),
@@ -22,8 +26,13 @@
     shuffleBtn: document.getElementById("shuffleBtn"),
     engineSelect: document.getElementById("engineSelect"),
     ruRate: document.getElementById("ruRate"),
+    ruRateValue: document.getElementById("ruRateValue"),
     enRate: document.getElementById("enRate"),
+    enRateValue: document.getElementById("enRateValue"),
     gapMs: document.getElementById("gapMs"),
+    gapValue: document.getElementById("gapValue"),
+    piperAhead: document.getElementById("piperAhead"),
+    piperAheadValue: document.getElementById("piperAheadValue"),
     wordList: document.getElementById("wordList"),
     listSpacer: document.getElementById("listSpacer"),
     virtualRows: document.getElementById("virtualRows"),
@@ -45,9 +54,13 @@
     rowHeight: 42,
     activeAudio: null,
     activeAudioUrl: "",
+    activeSource: null,
+    activeGain: null,
     audioUnlocked: false,
-    unlockAudioContext: null,
+    audioContext: null,
     piperModules: new Map(),
+    piperAudioCache: new Map(),
+    piperAudioPending: new Map(),
     translationCache: loadTranslationCache(),
     scrollTimer: 0,
     programmaticScroll: false,
@@ -66,6 +79,7 @@
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
       els.gapMs.value = prefs.gapMs || els.gapMs.value;
+      els.piperAhead.value = prefs.piperAhead || els.piperAhead.value;
     } catch (error) {
       console.warn("Preference load failed:", error);
     }
@@ -79,7 +93,8 @@
       ttsEngine: state.ttsEngine,
       ruRate: els.ruRate.value,
       enRate: els.enRate.value,
-      gapMs: els.gapMs.value
+      gapMs: els.gapMs.value,
+      piperAhead: els.piperAhead.value
     };
     try {
       window.localStorage.setItem(STORE_KEY, JSON.stringify(prefs));
@@ -91,6 +106,13 @@
   function updateShuffleButton() {
     els.shuffleBtn.textContent = state.shuffle ? "Unshuffle" : "Shuffle";
     els.shuffleBtn.setAttribute("aria-pressed", String(state.shuffle));
+  }
+
+  function updateSettingLabels() {
+    els.ruRateValue.textContent = `${Number(els.ruRate.value).toFixed(2)}x`;
+    els.enRateValue.textContent = `${Number(els.enRate.value).toFixed(2)}x`;
+    els.gapValue.textContent = `${Number.parseInt(els.gapMs.value, 10)} ms`;
+    els.piperAheadValue.textContent = els.piperAhead.value;
   }
 
   function loadTranslationCache() {
@@ -121,9 +143,29 @@
     return normalizeSpaces(String(value || "").replace(/[()]/g, " "));
   }
 
-  function makeSpokenEnglish(value) {
+  function clamp(value, min, max) {
+    return Math.min(Math.max(Number(value) || 0, min), max);
+  }
+
+  function isVerbEntry(entry) {
+    return Array.isArray(entry?.pos) && entry.pos.includes("v");
+  }
+
+  function makeSpokenEnglish(value, entry = null) {
     const clean = stripForSpeech(value);
-    return clean.split(";")[0].trim() || clean;
+    const firstSense = clean.split(/[;,]/)[0].trim();
+    const words = firstSense.match(/[A-Za-z]+(?:[-'][A-Za-z]+)?|\d+/g) || [];
+    if (!words.length) return firstSense || clean;
+
+    const first = words[0].toLowerCase();
+    if (first === "to" && words[1] && isVerbEntry(entry)) {
+      const second = words[1].toLowerCase();
+      if (["be", "have", "get", "become"].includes(second) && words[2]) {
+        return words.slice(0, 3).join(" ");
+      }
+      return words.slice(0, 2).join(" ");
+    }
+    return words[0];
   }
 
   function currentEntry() {
@@ -191,6 +233,7 @@
     if (options.scroll !== false) {
       scrollCurrentIntoView(options.align || "near");
     }
+    warmPiperQueue(state.currentPos);
   }
 
   function scrollCurrentIntoView(align = "near") {
@@ -263,7 +306,7 @@
     if (translated && translated !== entry.word) {
       state.translationCache[entry.word] = translated;
       entry.en = translated;
-      entry.sayEn = makeSpokenEnglish(translated);
+      entry.sayEn = makeSpokenEnglish(translated, entry);
       entry.translationSource = "live";
       saveTranslationCache();
       updateFocus();
@@ -325,29 +368,35 @@
 
   async function ensureAudioUnlocked() {
     if (state.audioUnlocked) return;
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    if (AudioContextCtor) {
-      try {
-        if (!state.unlockAudioContext) {
-          state.unlockAudioContext = new AudioContextCtor();
-        }
-        if (state.unlockAudioContext.state === "suspended") {
-          await state.unlockAudioContext.resume();
-        }
-        const sampleRate = state.unlockAudioContext.sampleRate || 22050;
-        const buffer = state.unlockAudioContext.createBuffer(1, Math.max(1, Math.floor(sampleRate * 0.03)), sampleRate);
-        const source = state.unlockAudioContext.createBufferSource();
-        const gain = state.unlockAudioContext.createGain();
-        gain.gain.value = 0.0001;
-        source.buffer = buffer;
-        source.connect(gain);
-        gain.connect(state.unlockAudioContext.destination);
-        source.start(0);
-      } catch (error) {
-        console.warn("AudioContext unlock failed:", error);
-      }
+    try {
+      const audioContext = await getAudioContext();
+      const sampleRate = audioContext.sampleRate || 22050;
+      const buffer = audioContext.createBuffer(1, Math.max(1, Math.floor(sampleRate * 0.03)), sampleRate);
+      const source = audioContext.createBufferSource();
+      const gain = audioContext.createGain();
+      gain.gain.value = 0.0001;
+      source.buffer = buffer;
+      source.connect(gain);
+      gain.connect(audioContext.destination);
+      source.start(0);
+    } catch (error) {
+      console.warn("AudioContext unlock failed:", error);
     }
     state.audioUnlocked = true;
+  }
+
+  async function getAudioContext() {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) {
+      throw new Error("Web Audio unavailable");
+    }
+    if (!state.audioContext) {
+      state.audioContext = new AudioContextCtor();
+    }
+    if (state.audioContext.state === "suspended") {
+      await state.audioContext.resume();
+    }
+    return state.audioContext;
   }
 
   function stopSpeech() {
@@ -366,22 +415,41 @@
       URL.revokeObjectURL(state.activeAudioUrl);
       state.activeAudioUrl = "";
     }
+    if (state.activeSource) {
+      try {
+        state.activeSource.stop(0);
+      } catch {
+        // The source may already have ended.
+      }
+      state.activeSource = null;
+    }
+    if (state.activeGain) {
+      try {
+        state.activeGain.disconnect();
+      } catch {
+        // The gain node may already be disconnected.
+      }
+      state.activeGain = null;
+    }
   }
 
   async function speakEntry(entry, token) {
     if (!entry || token !== state.playToken) return;
+    warmPiperQueue(state.currentPos);
     const ru = entry.display || entry.word;
     const en = await ensureMeaning(entry);
     if (token !== state.playToken) return;
 
     setStatus(`#${entry.rank} Russian`);
     await speakText(ru, "ru-RU", Number(els.ruRate.value), token);
+    warmPiperQueue(state.currentPos + 1);
     await delay(Number(els.gapMs.value), token);
 
-    const englishSpeech = entry.sayEn || makeSpokenEnglish(en);
+    const englishSpeech = makeSpokenEnglish(en, entry);
     if (englishSpeech && token === state.playToken) {
       setStatus(`#${entry.rank} English`);
       await speakText(englishSpeech, "en-US", Number(els.enRate.value), token);
+      warmPiperQueue(state.currentPos + 1);
       await delay(Number(els.gapMs.value), token);
     }
   }
@@ -390,7 +458,7 @@
     if (token !== state.playToken || !text) return;
     if (state.ttsEngine === "piper") {
       try {
-        await speakWithPiper(text, lang, token);
+        await speakWithPiper(text, lang, rate, token);
         return;
       } catch (error) {
         console.warn("Piper failed, falling back to system TTS:", error);
@@ -400,8 +468,21 @@
     await speakWithSystemVoice(text, lang, rate, token);
   }
 
-  async function speakWithPiper(text, lang, token) {
-    const voiceId = lang.toLowerCase().startsWith("ru") ? PIPER_RU_VOICE_ID : PIPER_EN_VOICE_ID;
+  async function speakWithPiper(text, lang, rate, token) {
+    const clip = await getPiperClip(text, lang);
+    if (token !== state.playToken || !clip) return;
+    await playPiperClip(clip, token, rate);
+  }
+
+  function piperVoiceId(lang) {
+    return String(lang || "").toLowerCase().startsWith("ru") ? PIPER_RU_VOICE_ID : PIPER_EN_VOICE_ID;
+  }
+
+  function piperCacheKey(voiceId, text) {
+    return `${voiceId}:${text}`;
+  }
+
+  async function loadPiperModule(voiceId) {
     let mod = state.piperModules.get(voiceId);
     if (!mod) {
       mod = await import(`${PIPER_ESM_URL}?voice=${encodeURIComponent(voiceId)}`);
@@ -410,13 +491,169 @@
     if (typeof mod.download === "function") {
       await mod.download(voiceId);
     }
-    if (token !== state.playToken) return;
-    const wavBlob = await mod.predict({ text: stripForSpeech(text), voiceId });
-    if (token !== state.playToken) return;
-    await playAudioBlob(wavBlob, token);
+    return mod;
   }
 
-  async function playAudioBlob(blob, token) {
+  async function getPiperClip(text, lang) {
+    const clean = stripForSpeech(text);
+    if (!clean) return null;
+    const voiceId = piperVoiceId(lang);
+    const key = piperCacheKey(voiceId, clean);
+    if (state.piperAudioCache.has(key)) {
+      return state.piperAudioCache.get(key);
+    }
+    if (state.piperAudioPending.has(key)) {
+      return state.piperAudioPending.get(key);
+    }
+
+    const pending = (async () => {
+      const mod = await loadPiperModule(voiceId);
+      const wavBlob = await mod.predict({ text: clean, voiceId });
+      const clip = await preparePiperClip(wavBlob, voiceId, clean);
+      state.piperAudioCache.set(key, clip);
+      prunePiperCache();
+      return clip;
+    })();
+
+    state.piperAudioPending.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      state.piperAudioPending.delete(key);
+    }
+  }
+
+  async function preparePiperClip(blob, voiceId, text) {
+    const clip = {
+      blob,
+      voiceId,
+      text,
+      buffer: null,
+      gain: 1
+    };
+    try {
+      const audioContext = await getAudioContext();
+      const arrayBuffer = await blob.arrayBuffer();
+      clip.buffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      clip.gain = calculatePiperGain(measureAudioStats(clip.buffer));
+    } catch (error) {
+      console.warn("Piper audio normalization unavailable:", error);
+    }
+    return clip;
+  }
+
+  function measureAudioStats(buffer) {
+    let peak = 0;
+    let sumSquares = 0;
+    let samples = 0;
+    let voicedSumSquares = 0;
+    let voicedSamples = 0;
+    const voicedFloor = 0.012;
+
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+      const data = buffer.getChannelData(channel);
+      for (let index = 0; index < data.length; index += 1) {
+        const value = Math.abs(data[index]);
+        peak = Math.max(peak, value);
+        sumSquares += value * value;
+        samples += 1;
+        if (value > voicedFloor) {
+          voicedSumSquares += value * value;
+          voicedSamples += 1;
+        }
+      }
+    }
+
+    const rms = Math.sqrt(sumSquares / Math.max(1, samples));
+    const voicedRms = Math.sqrt(voicedSumSquares / Math.max(1, voicedSamples));
+    return { peak, rms, voicedRms: voicedSamples ? voicedRms : rms };
+  }
+
+  function calculatePiperGain(stats) {
+    const rms = stats.voicedRms || stats.rms || PIPER_TARGET_RMS;
+    const loudnessGain = PIPER_TARGET_RMS / Math.max(0.001, rms);
+    const peakLimit = stats.peak ? 0.98 / stats.peak : PIPER_MAX_GAIN;
+    return clamp(Math.min(loudnessGain, peakLimit), PIPER_MIN_GAIN, PIPER_MAX_GAIN);
+  }
+
+  function prunePiperCache() {
+    while (state.piperAudioCache.size > PIPER_CACHE_LIMIT) {
+      const oldestKey = state.piperAudioCache.keys().next().value;
+      state.piperAudioCache.delete(oldestKey);
+    }
+  }
+
+  function warmPiperQueue(startPos = state.currentPos) {
+    if (state.ttsEngine !== "piper" || !state.order.length) return;
+    const ahead = Math.max(0, Number.parseInt(els.piperAhead.value, 10) || 0);
+    const end = Math.min(state.order.length, Math.max(0, startPos) + ahead + 1);
+
+    for (let pos = Math.max(0, startPos); pos < end; pos += 1) {
+      const entry = state.entries[state.order[pos]];
+      if (!entry) continue;
+      const ru = entry.display || entry.word;
+      const en = makeSpokenEnglish(entry.en || state.translationCache[entry.word] || "", entry);
+      queuePiperClip(ru, "ru-RU");
+      if (en) queuePiperClip(en, "en-US");
+    }
+  }
+
+  function queuePiperClip(text, lang) {
+    if (!text) return;
+    getPiperClip(text, lang).catch((error) => {
+      console.warn("Piper queue failed:", error);
+    });
+  }
+
+  async function playPiperClip(clip, token, rate) {
+    if (token !== state.playToken) return;
+    if (!clip.buffer) {
+      await playAudioBlob(clip.blob, token, rate, Math.min(1, clip.gain));
+      return;
+    }
+
+    const audioContext = await getAudioContext();
+    if (token !== state.playToken) return;
+    const source = audioContext.createBufferSource();
+    const gain = audioContext.createGain();
+    source.buffer = clip.buffer;
+    source.playbackRate.value = clamp(rate || 1, 0.5, 2);
+    gain.gain.value = clip.gain;
+    source.connect(gain);
+    gain.connect(audioContext.destination);
+    state.activeSource = source;
+    state.activeGain = gain;
+
+    await new Promise((resolve) => {
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        resolve();
+      };
+      source.onended = finish;
+      source.start(0);
+      const poll = () => {
+        if (token !== state.playToken) finish();
+        else window.setTimeout(poll, 60);
+      };
+      poll();
+    });
+
+    if (state.activeSource === source) {
+      state.activeSource = null;
+    }
+    if (state.activeGain === gain) {
+      try {
+        gain.disconnect();
+      } catch {
+        // Already disconnected.
+      }
+      state.activeGain = null;
+    }
+  }
+
+  async function playAudioBlob(blob, token, rate = 1, volume = 1) {
     if (state.activeAudioUrl) {
       URL.revokeObjectURL(state.activeAudioUrl);
     }
@@ -425,6 +662,8 @@
     state.activeAudio = audio;
     state.activeAudioUrl = url;
     audio.src = url;
+    audio.playbackRate = clamp(rate || 1, 0.5, 2);
+    audio.volume = clamp(volume, 0, 1);
     await audio.play();
     await new Promise((resolve, reject) => {
       audio.onended = resolve;
@@ -531,6 +770,7 @@
     const token = state.playToken + 1;
     state.playToken = token;
     els.playBtn.textContent = "Stop";
+    warmPiperQueue(state.currentPos);
 
     try {
       while (state.playing && token === state.playToken && state.currentPos < state.order.length) {
@@ -600,6 +840,7 @@
       updateFocus();
       renderVisibleRows();
       scrollCurrentIntoView("center");
+      warmPiperQueue(state.currentPos);
       savePrefs();
     });
 
@@ -610,6 +851,7 @@
       updateFocus();
       renderVisibleRows();
       scrollCurrentIntoView("center");
+      warmPiperQueue(state.currentPos);
       savePrefs();
     });
 
@@ -620,10 +862,17 @@
     els.engineSelect.addEventListener("change", () => {
       state.ttsEngine = els.engineSelect.value;
       savePrefs();
+      warmPiperQueue(state.currentPos);
     });
 
-    [els.ruRate, els.enRate, els.gapMs].forEach((input) => {
-      input.addEventListener("input", savePrefs);
+    [els.ruRate, els.enRate, els.gapMs, els.piperAhead].forEach((input) => {
+      input.addEventListener("input", () => {
+        updateSettingLabels();
+        savePrefs();
+        if (input === els.piperAhead) {
+          warmPiperQueue(state.currentPos);
+        }
+      });
     });
 
     els.virtualRows.addEventListener("click", (event) => {
@@ -673,6 +922,7 @@
     els.bandSelect.value = state.band;
     updateShuffleButton();
     els.engineSelect.value = state.ttsEngine;
+    updateSettingLabels();
     bindEvents();
     await loadData();
     await refreshVoices();

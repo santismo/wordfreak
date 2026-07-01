@@ -138,12 +138,22 @@ def clean_translation(value: str) -> str:
     return text
 
 
-def spoken_translation(value: str) -> str:
+def spoken_translation(value: str, pos_codes: list[str] | None = None) -> str:
     text = clean_translation(value)
     if not text:
         return ""
-    first = re.split(r";", text, maxsplit=1)[0]
-    return re.sub(r"\s+", " ", first).strip()
+    first = re.split(r"[;,]", text, maxsplit=1)[0]
+    words = re.findall(r"[A-Za-z]+(?:[-'][A-Za-z]+)?|\d+", first)
+    if not words:
+        return re.sub(r"\s+", " ", first).strip()
+
+    is_verb = bool(pos_codes and "v" in pos_codes)
+    if words[0].lower() == "to" and len(words) > 1 and is_verb:
+        second = words[1].lower()
+        if second in {"be", "have", "get", "become"} and len(words) > 2:
+            return " ".join(words[:3])
+        return " ".join(words[:2])
+    return words[0]
 
 
 def parse_rnc(raw: str) -> list[dict]:
@@ -225,7 +235,7 @@ def build() -> dict:
                 "display": display,
                 "accented": match["accented"],
                 "en": match["en"],
-                "sayEn": match["sayEn"],
+                "sayEn": spoken_translation(match["en"], entry["pos"]),
                 "translationSource": match["source"],
             }
         elif word in MANUAL_GLOSSES:
@@ -237,7 +247,7 @@ def build() -> dict:
                 "display": word,
                 "accented": "",
                 "en": meaning,
-                "sayEn": spoken_translation(meaning),
+                "sayEn": spoken_translation(meaning, entry["pos"]),
                 "translationSource": "wordfreak:manual",
             }
         else:

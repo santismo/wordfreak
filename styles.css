@@ -185,7 +185,7 @@ select {
 .settings-panel {
   border-radius: 8px;
   padding: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -199,6 +199,19 @@ select {
   gap: 6px;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.setting-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.setting-title output {
+  color: var(--soft);
+  font-variant-numeric: tabular-nums;
 }
 
 .settings-panel input,

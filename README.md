@@ -11,7 +11,9 @@ https://santismo.github.io/wordfreak/
 - Ordered and shuffle playback
 - Frequency bands: 500, 1.5k, 3k, 5k, 10k, 16k, 20k
 - Dense two-column virtual list for mobile scrolling
-- System TTS by default, optional Piper web TTS
+- System TTS by default, optional Piper web TTS with loudness normalization
+- Piper queue control for pre-rendering upcoming words in the current order
+- Concise English speech cues while still displaying full definitions
 - PWA manifest and service worker for home-screen use
 
 ## Local Use
