@@ -220,28 +220,49 @@
 
     els.rankLabel.textContent = `#${entry.rank}`;
     els.posLabel.textContent = entry.posLabel || entry.pos?.join(", ") || "";
-    els.ruWord.textContent = entry.display || entry.word;
+    const ruText = entry.display || entry.word;
+    prepareRussianFocusWord(ruText);
+    els.ruWord.textContent = ruText;
     els.enWord.textContent = entry.en || state.translationCache[entry.word] || "translation pending";
     els.enWord.classList.toggle("missing", !entry.en && !state.translationCache[entry.word]);
     els.meaningState.textContent = entry.translationSource ? "English" : "English pending";
     els.progressText.textContent = `${state.currentPos + 1} / ${state.order.length}`;
-    fitRussianFocusWord();
+    fitRussianFocusWord({ immediate: true });
     savePrefs();
   }
 
-  function fitRussianFocusWord() {
+  function prepareRussianFocusWord(text) {
+    const node = els.ruWord;
+    node.style.whiteSpace = "nowrap";
+    node.style.overflowWrap = "normal";
+    node.style.wordBreak = "normal";
+    node.style.overflow = "hidden";
+    node.style.textOverflow = "clip";
+    node.style.fontSize = estimateRussianFocusFontSize(text);
+  }
+
+  function estimateRussianFocusFontSize(text) {
+    const length = Array.from(String(text || "")).length;
+    if (length <= 6) return "";
+    if (length <= 9) return "clamp(2rem, 9.5vw, 4.6rem)";
+    if (length <= 12) return "clamp(1.65rem, 7.4vw, 3.5rem)";
+    if (length <= 15) return "clamp(1.35rem, 6vw, 2.8rem)";
+    return "clamp(1.05rem, 4.8vw, 2.25rem)";
+  }
+
+  function fitRussianFocusWord(options = {}) {
     if (state.ruFitRaf) {
       window.cancelAnimationFrame(state.ruFitRaf);
+      state.ruFitRaf = 0;
     }
 
-    state.ruFitRaf = window.requestAnimationFrame(() => {
+    const run = () => {
       state.ruFitRaf = 0;
       const node = els.ruWord;
       if (!node.textContent) return;
 
-      node.style.fontSize = "";
       const maxSize = Number.parseFloat(window.getComputedStyle(node).fontSize) || 48;
-      const minSize = 10;
+      const minSize = 8;
       if (node.scrollWidth <= node.clientWidth) return;
 
       let low = minSize;
@@ -258,7 +279,13 @@
         }
       }
       node.style.fontSize = `${Math.floor(best)}px`;
-    });
+    };
+
+    if (options.immediate) {
+      run();
+      return;
+    }
+    state.ruFitRaf = window.requestAnimationFrame(run);
   }
 
   function setCurrentPos(pos, options = {}) {

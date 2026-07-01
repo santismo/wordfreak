@@ -165,11 +165,11 @@ select {
 #ruWord {
   display: block;
   max-width: 100%;
-  overflow: hidden;
-  overflow-wrap: normal;
+  overflow: hidden !important;
+  overflow-wrap: normal !important;
   text-overflow: clip;
-  white-space: nowrap;
-  word-break: normal;
+  white-space: nowrap !important;
+  word-break: normal !important;
   font-size: clamp(2.3rem, 12vw, 5.9rem);
   font-weight: 850;
 }
