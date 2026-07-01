@@ -111,6 +111,7 @@
     scrollTimer: 0,
     programmaticScroll: false,
     ruFitRaf: 0,
+    enFitRaf: 0,
     raf: 0
   };
 
@@ -408,6 +409,7 @@
       els.ruWord.textContent = "";
       els.ruWord.style.fontSize = "";
       els.enWord.textContent = "";
+      resetEnglishFocusWord();
       els.progressText.textContent = "0 / 0";
       return;
     }
@@ -421,11 +423,14 @@
     els.ruWord.lang = sourceLangCode();
     els.ruWord.dir = language.dir;
     els.ruWord.textContent = sourceText;
-    els.enWord.textContent = meaning || "translation pending";
+    const enText = meaning || "translation pending";
+    prepareEnglishFocusWord(enText);
+    els.enWord.textContent = enText;
     els.enWord.classList.toggle("missing", !meaning);
     els.meaningState.textContent = meaning ? "English" : "English pending";
     els.progressText.textContent = `${state.currentPos + 1} / ${state.order.length}`;
     fitRussianFocusWord({ immediate: true });
+    fitEnglishFocusWord({ immediate: true });
     savePrefs();
   }
 
@@ -446,6 +451,45 @@
     if (length <= 12) return "clamp(1.65rem, 7.4vw, 3.5rem)";
     if (length <= 15) return "clamp(1.35rem, 6vw, 2.8rem)";
     return "clamp(1.05rem, 4.8vw, 2.25rem)";
+  }
+
+  function isSingleEnglishToken(text) {
+    const clean = normalizeSpaces(text);
+    return Boolean(clean) && !/\s/.test(clean);
+  }
+
+  function resetEnglishFocusWord() {
+    const node = els.enWord;
+    node.style.whiteSpace = "";
+    node.style.overflowWrap = "";
+    node.style.wordBreak = "";
+    node.style.overflow = "";
+    node.style.textOverflow = "";
+    node.style.fontSize = "";
+  }
+
+  function prepareEnglishFocusWord(text) {
+    if (!isSingleEnglishToken(text)) {
+      resetEnglishFocusWord();
+      return;
+    }
+
+    const node = els.enWord;
+    node.style.whiteSpace = "nowrap";
+    node.style.overflowWrap = "normal";
+    node.style.wordBreak = "normal";
+    node.style.overflow = "hidden";
+    node.style.textOverflow = "clip";
+    node.style.fontSize = estimateEnglishFocusFontSize(text);
+  }
+
+  function estimateEnglishFocusFontSize(text) {
+    const length = Array.from(String(text || "")).length;
+    if (length <= 9) return "";
+    if (length <= 13) return "clamp(1.35rem, 5.2vw, 3rem)";
+    if (length <= 17) return "clamp(1.1rem, 4.4vw, 2.35rem)";
+    if (length <= 22) return "clamp(0.92rem, 3.5vw, 1.85rem)";
+    return "clamp(0.78rem, 2.8vw, 1.35rem)";
   }
 
   function fitRussianFocusWord(options = {}) {
@@ -484,6 +528,44 @@
       return;
     }
     state.ruFitRaf = window.requestAnimationFrame(run);
+  }
+
+  function fitEnglishFocusWord(options = {}) {
+    if (state.enFitRaf) {
+      window.cancelAnimationFrame(state.enFitRaf);
+      state.enFitRaf = 0;
+    }
+
+    const run = () => {
+      state.enFitRaf = 0;
+      const node = els.enWord;
+      if (!node.textContent || !isSingleEnglishToken(node.textContent)) return;
+
+      const maxSize = Number.parseFloat(window.getComputedStyle(node).fontSize) || 36;
+      const minSize = 8;
+      if (node.scrollWidth <= node.clientWidth) return;
+
+      let low = minSize;
+      let high = maxSize;
+      let best = minSize;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const size = (low + high) / 2;
+        node.style.fontSize = `${size}px`;
+        if (node.scrollWidth <= node.clientWidth) {
+          best = size;
+          low = size;
+        } else {
+          high = size;
+        }
+      }
+      node.style.fontSize = `${Math.floor(best)}px`;
+    };
+
+    if (options.immediate) {
+      run();
+      return;
+    }
+    state.enFitRaf = window.requestAnimationFrame(run);
   }
 
   function setCurrentPos(pos, options = {}) {
@@ -1151,13 +1233,14 @@
         return;
       }
       const utterance = new SpeechSynthesisUtterance(stripForSpeech(text));
-      utterance.lang = lang;
       utterance.rate = rate;
       utterance.volume = pageVolume();
       const voice = findVoice(lang);
       if (voice) {
         utterance.voice = voice;
         utterance.lang = voice.lang || lang;
+      } else if (shouldSetSystemLanguage(lang)) {
+        utterance.lang = lang;
       }
       const timeout = window.setTimeout(() => {
         reject(new Error("Speech did not start"));
@@ -1177,6 +1260,10 @@
         window.speechSynthesis.resume();
       }
     });
+  }
+
+  function shouldSetSystemLanguage(lang) {
+    return !(langPrefix(lang) === "en" && !state.voicePrefs.en);
   }
 
   function findVoice(lang) {
@@ -1451,6 +1538,7 @@
     window.addEventListener("resize", () => {
       renderVisibleRows();
       fitRussianFocusWord();
+      fitEnglishFocusWord();
     });
     if (window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = () => {
