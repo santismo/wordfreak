@@ -9,18 +9,6 @@
   const BOOK_FETCH_TIMEOUT_MS = 22000;
   const BOOK_TRANSLATION_CACHE_LIMIT = 350;
   const BOOK_NEARBY_RADIUS = 3;
-  const PIPER_ESM_URL = "https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/+esm";
-  const PIPER_ESM_FALLBACK_URL = "https://esm.sh/@mintplex-labs/piper-tts-web@1.0.4";
-  const PIPER_RU_VOICE_ID = "ru_RU-irina-medium";
-  const PIPER_EN_VOICE_ID = "en_US-lessac-medium";
-  const PIPER_TARGET_RMS = 0.13;
-  const PIPER_MAX_GAIN = 2.4;
-  const PIPER_MIN_GAIN = 0.45;
-  const PIPER_CACHE_LIMIT = 96;
-  const PIPER_IMPORT_TIMEOUT_MS = 20000;
-  const PIPER_DOWNLOAD_TIMEOUT_MS = 90000;
-  const PIPER_PREDICT_TIMEOUT_MS = 45000;
-  const BACKGROUND_WAV_SAMPLE_RATE = 24000;
   const PROXY_CANDIDATES = [
     {
       name: "Direct",
@@ -94,7 +82,6 @@
     playBtn: document.getElementById("playBtn"),
     nextBtn: document.getElementById("nextBtn"),
     shuffleBtn: document.getElementById("shuffleBtn"),
-    engineSelect: document.getElementById("engineSelect"),
     sourceVoiceLabel: document.getElementById("sourceVoiceLabel"),
     sourceVoiceSelect: document.getElementById("sourceVoiceSelect"),
     enVoiceSelect: document.getElementById("enVoiceSelect"),
@@ -108,13 +95,6 @@
     pageVolumeValue: document.getElementById("pageVolumeValue"),
     gapMs: document.getElementById("gapMs"),
     gapValue: document.getElementById("gapValue"),
-    piperAhead: document.getElementById("piperAhead"),
-    piperAheadValue: document.getElementById("piperAheadValue"),
-    backgroundAudio: document.getElementById("backgroundAudio"),
-    backgroundAudioValue: document.getElementById("backgroundAudioValue"),
-    backgroundBatch: document.getElementById("backgroundBatch"),
-    backgroundBatchValue: document.getElementById("backgroundBatchValue"),
-    backgroundAudioPlayer: document.getElementById("backgroundAudioPlayer"),
     bookView: document.getElementById("bookView"),
     bookModeTitle: document.getElementById("bookModeTitle"),
     bookShelfBtn: document.getElementById("bookShelfBtn"),
@@ -175,18 +155,7 @@
       en: ""
     },
     enLang: "",
-    ttsEngine: "system",
     rowHeight: 42,
-    activeAudio: null,
-    activeAudioUrl: "",
-    activeBackgroundUrl: "",
-    activeSource: null,
-    activeGain: null,
-    audioUnlocked: false,
-    audioContext: null,
-    piperModules: new Map(),
-    piperAudioCache: new Map(),
-    piperAudioPending: new Map(),
     translationCache: loadTranslationCache(),
     bookMode: false,
     bookViewMode: "shelf",
@@ -204,7 +173,6 @@
     bookProgress: loadBookProgress(),
     bookTranslationCache: new Map(),
     activeHighlights: [],
-    highlightTimer: 0,
     scrollTimer: 0,
     programmaticScroll: false,
     ruFitRaf: 0,
@@ -223,7 +191,6 @@
       state.band = String(prefs.band || state.band);
       state.shuffle = Boolean(prefs.shuffle);
       state.currentPos = Number.isFinite(prefs.currentPos) ? prefs.currentPos : 0;
-      state.ttsEngine = prefs.ttsEngine || state.ttsEngine;
       if (prefs.voicePrefs && typeof prefs.voicePrefs === "object") {
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
@@ -235,9 +202,6 @@
       els.bookEnRate.value = els.enRate.value;
       els.bookVolume.value = els.pageVolume.value;
       els.gapMs.value = prefs.gapMs || els.gapMs.value;
-      els.piperAhead.value = prefs.piperAhead || els.piperAhead.value;
-      els.backgroundAudio.checked = Boolean(prefs.backgroundAudio);
-      els.backgroundBatch.value = prefs.backgroundBatch || els.backgroundBatch.value;
     } catch (error) {
       console.warn("Preference load failed:", error);
     }
@@ -249,16 +213,12 @@
       band: state.band,
       shuffle: state.shuffle,
       currentPos: state.currentPos,
-      ttsEngine: state.ttsEngine,
       voicePrefs: state.voicePrefs,
       enLang: state.enLang,
       ruRate: els.ruRate.value,
       enRate: els.enRate.value,
       pageVolume: els.pageVolume.value,
-      gapMs: els.gapMs.value,
-      piperAhead: els.piperAhead.value,
-      backgroundAudio: els.backgroundAudio.checked,
-      backgroundBatch: els.backgroundBatch.value
+      gapMs: els.gapMs.value
     };
     try {
       window.localStorage.setItem(STORE_KEY, JSON.stringify(prefs));
@@ -282,9 +242,6 @@
     els.bookEnRateValue.textContent = `${Number(els.bookEnRate.value).toFixed(2)}x`;
     els.bookVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
     els.gapValue.textContent = `${Number.parseInt(els.gapMs.value, 10)} ms`;
-    els.piperAheadValue.textContent = els.piperAhead.value;
-    els.backgroundAudioValue.textContent = els.backgroundAudio.checked ? "On" : "Off";
-    els.backgroundBatchValue.textContent = els.backgroundBatch.value;
   }
 
   function loadTranslationCache() {
@@ -474,22 +431,6 @@
         }
       );
     });
-  }
-
-  async function retryAsync(label, attempts, run) {
-    let lastError = null;
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        return await run(attempt);
-      } catch (error) {
-        lastError = error;
-        console.warn(`${label} attempt ${attempt + 1} failed:`, error);
-        if (attempt < attempts - 1) {
-          await delayPlain(350 * (attempt + 1));
-        }
-      }
-    }
-    throw lastError || new Error(`${label} failed`);
   }
 
   function makeSpokenEnglish(value, entry = null) {
@@ -710,7 +651,6 @@
     if (options.scroll !== false) {
       scrollCurrentIntoView(options.align || "near");
     }
-    warmPiperQueue(state.currentPos);
   }
 
   function scrollCurrentIntoView(align = "near") {
@@ -844,8 +784,6 @@
   }
 
   function clearSpeechHighlights(targets = state.activeHighlights) {
-    window.clearInterval(state.highlightTimer);
-    state.highlightTimer = 0;
     const normalizedTargets = normalizeHighlightTargets(targets, "");
     normalizedTargets.forEach((target) => {
       target.node.textContent = target.text || "";
@@ -855,29 +793,6 @@
     if (targets === state.activeHighlights || clearedActiveNodes) {
       state.activeHighlights = [];
     }
-  }
-
-  function startApproximateHighlight(text, targets, durationMs, token) {
-    const clean = String(text || "");
-    const ranges = wordRanges(clean);
-    if (!ranges.length || !targets?.length || durationMs <= 0) return;
-    const started = performance.now();
-    applySpeechHighlight(targets, clean, 0);
-    window.clearInterval(state.highlightTimer);
-    state.highlightTimer = window.setInterval(() => {
-      if (token !== state.playToken) {
-        clearSpeechHighlights(targets);
-        return;
-      }
-      const elapsed = performance.now() - started;
-      const ratio = clamp(elapsed / durationMs, 0, 1);
-      const activeIndex = Math.min(ranges.length - 1, Math.floor(ratio * ranges.length));
-      applySpeechHighlight(targets, clean, ranges[activeIndex].start);
-      if (ratio >= 1) {
-        window.clearInterval(state.highlightTimer);
-        state.highlightTimer = 0;
-      }
-    }, 110);
   }
 
   async function ensureMeaning(entry) {
@@ -1763,13 +1678,14 @@
       setStatus("Load a book first");
       return;
     }
-    await ensureAudioUnlocked();
     state.bookPlaying = true;
     const token = state.playToken + 1;
     state.playToken = token;
     els.bookPlayBtn.textContent = "Stop";
+    let failed = false;
 
     try {
+      await prepareSpeechEngine();
       while (
         state.bookPlaying
         && token === state.playToken
@@ -1785,7 +1701,8 @@
         setBookIndex(nextIndex, { render: false, save: true });
       }
     } catch (error) {
-      setStatus(error.message || "Book playback failed");
+      failed = true;
+      setStatus(playbackErrorMessage(error, "Book playback failed"));
       console.error(error);
     } finally {
       if (token === state.playToken) {
@@ -1793,42 +1710,11 @@
         els.bookPlayBtn.textContent = "Play";
         clearSpeechHighlights();
         saveCurrentBookProgress();
-        setStatus("Ready");
+        if (!failed) {
+          setStatus("Ready");
+        }
       }
     }
-  }
-
-  async function ensureAudioUnlocked() {
-    if (state.audioUnlocked) return;
-    try {
-      const audioContext = await withTimeout(getAudioContext(), 1800, "Audio unlock");
-      const sampleRate = audioContext.sampleRate || 22050;
-      const buffer = audioContext.createBuffer(1, Math.max(1, Math.floor(sampleRate * 0.03)), sampleRate);
-      const source = audioContext.createBufferSource();
-      const gain = audioContext.createGain();
-      gain.gain.value = 0.0001;
-      source.buffer = buffer;
-      source.connect(gain);
-      gain.connect(audioContext.destination);
-      source.start(0);
-    } catch (error) {
-      console.warn("AudioContext unlock failed:", error);
-    }
-    state.audioUnlocked = true;
-  }
-
-  async function getAudioContext() {
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextCtor) {
-      throw new Error("Web Audio unavailable");
-    }
-    if (!state.audioContext) {
-      state.audioContext = new AudioContextCtor();
-    }
-    if (state.audioContext.state === "suspended") {
-      await state.audioContext.resume();
-    }
-    return state.audioContext;
   }
 
   function stopSpeech() {
@@ -1839,507 +1725,108 @@
     els.bookPlayBtn.textContent = "Play";
     clearSpeechHighlights();
     if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    if (state.activeAudio) {
-      state.activeAudio.pause();
-      state.activeAudio.src = "";
-      state.activeAudio = null;
-    }
-    if (state.activeAudioUrl) {
-      URL.revokeObjectURL(state.activeAudioUrl);
-      state.activeAudioUrl = "";
-    }
-    if (els.backgroundAudioPlayer) {
-      els.backgroundAudioPlayer.pause();
-      els.backgroundAudioPlayer.removeAttribute("src");
-      els.backgroundAudioPlayer.load();
-    }
-    if (state.activeBackgroundUrl) {
-      URL.revokeObjectURL(state.activeBackgroundUrl);
-      state.activeBackgroundUrl = "";
-    }
-    if (state.activeSource) {
       try {
-        state.activeSource.stop(0);
-      } catch {
-        // The source may already have ended.
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+      } catch (error) {
+        console.warn("Speech stop failed:", error);
       }
-      state.activeSource = null;
-    }
-    if (state.activeGain) {
-      try {
-        state.activeGain.disconnect();
-      } catch {
-        // The gain node may already be disconnected.
-      }
-      state.activeGain = null;
     }
   }
 
   async function speakEntry(entry, token) {
     if (!entry || token !== state.playToken) return;
-    warmPiperQueue(state.currentPos);
     const language = activeLanguage();
     const source = entry.display || entry.word;
-    const en = await ensureMeaning(entry);
-    if (token !== state.playToken) return;
+    const meaningPromise = ensureMeaning(entry);
 
     setStatus(`#${entry.rank} ${language.label}`);
     await speakText(source, language.speechLang, Number(els.ruRate.value), token);
-    warmPiperQueue(state.currentPos + state.playDirection);
     await delay(Number(els.gapMs.value), token);
+    const en = await meaningPromise;
+    if (token !== state.playToken) return;
 
     const englishSpeech = makeSpokenEnglish(en, entry);
     if (englishSpeech && token === state.playToken) {
       setStatus(`#${entry.rank} English`);
       await speakText(englishSpeech, "en-US", Number(els.enRate.value), token);
-      warmPiperQueue(state.currentPos + state.playDirection);
       await delay(Number(els.gapMs.value), token);
     }
   }
 
   async function speakText(text, lang, rate, token, options = {}) {
     if (token !== state.playToken || !text) return;
-    if (state.ttsEngine === "piper" && piperVoiceIdForLang(lang)) {
-      try {
-        await speakWithPiper(text, lang, rate, token, options);
-        return;
-      } catch (error) {
-        console.warn("Piper failed, falling back to system TTS:", error);
-        setStatus("Piper unavailable, using system voice");
-      }
-    }
     await speakWithSystemVoice(text, lang, rate, token, options);
   }
 
-  async function speakWithPiper(text, lang, rate, token, options = {}) {
-    const clip = await getPiperClip(text, lang);
-    if (token !== state.playToken || !clip) return;
-    await playPiperClip(clip, token, rate, options);
-  }
-
-  function piperVoiceId(lang) {
-    const voiceId = piperVoiceIdForLang(lang);
-    if (!voiceId) {
-      throw new Error(`No Piper voice for ${lang}`);
+  async function prepareSpeechEngine() {
+    if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
+      throw new Error("Speech synthesis unavailable");
     }
-    return voiceId;
-  }
-
-  function piperVoiceIdForLang(lang) {
-    const lower = String(lang || "").toLowerCase();
-    if (lower.startsWith("ru")) return PIPER_RU_VOICE_ID;
-    if (lower.startsWith("en")) return PIPER_EN_VOICE_ID;
-    return "";
-  }
-
-  function piperCacheKey(voiceId, text) {
-    return `${voiceId}:${text}`;
-  }
-
-  async function loadPiperModule(voiceId) {
-    const cached = state.piperModules.get(voiceId);
-    if (cached) return cached;
-
-    const urls = [
-      `${PIPER_ESM_URL}?voice=${encodeURIComponent(voiceId)}`,
-      `${PIPER_ESM_FALLBACK_URL}?bundle&voice=${encodeURIComponent(voiceId)}`
-    ];
-    const mod = await retryAsync(`Piper ${voiceId} load`, urls.length, async (attempt) => {
-      const url = urls[attempt] || urls[0];
-      const loaded = await withTimeout(import(url), PIPER_IMPORT_TIMEOUT_MS, "Piper module load");
-      if (typeof loaded.download === "function") {
-        await withTimeout(loaded.download(voiceId), PIPER_DOWNLOAD_TIMEOUT_MS, "Piper voice download");
-      }
-      return loaded;
-    });
-    state.piperModules.set(voiceId, mod);
-    return mod;
-  }
-
-  async function getPiperClip(text, lang) {
-    const clean = stripForSpeech(text);
-    if (!clean) return null;
-    const voiceId = piperVoiceId(lang);
-    const key = piperCacheKey(voiceId, clean);
-    if (state.piperAudioCache.has(key)) {
-      return state.piperAudioCache.get(key);
+    if (!syncAvailableVoices()) {
+      refreshVoices().catch((error) => {
+        console.warn("Voice refresh failed:", error);
+      });
     }
-    if (state.piperAudioPending.has(key)) {
-      return state.piperAudioPending.get(key);
-    }
-
-    const pending = (async () => {
-      const mod = await loadPiperModule(voiceId);
-      const wavBlob = await retryAsync(`Piper ${voiceId} speech`, 2, () => (
-        withTimeout(mod.predict({ text: clean, voiceId }), PIPER_PREDICT_TIMEOUT_MS, "Piper speech")
-      ));
-      const clip = await preparePiperClip(wavBlob, voiceId, clean);
-      state.piperAudioCache.set(key, clip);
-      prunePiperCache();
-      return clip;
-    })();
-
-    state.piperAudioPending.set(key, pending);
     try {
-      return await pending;
-    } finally {
-      state.piperAudioPending.delete(key);
-    }
-  }
-
-  async function preparePiperClip(blob, voiceId, text) {
-    const clip = {
-      blob,
-      voiceId,
-      text,
-      buffer: null,
-      gain: 1
-    };
-    try {
-      const audioContext = await getAudioContext();
-      const arrayBuffer = await blob.arrayBuffer();
-      clip.buffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-      clip.gain = calculatePiperGain(measureAudioStats(clip.buffer));
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
     } catch (error) {
-      console.warn("Piper audio normalization unavailable:", error);
+      console.warn("Speech preparation failed:", error);
     }
-    return clip;
+    await delayPlain(40);
   }
 
-  function measureAudioStats(buffer) {
-    let peak = 0;
-    let sumSquares = 0;
-    let samples = 0;
-    let voicedSumSquares = 0;
-    let voicedSamples = 0;
-    const voicedFloor = 0.012;
-
-    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-      const data = buffer.getChannelData(channel);
-      for (let index = 0; index < data.length; index += 1) {
-        const value = Math.abs(data[index]);
-        peak = Math.max(peak, value);
-        sumSquares += value * value;
-        samples += 1;
-        if (value > voicedFloor) {
-          voicedSumSquares += value * value;
-          voicedSamples += 1;
-        }
-      }
+  function playbackErrorMessage(error, fallback) {
+    const message = String(error?.message || "");
+    if (/not-allowed/i.test(message)) {
+      return "Speech blocked; tap Play again";
     }
-
-    const rms = Math.sqrt(sumSquares / Math.max(1, samples));
-    const voicedRms = Math.sqrt(voicedSumSquares / Math.max(1, voicedSamples));
-    return { peak, rms, voicedRms: voicedSamples ? voicedRms : rms };
-  }
-
-  function calculatePiperGain(stats) {
-    const rms = stats.voicedRms || stats.rms || PIPER_TARGET_RMS;
-    const loudnessGain = PIPER_TARGET_RMS / Math.max(0.001, rms);
-    const peakLimit = stats.peak ? 0.98 / stats.peak : PIPER_MAX_GAIN;
-    return clamp(Math.min(loudnessGain, peakLimit), PIPER_MIN_GAIN, PIPER_MAX_GAIN);
-  }
-
-  function prunePiperCache() {
-    while (state.piperAudioCache.size > PIPER_CACHE_LIMIT) {
-      const oldestKey = state.piperAudioCache.keys().next().value;
-      state.piperAudioCache.delete(oldestKey);
+    if (/speech did not start/i.test(message)) {
+      return "Speech stalled; tap Play again";
     }
-  }
-
-  function warmPiperQueue(startPos = state.currentPos) {
-    if (state.ttsEngine !== "piper" || !state.order.length) return;
-    const language = activeLanguage();
-    const sourceVoiceId = piperVoiceIdForLang(language.speechLang);
-    const ahead = Math.max(0, Number.parseInt(els.piperAhead.value, 10) || 0);
-    const direction = state.playDirection || 1;
-    let pos = Math.min(Math.max(0, startPos), Math.max(0, state.order.length - 1));
-
-    for (let queued = 0; queued <= ahead && pos >= 0 && pos < state.order.length; queued += 1, pos += direction) {
-      const entry = state.entries[state.order[pos]];
-      if (!entry) continue;
-      const source = entry.display || entry.word;
-      const en = makeSpokenEnglish(entry.en || cachedMeaning(entry) || "", entry);
-      if (sourceVoiceId) queuePiperClip(source, language.speechLang);
-      if (en) queuePiperClip(en, "en-US");
-    }
-  }
-
-  function queuePiperClip(text, lang) {
-    if (!text) return;
-    getPiperClip(text, lang).catch((error) => {
-      console.warn("Piper queue failed:", error);
-    });
-  }
-
-  async function buildBackgroundBatch(startPos, token) {
-    const batchSize = clamp(Number.parseInt(els.backgroundBatch.value, 10) || 32, 8, 96);
-    const language = activeLanguage();
-    if (!piperVoiceIdForLang(language.speechLang)) {
-      throw new Error("Lock audio needs a Piper voice for the selected language");
-    }
-    const direction = state.playDirection || 1;
-    const positions = [];
-    for (
-      let pos = startPos;
-      positions.length < batchSize && pos >= 0 && pos < state.order.length;
-      pos += direction
-    ) {
-      positions.push(pos);
-    }
-    const chunks = [];
-    const timeline = [];
-    let cursor = 0;
-
-    for (const pos of positions) {
-      if (token !== state.playToken || !state.playing) break;
-      const entry = state.entries[state.order[pos]];
-      if (!entry) continue;
-      const entryStart = cursor;
-      setStatus(`Building audio #${entry.rank}`);
-
-      const source = entry.display || entry.word;
-      const en = await ensureMeaning(entry);
-      const sourceClip = await getPiperClip(source, language.speechLang);
-      cursor += appendClipChunk(chunks, sourceClip, Number(els.ruRate.value));
-      cursor += appendSilenceChunk(chunks, Number(els.gapMs.value));
-
-      const englishSpeech = makeSpokenEnglish(en, entry);
-      if (englishSpeech) {
-        const enClip = await getPiperClip(englishSpeech, "en-US");
-        cursor += appendClipChunk(chunks, enClip, Number(els.enRate.value));
-        cursor += appendSilenceChunk(chunks, Number(els.gapMs.value));
-      }
-      timeline.push({ pos, start: entryStart, end: cursor });
-    }
-
-    if (!chunks.length || !timeline.length) return null;
-    return {
-      blob: encodeWav(chunks, BACKGROUND_WAV_SAMPLE_RATE),
-      timeline,
-      nextPos: timeline[timeline.length - 1].pos + direction
-    };
-  }
-
-  function appendClipChunk(chunks, clip, rate) {
-    if (!clip?.buffer) {
-      throw new Error("Lock audio needs decoded Piper audio");
-    }
-    const rendered = renderClipToMono(clip.buffer, rate, clip.gain);
-    chunks.push(rendered);
-    return rendered.length / BACKGROUND_WAV_SAMPLE_RATE;
-  }
-
-  function appendSilenceChunk(chunks, ms) {
-    const frames = Math.max(0, Math.round(BACKGROUND_WAV_SAMPLE_RATE * Math.max(0, ms) / 1000));
-    if (!frames) return 0;
-    chunks.push(new Float32Array(frames));
-    return frames / BACKGROUND_WAV_SAMPLE_RATE;
-  }
-
-  function renderClipToMono(buffer, rate, gain) {
-    const playbackRate = clamp(rate || 1, 0.5, 2);
-    const outputFrames = Math.max(1, Math.ceil((buffer.duration / playbackRate) * BACKGROUND_WAV_SAMPLE_RATE));
-    const output = new Float32Array(outputFrames);
-    const channels = [];
-    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-      channels.push(buffer.getChannelData(channel));
-    }
-
-    for (let outIndex = 0; outIndex < outputFrames; outIndex += 1) {
-      const sourceFrame = (outIndex / BACKGROUND_WAV_SAMPLE_RATE) * playbackRate * buffer.sampleRate;
-      const left = Math.floor(sourceFrame);
-      const right = Math.min(left + 1, buffer.length - 1);
-      const mix = sourceFrame - left;
-      let sample = 0;
-      for (const data of channels) {
-        sample += data[left] + (data[right] - data[left]) * mix;
-      }
-      output[outIndex] = clamp((sample / Math.max(1, channels.length)) * gain, -0.98, 0.98);
-    }
-    return output;
-  }
-
-  function encodeWav(chunks, sampleRate) {
-    const frameCount = chunks.reduce((total, chunk) => total + chunk.length, 0);
-    const buffer = new ArrayBuffer(44 + frameCount * 2);
-    const view = new DataView(buffer);
-    writeAscii(view, 0, "RIFF");
-    view.setUint32(4, 36 + frameCount * 2, true);
-    writeAscii(view, 8, "WAVE");
-    writeAscii(view, 12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true);
-    view.setUint16(34, 16, true);
-    writeAscii(view, 36, "data");
-    view.setUint32(40, frameCount * 2, true);
-
-    let offset = 44;
-    for (const chunk of chunks) {
-      for (let index = 0; index < chunk.length; index += 1) {
-        const sample = clamp(chunk[index], -1, 1);
-        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-        offset += 2;
-      }
-    }
-    return new Blob([view], { type: "audio/wav" });
-  }
-
-  function writeAscii(view, offset, text) {
-    for (let index = 0; index < text.length; index += 1) {
-      view.setUint8(offset + index, text.charCodeAt(index));
-    }
-  }
-
-  async function playBackgroundBatch(batch, token) {
-    if (!batch || token !== state.playToken) return;
-    if (state.activeBackgroundUrl) {
-      URL.revokeObjectURL(state.activeBackgroundUrl);
-    }
-
-    const audio = els.backgroundAudioPlayer;
-    state.activeBackgroundUrl = URL.createObjectURL(batch.blob);
-    audio.src = state.activeBackgroundUrl;
-    audio.volume = pageVolume();
-    audio.playbackRate = 1;
-
-    let lastPos = -1;
-    const syncPosition = () => {
-      const current = audio.currentTime;
-      const segment = batch.timeline.find((item) => current >= item.start && current < item.end)
-        || batch.timeline[batch.timeline.length - 1];
-      if (segment && segment.pos !== lastPos && token === state.playToken) {
-        lastPos = segment.pos;
-        setCurrentPos(segment.pos, { scroll: true });
-      }
-    };
-    audio.ontimeupdate = syncPosition;
-    audio.onplay = syncPosition;
-
-    await audio.play();
-    await new Promise((resolve, reject) => {
-      audio.onended = resolve;
-      audio.onerror = () => reject(new Error("Lock audio playback failed"));
-      const poll = () => {
-        if (token !== state.playToken || !state.playing) resolve();
-        else window.setTimeout(poll, 250);
-      };
-      poll();
-    });
-
-    audio.ontimeupdate = null;
-    audio.onplay = null;
-    audio.onended = null;
-    audio.onerror = null;
-  }
-
-  async function playPiperClip(clip, token, rate, options = {}) {
-    if (token !== state.playToken) return;
-    if (!clip.buffer) {
-      await playAudioBlob(clip.blob, token, rate, Math.min(1, clip.gain), options);
-      return;
-    }
-
-    const audioContext = await getAudioContext();
-    if (token !== state.playToken) return;
-    const source = audioContext.createBufferSource();
-    const gain = audioContext.createGain();
-    source.buffer = clip.buffer;
-    source.playbackRate.value = clamp(rate || 1, 0.5, 2);
-    gain.gain.value = clip.gain * pageVolume();
-    source.connect(gain);
-    gain.connect(audioContext.destination);
-    state.activeSource = source;
-    state.activeGain = gain;
-    if (options.highlightTargets?.length) {
-      const durationMs = (clip.buffer.duration / Math.max(0.5, source.playbackRate.value)) * 1000;
-      startApproximateHighlight(options.highlightText || clip.text, options.highlightTargets, durationMs, token);
-    }
-
-    await new Promise((resolve) => {
-      let finished = false;
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        resolve();
-      };
-      source.onended = finish;
-      source.start(0);
-      const poll = () => {
-        if (token !== state.playToken) finish();
-        else window.setTimeout(poll, 60);
-      };
-      poll();
-    });
-
-    if (state.activeSource === source) {
-      state.activeSource = null;
-    }
-    if (state.activeGain === gain) {
-      try {
-        gain.disconnect();
-      } catch {
-        // Already disconnected.
-      }
-      state.activeGain = null;
-    }
-    clearSpeechHighlights(options.highlightTargets);
-  }
-
-  async function playAudioBlob(blob, token, rate = 1, volume = 1, options = {}) {
-    if (state.activeAudioUrl) {
-      URL.revokeObjectURL(state.activeAudioUrl);
-    }
-    const url = URL.createObjectURL(blob);
-    const audio = state.activeAudio || new Audio();
-    state.activeAudio = audio;
-    state.activeAudioUrl = url;
-    audio.src = url;
-    audio.playbackRate = clamp(rate || 1, 0.5, 2);
-    audio.volume = clamp(volume * pageVolume(), 0, 1);
-    if (options.highlightTargets?.length) {
-      audio.onloadedmetadata = () => {
-        if (Number.isFinite(audio.duration)) {
-          startApproximateHighlight(
-            options.highlightText || "",
-            options.highlightTargets,
-            (audio.duration / Math.max(0.5, audio.playbackRate)) * 1000,
-            token
-          );
-        }
-      };
-    }
-    await audio.play();
-    await new Promise((resolve, reject) => {
-      audio.onended = resolve;
-      audio.onerror = () => reject(new Error("Audio playback failed"));
-      const poll = () => {
-        if (token !== state.playToken) resolve();
-        else window.setTimeout(poll, 80);
-      };
-      poll();
-    });
-    clearSpeechHighlights(options.highlightTargets);
+    return message || fallback;
   }
 
   async function speakWithSystemVoice(text, lang, rate, token, options = {}) {
     if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
       throw new Error("Speech synthesis unavailable");
     }
-    await refreshVoices();
+    if (!syncAvailableVoices()) {
+      refreshVoices().catch((error) => {
+        console.warn("Voice refresh failed:", error);
+      });
+    }
+    const spokenText = stripForSpeech(text);
+    if (!spokenText || token !== state.playToken) return;
 
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await speakWithSystemVoiceOnce(spokenText, lang, rate, token, options);
+        return;
+      } catch (error) {
+        if (token !== state.playToken) return;
+        lastError = error;
+        console.warn(`Speech attempt ${attempt + 1} failed:`, error);
+        try {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.resume();
+        } catch {
+          // Keep the original speech error.
+        }
+        await delayPlain(120);
+      }
+    }
+    throw lastError || new Error("Speech synthesis error");
+  }
+
+  async function speakWithSystemVoiceOnce(spokenText, lang, rate, token, options = {}) {
     return new Promise((resolve, reject) => {
       if (token !== state.playToken) {
         resolve();
         return;
       }
-      const spokenText = stripForSpeech(text);
       const utterance = new SpeechSynthesisUtterance(spokenText);
       utterance.rate = rate;
       utterance.volume = pageVolume();
@@ -2372,10 +1859,9 @@
         reject(new Error(event.error || "Speech synthesis error"));
       };
       window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
+      window.setTimeout(() => window.speechSynthesis.resume(), 0);
     });
   }
 
@@ -2400,22 +1886,21 @@
     return null;
   }
 
+  function syncAvailableVoices() {
+    if (!window.speechSynthesis) return false;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return false;
+    state.voices = voices;
+    updateVoiceSelectors();
+    return true;
+  }
+
   async function refreshVoices() {
     if (!window.speechSynthesis) return;
-    let voices = window.speechSynthesis.getVoices();
-    if (voices.length) {
-      state.voices = voices;
-      updateVoiceSelectors();
-      return;
-    }
+    if (syncAvailableVoices()) return;
     for (let attempt = 0; attempt < 10; attempt += 1) {
       await delayPlain(120);
-      voices = window.speechSynthesis.getVoices();
-      if (voices.length) {
-        state.voices = voices;
-        updateVoiceSelectors();
-        return;
-      }
+      if (syncAvailableVoices()) return;
     }
   }
 
@@ -2436,23 +1921,14 @@
 
   async function startPlayback() {
     if (state.playing) return;
-    await ensureAudioUnlocked();
     state.playing = true;
     const token = state.playToken + 1;
     state.playToken = token;
     els.playBtn.textContent = "Stop";
-    warmPiperQueue(state.currentPos);
+    let failed = false;
 
     try {
-      if (els.backgroundAudio.checked && piperVoiceIdForLang(activeLanguage().speechLang)) {
-        await startBackgroundPlayback(token);
-        return;
-      }
-      if (els.backgroundAudio.checked) {
-        setStatus("Lock audio unavailable for this language");
-        await delay(500, token);
-      }
-
+      await prepareSpeechEngine();
       while (
         state.playing
         && token === state.playToken
@@ -2469,36 +1945,17 @@
         setCurrentPos(nextPos, { scroll: true });
       }
     } catch (error) {
-      setStatus(error.message || "Playback failed");
+      failed = true;
+      setStatus(playbackErrorMessage(error, "Playback failed"));
       console.error(error);
     } finally {
       if (token === state.playToken) {
         state.playing = false;
         els.playBtn.textContent = "Play";
-        setStatus("Ready");
+        if (!failed) {
+          setStatus("Ready");
+        }
       }
-    }
-  }
-
-  async function startBackgroundPlayback(token) {
-    state.ttsEngine = "piper";
-    els.engineSelect.value = "piper";
-    savePrefs();
-
-    while (
-      state.playing
-      && token === state.playToken
-      && state.currentPos >= 0
-      && state.currentPos < state.order.length
-    ) {
-      setStatus("Preparing lock audio");
-      const batch = await buildBackgroundBatch(state.currentPos, token);
-      if (!batch || token !== state.playToken || !state.playing) break;
-      setStatus("Playing lock audio");
-      await playBackgroundBatch(batch, token);
-      if (token !== state.playToken || !state.playing) break;
-      if (batch.nextPos < 0 || batch.nextPos >= state.order.length) break;
-      setCurrentPos(batch.nextPos, { scroll: true });
     }
   }
 
@@ -2563,7 +2020,6 @@
       updateFocus();
       renderVisibleRows();
       scrollCurrentIntoView("center");
-      warmPiperQueue(state.currentPos);
       savePrefs();
     });
 
@@ -2574,7 +2030,6 @@
       updateFocus();
       renderVisibleRows();
       scrollCurrentIntoView("center");
-      warmPiperQueue(state.currentPos);
       savePrefs();
     });
 
@@ -2734,7 +2189,6 @@
       input.addEventListener("input", () => {
         syncSettingsAudioControlsFromBook();
         updateSettingLabels();
-        els.backgroundAudioPlayer.volume = pageVolume();
         savePrefs();
       });
     });
@@ -2759,12 +2213,6 @@
       setBookIndex(Number.parseInt(row.dataset.bookSentenceIndex || "0", 10), { save: true });
     });
 
-    els.engineSelect.addEventListener("change", () => {
-      state.ttsEngine = els.engineSelect.value;
-      savePrefs();
-      warmPiperQueue(state.currentPos);
-    });
-
     els.sourceVoiceSelect.addEventListener("change", () => {
       const key = voicePrefKeyForLang(activeLanguage().speechLang);
       if (key) {
@@ -2785,23 +2233,14 @@
       savePrefs();
     });
 
-    [els.ruRate, els.enRate, els.pageVolume, els.gapMs, els.piperAhead, els.backgroundBatch].forEach((input) => {
+    [els.ruRate, els.enRate, els.pageVolume, els.gapMs].forEach((input) => {
       input.addEventListener("input", () => {
         if (input === els.ruRate || input === els.enRate || input === els.pageVolume) {
           syncBookAudioControlsFromSettings();
         }
         updateSettingLabels();
-        els.backgroundAudioPlayer.volume = pageVolume();
         savePrefs();
-        if (input === els.piperAhead) {
-          warmPiperQueue(state.currentPos);
-        }
       });
-    });
-
-    els.backgroundAudio.addEventListener("change", () => {
-      updateSettingLabels();
-      savePrefs();
     });
 
     els.virtualRows.addEventListener("click", (event) => {
@@ -2860,10 +2299,8 @@
     els.enLangSelect.value = state.enLang;
     syncBookAudioControlsFromSettings();
     updateShuffleButton();
-    els.engineSelect.value = state.ttsEngine;
     updateSettingLabels();
     updateVoiceSelectors();
-    els.backgroundAudioPlayer.volume = pageVolume();
     bindEvents();
     await loadData();
     await refreshVoices();

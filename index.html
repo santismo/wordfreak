@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
   <main class="app-shell">
@@ -69,13 +69,6 @@
         </select>
       </label>
       <label>
-        TTS
-        <select id="engineSelect">
-          <option value="system" selected>System</option>
-          <option value="piper">Piper</option>
-        </select>
-      </label>
-      <label>
         <span id="sourceVoiceLabel">RU voice</span>
         <select id="sourceVoiceSelect">
           <option value="">Auto</option>
@@ -128,27 +121,6 @@
           <output id="gapValue">80 ms</output>
         </span>
         <input id="gapMs" type="range" min="0" max="500" step="20" value="80">
-      </label>
-      <label>
-        <span class="setting-title">
-          Queue
-          <output id="piperAheadValue">4</output>
-        </span>
-        <input id="piperAhead" type="range" min="0" max="8" step="1" value="4">
-      </label>
-      <label class="checkbox-setting">
-        <span class="setting-title">
-          Lock audio
-          <output id="backgroundAudioValue">Off</output>
-        </span>
-        <input id="backgroundAudio" type="checkbox">
-      </label>
-      <label>
-        <span class="setting-title">
-          Batch
-          <output id="backgroundBatchValue">32</output>
-        </span>
-        <input id="backgroundBatch" type="range" min="8" max="96" step="8" value="32">
       </label>
     </section>
 
@@ -273,8 +245,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <audio id="backgroundAudioPlayer" class="background-audio" preload="auto" playsinline></audio>
-
-  <script src="app.js?v=19" defer></script>
+  <script src="app.js?v=21" defer></script>
 </body>
 </html>

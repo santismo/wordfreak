@@ -234,14 +234,6 @@ select {
   min-height: 22px;
 }
 
-.background-audio {
-  position: fixed;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
 body.book-mode .focus-stage,
 body.book-mode .transport,
 body.book-mode .list-shell,
