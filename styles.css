@@ -86,7 +86,8 @@ select {
 .transport,
 .settings-panel,
 .focus-stage,
-.list-shell {
+.list-shell,
+.book-view {
   border: 1px solid var(--line);
   background: rgba(18, 21, 24, 0.96);
   box-shadow: var(--shadow);
@@ -239,6 +240,295 @@ select {
   height: 1px;
   opacity: 0;
   pointer-events: none;
+}
+
+body.book-mode .focus-stage,
+body.book-mode .transport,
+body.book-mode .list-shell {
+  display: none;
+}
+
+.book-view {
+  border-radius: 8px;
+  padding: 10px;
+  display: none;
+  min-height: 0;
+  gap: 10px;
+}
+
+.book-view:not([hidden]) {
+  display: grid;
+}
+
+.book-mode-head,
+.reader-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.book-heading,
+.reader-title-block {
+  min-width: 0;
+}
+
+.book-kicker,
+.reader-label {
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.35;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.book-mode-head h2,
+.reader-head h2 {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-head-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.book-control-grid,
+.book-reader-controls {
+  display: grid;
+  gap: 8px;
+  align-items: end;
+}
+
+.book-control-grid {
+  grid-template-columns: minmax(120px, 1.1fr) minmax(86px, 0.7fr) repeat(3, minmax(70px, 0.55fr));
+}
+
+.book-reader-controls {
+  grid-template-columns: repeat(3, minmax(62px, 0.48fr)) repeat(3, minmax(120px, 1fr));
+  border-top: 1px solid rgba(42, 49, 54, 0.78);
+  padding-top: 10px;
+}
+
+.book-control-grid label,
+.book-reader-controls label,
+.reader-nav-row label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.book-control-grid input,
+.book-control-grid select,
+.book-reader-controls input,
+.reader-nav-row input,
+.reader-nav-row select {
+  width: 100%;
+}
+
+.book-reader {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101316;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.book-reader[hidden] {
+  display: none;
+}
+
+.book-source-link {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.book-source-link:hover {
+  text-decoration: underline;
+}
+
+.reader-nav-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(0, 1.4fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.reader-progress-field {
+  min-width: 0;
+}
+
+.dual-sentence {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.reader-pane {
+  min-width: 0;
+  border: 1px solid rgba(42, 49, 54, 0.86);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.source-reader-pane {
+  border-color: rgba(140, 207, 159, 0.42);
+}
+
+.reader-sentence {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: clamp(1.1rem, 3.8vw, 1.85rem);
+  line-height: 1.36;
+  overflow-wrap: anywhere;
+}
+
+.reader-sentence[dir="rtl"] {
+  text-align: right;
+}
+
+.english-reader-pane .reader-sentence {
+  color: var(--soft);
+  font-size: clamp(1rem, 3.2vw, 1.55rem);
+}
+
+.speech-word {
+  border-radius: 5px;
+  padding: 0 0.06em;
+}
+
+.speech-word.active {
+  background: var(--accent);
+  color: #07100a;
+  box-shadow: 0 0 0 2px rgba(140, 207, 159, 0.15);
+}
+
+.book-nearby {
+  display: grid;
+  gap: 6px;
+}
+
+.nearby-row {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  background: rgba(25, 29, 33, 0.64);
+  color: var(--muted);
+  text-align: left;
+}
+
+.nearby-row.current {
+  border-color: rgba(140, 207, 159, 0.5);
+  background: rgba(140, 207, 159, 0.12);
+  color: var(--text);
+}
+
+.nearby-index {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.nearby-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+}
+
+.book-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.book-card {
+  min-width: 0;
+  min-height: 126px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface-strong);
+  color: inherit;
+  text-align: left;
+}
+
+.book-card:hover {
+  border-color: rgba(140, 207, 159, 0.64);
+}
+
+.book-card-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 760;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.book-card-author,
+.book-card-meta {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.book-card-progress {
+  display: grid;
+  gap: 5px;
+}
+
+.book-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(244, 247, 244, 0.12);
+}
+
+.book-progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+
+.book-empty {
+  min-height: 100px;
+  padding: 18px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
 }
 
 .list-shell {
@@ -404,6 +694,37 @@ select {
 
   .settings-panel:not([hidden]) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .book-mode-head,
+  .reader-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .book-head-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .book-control-grid,
+  .book-reader-controls,
+  .reader-nav-row,
+  .dual-sentence {
+    grid-template-columns: 1fr;
+  }
+
+  .book-reader-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .book-reader-controls label {
+    grid-column: 1 / -1;
+  }
+
+  .book-shelf {
+    grid-template-columns: 1fr;
   }
 
   .word-row,

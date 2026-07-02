@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
   <main class="app-shell">
@@ -21,6 +21,7 @@
         <div id="datasetMeta" class="dataset-meta">Loading</div>
       </div>
       <div class="top-controls">
+        <button id="bookToggle" class="icon-btn" type="button" aria-label="Books" title="Books">&#128214;</button>
         <button id="settingsToggle" class="icon-btn" type="button" aria-label="Settings" title="Settings">&#9881;</button>
       </div>
     </header>
@@ -151,6 +152,102 @@
       </label>
     </section>
 
+    <section id="bookView" class="book-view" hidden>
+      <div class="book-mode-head">
+        <div class="book-heading">
+          <div class="book-kicker">Standard Ebooks</div>
+          <h2 id="bookModeTitle">Library</h2>
+        </div>
+        <div class="book-head-actions">
+          <button id="bookShelfBtn" type="button">Shelf</button>
+          <button id="bookRandomBtn" class="primary" type="button">Random</button>
+        </div>
+      </div>
+
+      <div class="book-control-grid">
+        <label>
+          Language
+          <select id="bookLanguageSelect">
+            <option value="ru" selected>Russian</option>
+            <option value="fa">Farsi</option>
+          </select>
+        </label>
+        <label>
+          Shelf page
+          <input id="bookPageInput" type="number" min="1" value="1">
+        </label>
+        <button id="bookLoadPageBtn" type="button">Load</button>
+        <button id="bookPrevPageBtn" type="button">Back</button>
+        <button id="bookNextPageBtn" type="button">Next</button>
+      </div>
+
+      <div class="book-reader-controls">
+        <button id="bookPrevSentenceBtn" type="button">Prev</button>
+        <button id="bookPlayBtn" class="primary" type="button">Play</button>
+        <button id="bookNextSentenceBtn" type="button">Next</button>
+        <label>
+          <span class="setting-title">
+            Source speed
+            <output id="bookSourceRateValue">0.82x</output>
+          </span>
+          <input id="bookSourceRate" type="range" min="0.55" max="1.25" step="0.05" value="0.82">
+        </label>
+        <label>
+          <span class="setting-title">
+            EN speed
+            <output id="bookEnRateValue">0.95x</output>
+          </span>
+          <input id="bookEnRate" type="range" min="0.65" max="1.35" step="0.05" value="0.95">
+        </label>
+        <label>
+          <span class="setting-title">
+            Volume
+            <output id="bookVolumeValue">80%</output>
+          </span>
+          <input id="bookVolume" type="range" min="0" max="1" step="0.05" value="0.8">
+        </label>
+      </div>
+
+      <article id="bookReader" class="book-reader" hidden>
+        <header class="reader-head">
+          <div class="reader-title-block">
+            <div id="bookReaderMeta" class="book-kicker">No book loaded</div>
+            <h2 id="bookReaderTitle">Pick a book</h2>
+          </div>
+          <a id="bookSourceLink" class="book-source-link" href="https://standardebooks.org/ebooks" target="_blank" rel="noopener noreferrer">Source</a>
+        </header>
+
+        <div class="reader-nav-row">
+          <label>
+            Chapter
+            <select id="bookChapterSelect"></select>
+          </label>
+          <label class="reader-progress-field">
+            <span class="setting-title">
+              Position
+              <output id="bookProgressValue">0%</output>
+            </span>
+            <input id="bookProgressRange" type="range" min="0" max="0" value="0">
+          </label>
+        </div>
+
+        <div class="dual-sentence">
+          <section class="reader-pane source-reader-pane">
+            <div id="bookSourceLabel" class="reader-label">Russian</div>
+            <p id="bookSourceSentence" class="reader-sentence" lang="ru">Select a book to begin.</p>
+          </section>
+          <section class="reader-pane english-reader-pane">
+            <div class="reader-label">English</div>
+            <p id="bookEnglishSentence" class="reader-sentence" lang="en">The English original will appear here.</p>
+          </section>
+        </div>
+
+        <div id="bookNearbyList" class="book-nearby" aria-label="Nearby sentences"></div>
+      </article>
+
+      <section id="bookShelf" class="book-shelf" aria-label="Book shelf"></section>
+    </section>
+
     <section class="list-shell">
       <div class="list-head" aria-hidden="true">
         <span id="sourceHead">Russian</span>
@@ -170,6 +267,6 @@
   </main>
   <audio id="backgroundAudioPlayer" class="background-audio" preload="auto" playsinline></audio>
 
-  <script src="app.js?v=15" defer></script>
+  <script src="app.js?v=17" defer></script>
 </body>
 </html>
