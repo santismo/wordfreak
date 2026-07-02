@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
   <main class="app-shell">
@@ -137,15 +137,47 @@
 
       <form id="bookShelfControls" class="book-shelf-controls">
         <label>
+          View
+          <select id="bookShelfViewSelect">
+            <option value="library" selected>Library</option>
+            <option value="favorites">Favorites</option>
+          </select>
+        </label>
+        <label>
           Language
           <select id="bookLanguageSelect">
             <option value="ru" selected>Russian</option>
             <option value="fa">Farsi</option>
           </select>
         </label>
+        <label>
+          Genre
+          <select id="bookGenreSelect">
+            <option value="">All</option>
+            <option value="adventure">Adventure</option>
+            <option value="autobiography">Autobiography</option>
+            <option value="biography">Biography</option>
+            <option value="childrens">Children's</option>
+            <option value="comedy">Comedy</option>
+            <option value="drama">Drama</option>
+            <option value="fantasy">Fantasy</option>
+            <option value="fiction">Fiction</option>
+            <option value="horror">Horror</option>
+            <option value="memoir">Memoir</option>
+            <option value="mystery">Mystery</option>
+            <option value="nonfiction">Nonfiction</option>
+            <option value="philosophy">Philosophy</option>
+            <option value="poetry">Poetry</option>
+            <option value="satire">Satire</option>
+            <option value="science-fiction">Science Fiction</option>
+            <option value="shorts">Shorts</option>
+            <option value="spirituality">Spirituality</option>
+            <option value="travel">Travel</option>
+          </select>
+        </label>
         <label class="book-search-field">
           Search
-          <input id="bookSearchInput" type="search" placeholder="Title or author">
+          <input id="bookSearchInput" type="search" placeholder="Title, author, or fragment">
         </label>
         <button id="bookSearchBtn" type="submit">Search</button>
         <button id="bookRandomBtn" class="primary" type="button">Random</button>
@@ -245,6 +277,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=21" defer></script>
+  <script src="app.js?v=24" defer></script>
 </body>
 </html>

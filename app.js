@@ -3,12 +3,36 @@
   const TRANSLATION_CACHE_KEY = "wordfreak:translation-cache";
   const LEGACY_RU_TRANSLATION_CACHE_KEY = "wordfreak:ru-en-cache";
   const BOOK_PROGRESS_KEY = "wordfreak:book-progress:v1";
+  const BOOK_FAVORITES_KEY = "wordfreak:book-favorites:v1";
   const STANDARD_EBOOKS_LIST_URL = "https://standardebooks.org/ebooks";
   const STANDARD_EBOOKS_PER_PAGE = 48;
   const STANDARD_EBOOKS_RANDOM_PAGE_MAX = 24;
+  const STANDARD_EBOOKS_SEARCH_SCAN_PAGE_MAX = 24;
+  const STANDARD_EBOOKS_SEARCH_RESULT_LIMIT = 48;
   const BOOK_FETCH_TIMEOUT_MS = 22000;
   const BOOK_TRANSLATION_CACHE_LIMIT = 350;
   const BOOK_NEARBY_RADIUS = 3;
+  const BOOK_GENRES = {
+    adventure: "Adventure",
+    autobiography: "Autobiography",
+    biography: "Biography",
+    childrens: "Children's",
+    comedy: "Comedy",
+    drama: "Drama",
+    fantasy: "Fantasy",
+    fiction: "Fiction",
+    horror: "Horror",
+    memoir: "Memoir",
+    mystery: "Mystery",
+    nonfiction: "Nonfiction",
+    philosophy: "Philosophy",
+    poetry: "Poetry",
+    satire: "Satire",
+    "science-fiction": "Science Fiction",
+    shorts: "Shorts",
+    spirituality: "Spirituality",
+    travel: "Travel"
+  };
   const PROXY_CANDIDATES = [
     {
       name: "Direct",
@@ -99,8 +123,10 @@
     bookModeTitle: document.getElementById("bookModeTitle"),
     bookShelfBtn: document.getElementById("bookShelfBtn"),
     bookShelfControls: document.getElementById("bookShelfControls"),
+    bookShelfViewSelect: document.getElementById("bookShelfViewSelect"),
     bookRandomBtn: document.getElementById("bookRandomBtn"),
     bookLanguageSelect: document.getElementById("bookLanguageSelect"),
+    bookGenreSelect: document.getElementById("bookGenreSelect"),
     bookSearchInput: document.getElementById("bookSearchInput"),
     bookSearchBtn: document.getElementById("bookSearchBtn"),
     bookPageInput: document.getElementById("bookPageInput"),
@@ -159,8 +185,10 @@
     translationCache: loadTranslationCache(),
     bookMode: false,
     bookViewMode: "shelf",
+    bookShelfKind: "library",
     bookPage: 1,
     bookSearch: "",
+    bookGenre: "",
     bookBooks: [],
     bookLoadedBook: null,
     bookSentences: [],
@@ -171,6 +199,7 @@
     bookAudioSettingsOpen: false,
     bookRenderToken: 0,
     bookProgress: loadBookProgress(),
+    bookFavorites: loadBookFavorites(),
     bookTranslationCache: new Map(),
     activeHighlights: [],
     scrollTimer: 0,
@@ -191,6 +220,8 @@
       state.band = String(prefs.band || state.band);
       state.shuffle = Boolean(prefs.shuffle);
       state.currentPos = Number.isFinite(prefs.currentPos) ? prefs.currentPos : 0;
+      state.bookShelfKind = prefs.bookShelfKind === "favorites" ? "favorites" : state.bookShelfKind;
+      state.bookGenre = BOOK_GENRES[prefs.bookGenre] ? prefs.bookGenre : "";
       if (prefs.voicePrefs && typeof prefs.voicePrefs === "object") {
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
@@ -213,6 +244,8 @@
       band: state.band,
       shuffle: state.shuffle,
       currentPos: state.currentPos,
+      bookShelfKind: state.bookShelfKind,
+      bookGenre: state.bookGenre,
       voicePrefs: state.voicePrefs,
       enLang: state.enLang,
       ruRate: els.ruRate.value,
@@ -274,6 +307,34 @@
       return value && typeof value === "object" ? value : {};
     } catch {
       return {};
+    }
+  }
+
+  function loadBookFavorites() {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(BOOK_FAVORITES_KEY) || "{}");
+      if (!value || typeof value !== "object") return {};
+      return Object.values(value).reduce((favorites, rawBook) => {
+        if (!rawBook || typeof rawBook !== "object") return favorites;
+        const book = normalizeBookRecord(rawBook);
+        if (book) {
+          favorites[book.id] = {
+            ...book,
+            favoritedAt: Number(rawBook.favoritedAt) || Date.now()
+          };
+        }
+        return favorites;
+      }, {});
+    } catch {
+      return {};
+    }
+  }
+
+  function saveBookFavoritesStore() {
+    try {
+      window.localStorage.setItem(BOOK_FAVORITES_KEY, JSON.stringify(state.bookFavorites));
+    } catch (error) {
+      console.warn("Book favorites save failed:", error);
     }
   }
 
@@ -908,6 +969,68 @@
     return clamp(Math.round(((record.index + 1) / record.total) * 100), 0, 100);
   }
 
+  function genreLabel(value = state.bookGenre) {
+    return BOOK_GENRES[value] || "All";
+  }
+
+  function favoriteBooks() {
+    return Object.values(state.bookFavorites)
+      .sort((left, right) => (right.favoritedAt || 0) - (left.favoritedAt || 0));
+  }
+
+  function isBookFavorite(book) {
+    const id = normalizeStandardEbookLink(book?.link || "");
+    return Boolean(id && state.bookFavorites[id]);
+  }
+
+  function toggleBookFavorite(book) {
+    const normalized = normalizeBookRecord(book);
+    if (!normalized) return false;
+    if (state.bookFavorites[normalized.id]) {
+      delete state.bookFavorites[normalized.id];
+      saveBookFavoritesStore();
+      return false;
+    }
+    state.bookFavorites[normalized.id] = {
+      ...normalized,
+      favoritedAt: Date.now()
+    };
+    saveBookFavoritesStore();
+    return true;
+  }
+
+  function normalizeBookSearchValue(value) {
+    return normalizeSpaces(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/&/g, " and ")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function bookSearchHaystack(book) {
+    let pathText = "";
+    try {
+      pathText = new URL(book?.link || "").pathname.replace(/^\/ebooks\//, "").replace(/[/-]+/g, " ");
+    } catch {
+      pathText = "";
+    }
+    return normalizeBookSearchValue(`${book?.title || ""} ${book?.author || ""} ${pathText}`);
+  }
+
+  function bookMatchesSearch(book, query) {
+    const terms = normalizeBookSearchValue(query).split(/\s+/).filter(Boolean);
+    if (!terms.length) return true;
+    const haystack = bookSearchHaystack(book);
+    return terms.every((term) => haystack.includes(term));
+  }
+
+  function visibleFavoriteBooks() {
+    const cleanQuery = normalizeSpaces(state.bookSearch);
+    return favoriteBooks().filter((book) => bookMatchesSearch(book, cleanQuery));
+  }
+
   function bookHash(text) {
     let hash = 2166136261;
     const value = String(text || "");
@@ -994,7 +1117,7 @@
     return finalText;
   }
 
-  function standardEbooksPageUrl(page, query = state.bookSearch) {
+  function standardEbooksPageUrl(page, query = state.bookSearch, genre = state.bookGenre) {
     const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
     const params = new URLSearchParams({
       page: String(safePage),
@@ -1003,6 +1126,9 @@
     const cleanQuery = normalizeSpaces(query);
     if (cleanQuery) {
       params.set("query", cleanQuery);
+    }
+    if (BOOK_GENRES[genre]) {
+      params.append("tags[]", genre);
     }
     return `${STANDARD_EBOOKS_LIST_URL}?${params.toString()}`;
   }
@@ -1169,25 +1295,100 @@
     return dedupeBooks(books);
   }
 
-  async function fetchBookCatalogPage(page = state.bookPage, query = state.bookSearch) {
+  async function fetchBookCatalogPage(page = state.bookPage, query = state.bookSearch, genre = state.bookGenre) {
     const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
-    const { text, proxy } = await fetchTextWithProxies(standardEbooksPageUrl(safePage, query), "book shelf");
+    const { text, proxy } = await fetchTextWithProxies(standardEbooksPageUrl(safePage, query, genre), "book shelf");
     const fromHtml = extractCatalogBooksFromHtml(text);
     const books = fromHtml.length ? fromHtml : extractCatalogBooksFromMarkdown(text);
     if (!books.length) throw new Error("No books found on the shelf page");
     return { books, proxy, page: safePage };
   }
 
+  function collectMatchedBooks(target, sourceBooks, query, limit = STANDARD_EBOOKS_SEARCH_RESULT_LIMIT) {
+    const seen = new Set(target.map((book) => book.id));
+    for (const book of dedupeBooks(sourceBooks)) {
+      if (target.length >= limit) break;
+      if (seen.has(book.id) || !bookMatchesSearch(book, query)) continue;
+      seen.add(book.id);
+      target.push(book);
+    }
+    return target;
+  }
+
+  async function scanBookCatalogForSearch(query, genre = state.bookGenre) {
+    const matches = [];
+    const seedBooks = genre
+      ? state.bookBooks
+      : [...favoriteBooks(), ...state.bookBooks, ...FALLBACK_BOOKS];
+    collectMatchedBooks(matches, seedBooks, query);
+    if (matches.length) {
+      return { books: matches, proxy: "saved books", page: 1 };
+    }
+
+    let lastProxy = "catalog scan";
+    for (let page = 1; page <= STANDARD_EBOOKS_SEARCH_SCAN_PAGE_MAX; page += 1) {
+      setStatus(`Scanning catalog page ${page} for "${normalizeSpaces(query)}"`);
+      try {
+        const { books, proxy } = await fetchBookCatalogPage(page, "", genre);
+        lastProxy = proxy;
+        collectMatchedBooks(matches, books, query);
+        if (matches.length || books.length < STANDARD_EBOOKS_PER_PAGE) {
+          break;
+        }
+      } catch (error) {
+        if (page === 1 && !matches.length) throw error;
+        break;
+      }
+    }
+
+    return { books: matches, proxy: `${lastProxy} local scan`, page: 1 };
+  }
+
   async function loadBookCatalogPage(page = state.bookPage) {
     const cleanQuery = normalizeSpaces(state.bookSearch);
-    setStatus(cleanQuery ? `Searching Standard Ebooks for "${cleanQuery}"` : `Loading Standard Ebooks page ${page}`);
+    if (state.bookShelfKind === "favorites") {
+      state.bookBooks = visibleFavoriteBooks();
+      els.bookPageInput.value = "1";
+      renderBookShelf();
+      setStatus(cleanQuery ? `Searched ${state.bookBooks.length} favorite books` : `${state.bookBooks.length} favorite books`);
+      return;
+    }
+
+    const genreText = state.bookGenre ? `${genreLabel()} ` : "";
+    setStatus(cleanQuery
+      ? `Searching ${genreText}Standard Ebooks for "${cleanQuery}"`
+      : `Loading ${genreText}Standard Ebooks page ${page}`);
     try {
-      const { books, proxy, page: safePage } = await fetchBookCatalogPage(page, cleanQuery);
+      let books = [];
+      let proxy = "";
+      let safePage = Math.max(1, Number.parseInt(page, 10) || 1);
+      try {
+        const result = await fetchBookCatalogPage(safePage, cleanQuery, state.bookGenre);
+        books = cleanQuery
+          ? result.books.filter((book) => bookMatchesSearch(book, cleanQuery))
+          : result.books;
+        proxy = result.proxy;
+        safePage = result.page;
+        if (cleanQuery && !books.length) {
+          throw new Error("No partial matches in keyword results");
+        }
+      } catch (error) {
+        if (!cleanQuery) throw error;
+        const result = await scanBookCatalogForSearch(cleanQuery, state.bookGenre);
+        books = result.books;
+        proxy = result.proxy;
+        safePage = result.page;
+      }
+      if (!books.length) {
+        throw new Error("No matching books found");
+      }
       state.bookPage = safePage;
       state.bookBooks = books;
       els.bookPageInput.value = String(safePage);
       renderBookShelf();
-      setStatus(cleanQuery ? `Found ${books.length} books via ${proxy}` : `Loaded ${books.length} books via ${proxy}`);
+      setStatus(cleanQuery
+        ? `Found ${books.length} ${state.bookGenre ? `${genreLabel()} ` : ""}books via ${proxy}`
+        : `Loaded ${books.length} ${state.bookGenre ? `${genreLabel()} ` : ""}books via ${proxy}`);
     } catch (error) {
       if (cleanQuery) {
         state.bookBooks = [];
@@ -1206,33 +1407,58 @@
     await loadBookCatalogPage(state.bookPage);
   }
 
+  function updateBookShelfControlState() {
+    const favorites = state.bookShelfKind === "favorites";
+    els.bookShelfViewSelect.value = state.bookShelfKind;
+    els.bookGenreSelect.value = state.bookGenre;
+    els.bookPageInput.disabled = favorites;
+    els.bookPrevPageBtn.disabled = favorites;
+    els.bookNextPageBtn.disabled = favorites;
+    els.bookGenreSelect.disabled = favorites;
+  }
+
+  function bookShelfTitle() {
+    const cleanQuery = normalizeSpaces(state.bookSearch);
+    if (state.bookShelfKind === "favorites") {
+      return cleanQuery ? `Favorites "${cleanQuery}"` : "Favorites";
+    }
+    const genreText = state.bookGenre ? `${genreLabel()} ` : "";
+    return cleanQuery
+      ? `${genreText}Search "${cleanQuery}"`
+      : `${genreText}Library page ${state.bookPage}`;
+  }
+
   function renderBookShelf() {
     if (!els.bookShelf) return;
+    updateBookShelfControlState();
     const cleanQuery = normalizeSpaces(state.bookSearch);
     if (state.bookViewMode === "shelf") {
-      els.bookModeTitle.textContent = cleanQuery
-        ? `Search "${cleanQuery}" page ${state.bookPage}`
-        : `Library page ${state.bookPage}`;
+      els.bookModeTitle.textContent = bookShelfTitle();
     }
     if (!state.bookBooks.length) {
-      els.bookShelf.innerHTML = `<div class="book-empty">${cleanQuery ? "No matching books found." : "Load a Standard Ebooks shelf page to begin."}</div>`;
+      const emptyText = state.bookShelfKind === "favorites"
+        ? (cleanQuery ? "No matching favorite books found." : "Favorite books will appear here.")
+        : (cleanQuery ? "No matching books found." : "Load a Standard Ebooks shelf page to begin.");
+      els.bookShelf.innerHTML = `<div class="book-empty">${emptyText}</div>`;
       return;
     }
 
     els.bookShelf.innerHTML = state.bookBooks.map((book, index) => {
       const percent = bookProgressPercent(book);
       const progressLabel = percent ? `${percent}% read` : "Not started";
+      const favorite = isBookFavorite(book);
       return `
-        <button class="book-card" type="button" data-book-index="${index}">
-          <span>
+        <article class="book-card" data-book-index="${index}">
+          <button class="book-open-btn" type="button" data-book-index="${index}">
             <span class="book-card-title">${escapeHtml(book.title)}</span>
             <span class="book-card-author">${escapeHtml(book.author || "Unknown author")}</span>
-          </span>
+          </button>
+          <button class="book-favorite-btn${favorite ? " active" : ""}" type="button" data-book-index="${index}" aria-pressed="${favorite}" aria-label="${favorite ? "Remove favorite" : "Add favorite"}" title="${favorite ? "Remove favorite" : "Add favorite"}">${favorite ? "&#9733;" : "&#9734;"}</button>
           <span class="book-card-progress">
             <span class="book-progress-track"><span class="book-progress-fill" style="width:${percent}%"></span></span>
             <span class="book-card-meta">${progressLabel}</span>
           </span>
-        </button>
+        </article>
       `;
     }).join("");
   }
@@ -1580,6 +1806,15 @@
 
   async function loadRandomBookParagraph() {
     stopSpeech();
+    if (state.bookShelfKind === "favorites") {
+      state.bookBooks = visibleFavoriteBooks();
+      const favorite = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
+      if (!favorite) throw new Error("No favorite books found");
+      await loadBook(favorite, { random: true });
+      setStatus(`Random favorite paragraph from ${favorite.title}`);
+      return;
+    }
+
     state.bookSearch = "";
     els.bookSearchInput.value = "";
     const page = Math.floor(Math.random() * STANDARD_EBOOKS_RANDOM_PAGE_MAX) + 1;
@@ -1599,9 +1834,7 @@
   function showBookShelf() {
     state.bookViewMode = "shelf";
     state.bookRenderToken += 1;
-    els.bookModeTitle.textContent = normalizeSpaces(state.bookSearch)
-      ? `Search "${normalizeSpaces(state.bookSearch)}" page ${state.bookPage}`
-      : `Library page ${state.bookPage}`;
+    els.bookModeTitle.textContent = bookShelfTitle();
     els.bookShelfControls.hidden = false;
     els.bookShelf.hidden = false;
     els.bookReader.hidden = true;
@@ -2080,6 +2313,8 @@
 
     els.bookShelfControls.addEventListener("submit", async (event) => {
       event.preventDefault();
+      state.bookShelfKind = els.bookShelfViewSelect.value === "favorites" ? "favorites" : "library";
+      state.bookGenre = BOOK_GENRES[els.bookGenreSelect.value] ? els.bookGenreSelect.value : "";
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       state.bookPage = Math.max(1, Number.parseInt(els.bookPageInput.value || "1", 10) || 1);
       setBookMode(true);
@@ -2091,7 +2326,39 @@
       }
     });
 
+    els.bookShelfViewSelect.addEventListener("change", async () => {
+      state.bookShelfKind = els.bookShelfViewSelect.value === "favorites" ? "favorites" : "library";
+      state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
+      state.bookPage = 1;
+      els.bookPageInput.value = "1";
+      savePrefs();
+      setBookMode(true);
+      try {
+        await loadBookCatalogPage(1);
+      } catch (error) {
+        setStatus(error.message || "Book shelf failed");
+        console.error(error);
+      }
+    });
+
+    els.bookGenreSelect.addEventListener("change", async () => {
+      state.bookGenre = BOOK_GENRES[els.bookGenreSelect.value] ? els.bookGenreSelect.value : "";
+      state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
+      state.bookPage = 1;
+      els.bookPageInput.value = "1";
+      savePrefs();
+      setBookMode(true);
+      try {
+        await loadBookCatalogPage(1);
+      } catch (error) {
+        setStatus(error.message || "Book shelf failed");
+        console.error(error);
+      }
+    });
+
     els.bookPageInput.addEventListener("change", async () => {
+      if (state.bookShelfKind === "favorites") return;
+      state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true);
       try {
         await loadBookCatalogPage(els.bookPageInput.value);
@@ -2102,6 +2369,8 @@
     });
 
     els.bookPrevPageBtn.addEventListener("click", async () => {
+      if (state.bookShelfKind === "favorites") return;
+      state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true);
       try {
         await loadBookCatalogPage(Math.max(1, state.bookPage - 1));
@@ -2112,6 +2381,8 @@
     });
 
     els.bookNextPageBtn.addEventListener("click", async () => {
+      if (state.bookShelfKind === "favorites") return;
+      state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true);
       try {
         await loadBookCatalogPage(state.bookPage + 1);
@@ -2194,6 +2465,18 @@
     });
 
     els.bookShelf.addEventListener("click", async (event) => {
+      const favoriteButton = event.target.closest(".book-favorite-btn");
+      if (favoriteButton) {
+        const book = state.bookBooks[Number.parseInt(favoriteButton.dataset.bookIndex || "0", 10)];
+        if (!book) return;
+        const favorite = toggleBookFavorite(book);
+        if (state.bookShelfKind === "favorites") {
+          state.bookBooks = visibleFavoriteBooks();
+        }
+        renderBookShelf();
+        setStatus(favorite ? `Favorited ${book.title}` : `Removed ${book.title} from favorites`);
+        return;
+      }
       const card = event.target.closest(".book-card");
       if (!card) return;
       const book = state.bookBooks[Number.parseInt(card.dataset.bookIndex || "0", 10)];
@@ -2295,6 +2578,8 @@
     loadPrefs();
     els.languageSelect.value = state.language;
     els.bookLanguageSelect.value = state.language;
+    els.bookShelfViewSelect.value = state.bookShelfKind;
+    els.bookGenreSelect.value = state.bookGenre;
     els.bandSelect.value = state.band;
     els.enLangSelect.value = state.enLang;
     syncBookAudioControlsFromSettings();

@@ -12,6 +12,7 @@ https://santismo.github.io/wordfreak/
 - Ordered and shuffle playback
 - Language and frequency-band controls in the settings panel
 - Dense two-column virtual list for mobile scrolling
+- Dual-language book reader with genre filtering, partial title/author search, and favorite shelves
 - System TTS with selectable voices, page volume, speed, and gap controls
 - First-tap speech preparation and a retry when browser speech synthesis stalls before starting
 - Prev during playback switches into reverse through the current selected or shuffled order
