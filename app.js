@@ -118,15 +118,19 @@
     bookView: document.getElementById("bookView"),
     bookModeTitle: document.getElementById("bookModeTitle"),
     bookShelfBtn: document.getElementById("bookShelfBtn"),
+    bookShelfControls: document.getElementById("bookShelfControls"),
     bookRandomBtn: document.getElementById("bookRandomBtn"),
     bookLanguageSelect: document.getElementById("bookLanguageSelect"),
+    bookSearchInput: document.getElementById("bookSearchInput"),
+    bookSearchBtn: document.getElementById("bookSearchBtn"),
     bookPageInput: document.getElementById("bookPageInput"),
-    bookLoadPageBtn: document.getElementById("bookLoadPageBtn"),
     bookPrevPageBtn: document.getElementById("bookPrevPageBtn"),
     bookNextPageBtn: document.getElementById("bookNextPageBtn"),
     bookPrevSentenceBtn: document.getElementById("bookPrevSentenceBtn"),
     bookPlayBtn: document.getElementById("bookPlayBtn"),
     bookNextSentenceBtn: document.getElementById("bookNextSentenceBtn"),
+    bookAudioSettingsToggle: document.getElementById("bookAudioSettingsToggle"),
+    bookAudioPanel: document.getElementById("bookAudioPanel"),
     bookSourceRate: document.getElementById("bookSourceRate"),
     bookSourceRateValue: document.getElementById("bookSourceRateValue"),
     bookEnRate: document.getElementById("bookEnRate"),
@@ -185,7 +189,9 @@
     piperAudioPending: new Map(),
     translationCache: loadTranslationCache(),
     bookMode: false,
+    bookViewMode: "shelf",
     bookPage: 1,
+    bookSearch: "",
     bookBooks: [],
     bookLoadedBook: null,
     bookSentences: [],
@@ -193,6 +199,7 @@
     bookCurrentIndex: 0,
     bookPlaying: false,
     bookPlayDirection: 1,
+    bookAudioSettingsOpen: false,
     bookRenderToken: 0,
     bookProgress: loadBookProgress(),
     bookTranslationCache: new Map(),
@@ -1072,9 +1079,17 @@
     return finalText;
   }
 
-  function standardEbooksPageUrl(page) {
+  function standardEbooksPageUrl(page, query = state.bookSearch) {
     const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
-    return `${STANDARD_EBOOKS_LIST_URL}?page=${safePage}&per-page=${STANDARD_EBOOKS_PER_PAGE}`;
+    const params = new URLSearchParams({
+      page: String(safePage),
+      "per-page": String(STANDARD_EBOOKS_PER_PAGE)
+    });
+    const cleanQuery = normalizeSpaces(query);
+    if (cleanQuery) {
+      params.set("query", cleanQuery);
+    }
+    return `${STANDARD_EBOOKS_LIST_URL}?${params.toString()}`;
   }
 
   async function fetchTextWithProxies(url, label) {
@@ -1239,9 +1254,9 @@
     return dedupeBooks(books);
   }
 
-  async function fetchBookCatalogPage(page = state.bookPage) {
+  async function fetchBookCatalogPage(page = state.bookPage, query = state.bookSearch) {
     const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
-    const { text, proxy } = await fetchTextWithProxies(standardEbooksPageUrl(safePage), "book shelf");
+    const { text, proxy } = await fetchTextWithProxies(standardEbooksPageUrl(safePage, query), "book shelf");
     const fromHtml = extractCatalogBooksFromHtml(text);
     const books = fromHtml.length ? fromHtml : extractCatalogBooksFromMarkdown(text);
     if (!books.length) throw new Error("No books found on the shelf page");
@@ -1249,15 +1264,22 @@
   }
 
   async function loadBookCatalogPage(page = state.bookPage) {
-    setStatus(`Loading Standard Ebooks page ${page}`);
+    const cleanQuery = normalizeSpaces(state.bookSearch);
+    setStatus(cleanQuery ? `Searching Standard Ebooks for "${cleanQuery}"` : `Loading Standard Ebooks page ${page}`);
     try {
-      const { books, proxy, page: safePage } = await fetchBookCatalogPage(page);
+      const { books, proxy, page: safePage } = await fetchBookCatalogPage(page, cleanQuery);
       state.bookPage = safePage;
       state.bookBooks = books;
       els.bookPageInput.value = String(safePage);
       renderBookShelf();
-      setStatus(`Loaded ${books.length} books via ${proxy}`);
+      setStatus(cleanQuery ? `Found ${books.length} books via ${proxy}` : `Loaded ${books.length} books via ${proxy}`);
     } catch (error) {
+      if (cleanQuery) {
+        state.bookBooks = [];
+        renderBookShelf();
+        setStatus(`No books found for "${cleanQuery}"`);
+        return;
+      }
       state.bookBooks = dedupeBooks(FALLBACK_BOOKS);
       renderBookShelf();
       setStatus(`Shelf fallback loaded (${error.message})`);
@@ -1271,12 +1293,17 @@
 
   function renderBookShelf() {
     if (!els.bookShelf) return;
+    const cleanQuery = normalizeSpaces(state.bookSearch);
+    if (state.bookViewMode === "shelf") {
+      els.bookModeTitle.textContent = cleanQuery
+        ? `Search "${cleanQuery}" page ${state.bookPage}`
+        : `Library page ${state.bookPage}`;
+    }
     if (!state.bookBooks.length) {
-      els.bookShelf.innerHTML = '<div class="book-empty">Load a Standard Ebooks shelf page to begin.</div>';
+      els.bookShelf.innerHTML = `<div class="book-empty">${cleanQuery ? "No matching books found." : "Load a Standard Ebooks shelf page to begin."}</div>`;
       return;
     }
 
-    els.bookModeTitle.textContent = `Library page ${state.bookPage}`;
     els.bookShelf.innerHTML = state.bookBooks.map((book, index) => {
       const percent = bookProgressPercent(book);
       const progressLabel = percent ? `${percent}% read` : "Not started";
@@ -1502,7 +1529,7 @@
       els.bookReader.hidden = true;
       return;
     }
-    els.bookReader.hidden = false;
+    els.bookReader.hidden = state.bookViewMode !== "reader";
     els.bookReaderTitle.textContent = book.title;
     els.bookReaderMeta.textContent = book.author || "Unknown author";
     els.bookSourceLink.href = book.link || STANDARD_EBOOKS_LIST_URL;
@@ -1625,6 +1652,7 @@
     const parsed = await fetchAndParseBook(book);
     state.bookSentences = parsed.sentences;
     state.bookChapters = parsed.chapters;
+    showBookReader();
     renderBookReaderShell();
 
     const saved = getBookProgress(book);
@@ -1637,12 +1665,51 @@
 
   async function loadRandomBookParagraph() {
     stopSpeech();
+    state.bookSearch = "";
+    els.bookSearchInput.value = "";
     const page = Math.floor(Math.random() * STANDARD_EBOOKS_RANDOM_PAGE_MAX) + 1;
     await loadBookCatalogPage(page);
     const book = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
     if (!book) throw new Error("No random book found");
     await loadBook(book, { random: true });
     setStatus(`Random paragraph from ${book.title}`);
+  }
+
+  function setBookAudioPanel(open) {
+    state.bookAudioSettingsOpen = Boolean(open);
+    els.bookAudioPanel.hidden = !state.bookAudioSettingsOpen;
+    els.bookAudioSettingsToggle.setAttribute("aria-expanded", String(state.bookAudioSettingsOpen));
+  }
+
+  function showBookShelf() {
+    state.bookViewMode = "shelf";
+    state.bookRenderToken += 1;
+    els.bookModeTitle.textContent = normalizeSpaces(state.bookSearch)
+      ? `Search "${normalizeSpaces(state.bookSearch)}" page ${state.bookPage}`
+      : `Library page ${state.bookPage}`;
+    els.bookShelfControls.hidden = false;
+    els.bookShelf.hidden = false;
+    els.bookReader.hidden = true;
+    els.bookShelfBtn.hidden = true;
+    els.bookPrevSentenceBtn.hidden = true;
+    els.bookPlayBtn.hidden = true;
+    els.bookNextSentenceBtn.hidden = true;
+    els.bookAudioSettingsToggle.hidden = true;
+    setBookAudioPanel(false);
+    renderBookShelf();
+  }
+
+  function showBookReader() {
+    state.bookViewMode = "reader";
+    els.bookModeTitle.textContent = "Current book";
+    els.bookShelfControls.hidden = true;
+    els.bookShelf.hidden = true;
+    els.bookReader.hidden = false;
+    els.bookShelfBtn.hidden = false;
+    els.bookPrevSentenceBtn.hidden = false;
+    els.bookPlayBtn.hidden = false;
+    els.bookNextSentenceBtn.hidden = false;
+    els.bookAudioSettingsToggle.hidden = false;
   }
 
   function setBookMode(enabled) {
@@ -1654,11 +1721,15 @@
       els.bookLanguageSelect.value = state.language;
       syncBookAudioControlsFromSettings();
       updateSettingLabels();
+      showBookShelf();
       ensureBookShelfLoaded().catch((error) => {
         setStatus(error.message || "Book shelf failed");
         console.error(error);
         renderBookShelf();
       });
+    } else {
+      stopSpeech();
+      setBookAudioPanel(false);
     }
   }
 
@@ -2538,7 +2609,8 @@
 
     els.bookShelfBtn.addEventListener("click", () => {
       setBookMode(true);
-      els.bookShelf.scrollIntoView({ block: "nearest" });
+      stopSpeech();
+      showBookShelf();
     });
 
     els.bookRandomBtn.addEventListener("click", async () => {
@@ -2551,7 +2623,20 @@
       }
     });
 
-    els.bookLoadPageBtn.addEventListener("click", async () => {
+    els.bookShelfControls.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
+      state.bookPage = Math.max(1, Number.parseInt(els.bookPageInput.value || "1", 10) || 1);
+      setBookMode(true);
+      try {
+        await loadBookCatalogPage(state.bookPage);
+      } catch (error) {
+        setStatus(error.message || "Book shelf failed");
+        console.error(error);
+      }
+    });
+
+    els.bookPageInput.addEventListener("change", async () => {
       setBookMode(true);
       try {
         await loadBookCatalogPage(els.bookPageInput.value);
@@ -2563,12 +2648,22 @@
 
     els.bookPrevPageBtn.addEventListener("click", async () => {
       setBookMode(true);
-      await loadBookCatalogPage(Math.max(1, state.bookPage - 1));
+      try {
+        await loadBookCatalogPage(Math.max(1, state.bookPage - 1));
+      } catch (error) {
+        setStatus(error.message || "Book shelf failed");
+        console.error(error);
+      }
     });
 
     els.bookNextPageBtn.addEventListener("click", async () => {
       setBookMode(true);
-      await loadBookCatalogPage(state.bookPage + 1);
+      try {
+        await loadBookCatalogPage(state.bookPage + 1);
+      } catch (error) {
+        setStatus(error.message || "Book shelf failed");
+        console.error(error);
+      }
     });
 
     els.bookPlayBtn.addEventListener("click", async () => {
@@ -2578,6 +2673,10 @@
         return;
       }
       await startBookPlayback();
+    });
+
+    els.bookAudioSettingsToggle.addEventListener("click", () => {
+      setBookAudioPanel(!state.bookAudioSettingsOpen);
     });
 
     els.bookPrevSentenceBtn.addEventListener("click", async () => {

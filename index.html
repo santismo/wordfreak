@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=10">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
   <main class="app-shell">
@@ -160,11 +160,10 @@
         </div>
         <div class="book-head-actions">
           <button id="bookShelfBtn" type="button">Shelf</button>
-          <button id="bookRandomBtn" class="primary" type="button">Random</button>
         </div>
       </div>
 
-      <div class="book-control-grid">
+      <form id="bookShelfControls" class="book-shelf-controls">
         <label>
           Language
           <select id="bookLanguageSelect">
@@ -172,19 +171,28 @@
             <option value="fa">Farsi</option>
           </select>
         </label>
+        <label class="book-search-field">
+          Search
+          <input id="bookSearchInput" type="search" placeholder="Title or author">
+        </label>
+        <button id="bookSearchBtn" type="submit">Search</button>
+        <button id="bookRandomBtn" class="primary" type="button">Random</button>
+        <button id="bookPrevPageBtn" type="button" aria-label="Previous page" title="Previous page">&#8249;</button>
         <label>
-          Shelf page
+          Page
           <input id="bookPageInput" type="number" min="1" value="1">
         </label>
-        <button id="bookLoadPageBtn" type="button">Load</button>
-        <button id="bookPrevPageBtn" type="button">Back</button>
-        <button id="bookNextPageBtn" type="button">Next</button>
-      </div>
+        <button id="bookNextPageBtn" type="button" aria-label="Next page" title="Next page">&#8250;</button>
+      </form>
 
       <div class="book-reader-controls">
         <button id="bookPrevSentenceBtn" type="button">Prev</button>
         <button id="bookPlayBtn" class="primary" type="button">Play</button>
         <button id="bookNextSentenceBtn" type="button">Next</button>
+        <button id="bookAudioSettingsToggle" type="button" aria-expanded="false" aria-label="Book audio settings" title="Book audio settings">&#128266;</button>
+      </div>
+
+      <div id="bookAudioPanel" class="book-audio-panel" hidden>
         <label>
           <span class="setting-title">
             Source speed
@@ -267,6 +275,6 @@
   </main>
   <audio id="backgroundAudioPlayer" class="background-audio" preload="auto" playsinline></audio>
 
-  <script src="app.js?v=17" defer></script>
+  <script src="app.js?v=19" defer></script>
 </body>
 </html>

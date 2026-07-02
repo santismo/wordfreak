@@ -244,7 +244,8 @@ select {
 
 body.book-mode .focus-stage,
 body.book-mode .transport,
-body.book-mode .list-shell {
+body.book-mode .list-shell,
+body.book-mode .dataset-meta {
   display: none;
 }
 
@@ -301,25 +302,41 @@ body.book-mode .list-shell {
   gap: 8px;
 }
 
-.book-control-grid,
-.book-reader-controls {
+.book-shelf-controls,
+.book-reader-controls,
+.book-audio-panel {
   display: grid;
   gap: 8px;
   align-items: end;
 }
 
-.book-control-grid {
-  grid-template-columns: minmax(120px, 1.1fr) minmax(86px, 0.7fr) repeat(3, minmax(70px, 0.55fr));
+.book-shelf-controls {
+  grid-template-columns: minmax(104px, 0.8fr) minmax(170px, 1.5fr) minmax(72px, 0.55fr) minmax(82px, 0.6fr) 44px minmax(70px, 0.45fr) 44px;
 }
 
 .book-reader-controls {
-  grid-template-columns: repeat(3, minmax(62px, 0.48fr)) repeat(3, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(62px, 1fr));
   border-top: 1px solid rgba(42, 49, 54, 0.78);
   padding-top: 10px;
 }
 
-.book-control-grid label,
+.book-audio-panel {
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  border-top: 1px solid rgba(42, 49, 54, 0.78);
+  padding-top: 10px;
+}
+
+.book-shelf-controls[hidden],
+.book-head-actions button[hidden],
+.book-reader-controls button[hidden],
+.book-audio-panel[hidden],
+.book-shelf[hidden] {
+  display: none;
+}
+
+.book-shelf-controls label,
 .book-reader-controls label,
+.book-audio-panel label,
 .reader-nav-row label {
   min-width: 0;
   display: grid;
@@ -328,9 +345,14 @@ body.book-mode .list-shell {
   font-size: 0.78rem;
 }
 
-.book-control-grid input,
-.book-control-grid select,
+.book-search-field {
+  min-width: 0;
+}
+
+.book-shelf-controls input,
+.book-shelf-controls select,
 .book-reader-controls input,
+.book-audio-panel input,
 .reader-nav-row input,
 .reader-nav-row select {
   width: 100%;
@@ -459,21 +481,21 @@ body.book-mode .list-shell {
 
 .book-shelf {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .book-card {
   min-width: 0;
-  min-height: 126px;
-  padding: 10px;
+  min-height: 98px;
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   background: var(--surface-strong);
   color: inherit;
   text-align: left;
@@ -487,9 +509,9 @@ body.book-mode .list-shell {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 0.98rem;
+  font-size: 0.82rem;
   font-weight: 760;
-  line-height: 1.2;
+  line-height: 1.16;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -498,7 +520,7 @@ body.book-mode .list-shell {
 .book-card-author,
 .book-card-meta {
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.66rem;
   line-height: 1.3;
 }
 
@@ -708,23 +730,54 @@ body.book-mode .list-shell {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .book-control-grid,
-  .book-reader-controls,
+  .book-shelf-controls,
   .reader-nav-row,
   .dual-sentence {
     grid-template-columns: 1fr;
   }
 
-  .book-reader-controls {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .book-shelf-controls {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .book-reader-controls label {
+  .book-shelf-controls label:first-child,
+  #bookSearchBtn,
+  #bookRandomBtn {
+    grid-column: span 2;
+  }
+
+  .book-search-field {
+    grid-column: 1 / -1;
+  }
+
+  .book-reader-controls {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .book-audio-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .book-audio-panel label {
     grid-column: 1 / -1;
   }
 
   .book-shelf {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .book-card {
+    min-height: 92px;
+    padding: 7px;
+  }
+
+  .book-card-title {
+    font-size: 0.76rem;
+  }
+
+  .book-card-author,
+  .book-card-meta {
+    font-size: 0.62rem;
   }
 
   .word-row,
