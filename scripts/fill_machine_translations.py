@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 
 import build_fa_data
 import build_es_data
+import build_frequency_data
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,7 +70,12 @@ def google_translate_batch(words: list[str], source_language: str) -> list[str]:
     return lines
 
 
-def translate_words(words: list[str], source_language: str, batch_size: int) -> dict[str, str]:
+def translate_words(
+    words: list[str],
+    source_language: str,
+    batch_size: int,
+    keep_identical: bool = False,
+) -> dict[str, str]:
     results: dict[str, str] = {}
     for start in range(0, len(words), batch_size):
         batch = words[start : start + batch_size]
@@ -81,7 +87,7 @@ def translate_words(words: list[str], source_language: str, batch_size: int) -> 
                 translated.extend(google_translate_batch([word], source_language))
                 time.sleep(0.08)
         for word, meaning in zip(batch, translated):
-            if meaning and meaning != word:
+            if meaning and (keep_identical or meaning != word):
                 results[word] = meaning
         print(f"{source_language}: {min(start + batch_size, len(words))}/{len(words)}", flush=True)
         time.sleep(0.12)
@@ -112,9 +118,14 @@ def es_words(limit: int) -> list[str]:
     return [entry["word"] for entry in build_es_data.parse_frequency(raw, limit)]
 
 
+def frequency_words(language: str, limit: int) -> list[str]:
+    raw = build_frequency_data.fetch_text(build_frequency_data.LANGUAGE_CONFIGS[language]["sourceUrl"])
+    return [entry["word"] for entry in build_frequency_data.parse_frequency(raw, language, limit)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("language", choices=["ru", "fa", "es"])
+    parser.add_argument("language", choices=["ru", "fa", "es", "fr", "hi", "ja", "ko"])
     parser.add_argument("--limit", type=int, default=20000)
     parser.add_argument("--batch-size", type=int, default=80)
     args = parser.parse_args()
@@ -133,13 +144,30 @@ def main() -> int:
         translated = translate_words(words, "fa", args.batch_size)
         existing.update(translated)
         write_cache(path, "fa", existing)
-    else:
+    elif args.language == "es":
         path = ROOT / "data" / "es-machine-translations.json"
         existing = load_cache(path)
         words = [word for word in es_words(args.limit) if build_es_data.normalize_es(word) not in existing]
         translated = translate_words(words, "es", args.batch_size)
         existing.update({build_es_data.normalize_es(word): meaning for word, meaning in translated.items()})
         write_cache(path, "es", existing)
+    else:
+        language = args.language
+        path = ROOT / "data" / f"{language}-machine-translations.json"
+        existing = load_cache(path)
+        words = [
+            word
+            for word in frequency_words(language, args.limit)
+            if build_frequency_data.normalize_word(word, language) not in existing
+        ]
+        translated = translate_words(words, language, args.batch_size, keep_identical=True)
+        existing.update(
+            {
+                build_frequency_data.normalize_word(word, language): meaning
+                for word, meaning in translated.items()
+            }
+        )
+        write_cache(path, language, existing)
 
     print(f"Wrote {path.relative_to(ROOT)}")
     return 0

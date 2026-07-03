@@ -38,6 +38,22 @@ https://github.com/doozan/spanish_data
 
 Wordfreak uses the cleaned Spanish frequency forms, the Spanish-English Wiktionary data, and the lemma frequency form map. Doozan Spanish data is licensed under Creative Commons Attribution 4.0. Its README credits the frequency source data to FrequencyWords under Creative Commons Attribution-ShareAlike 3.0, and the Spanish-English dictionary data to Wiktionary under Creative Commons Attribution-ShareAlike terms.
 
+## French, Japanese, And Korean Frequency Ranking
+
+The French, Japanese, and Korean rankings are derived from the Top OpenSubtitles Sentences cleaned word frequency lists:
+
+https://github.com/orgtre/top-open-subtitles-sentences
+
+These lists are built from the OpenSubtitles2018 corpus. The project README states that its code is licensed under Creative Commons Attribution 3.0 Unported and that the generated sentence and word lists come with the same license as the underlying corpus.
+
+## Hindi Frequency Ranking
+
+The Hindi ranking is derived from FrequencyWords:
+
+https://github.com/hermitdave/FrequencyWords
+
+Wordfreak uses the Hindi OpenSubtitles 2018 `hi_full.txt` list, filtered to clean Devanagari entries. The FrequencyWords README states MIT License for code and CC-BY-SA-4.0 for content.
+
 ## Machine Translation Cache
 
 Some English glosses are generated through the Google Translate web endpoint and stored in:
@@ -45,12 +61,16 @@ Some English glosses are generated through the Google Translate web endpoint and
 - `data/ru-machine-translations.json`
 - `data/fa-machine-translations.json`
 - `data/es-machine-translations.json`
+- `data/fr-machine-translations.json`
+- `data/hi-machine-translations.json`
+- `data/ja-machine-translations.json`
+- `data/ko-machine-translations.json`
 
 Treat these glosses as convenience study aids, not authoritative dictionary entries.
 
 ## Generated Deck
 
-`data/ru-core.json`, `data/fa-core.json`, and `data/es-core.json` combine and adapt the sources above. Treat the generated data as CC-BY-SA-compatible material and preserve this notice when sharing modified versions.
+`data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, and `data/ko-core.json` combine and adapt the sources above. Treat the generated data as CC-BY-SA-compatible material and preserve this notice when sharing modified versions.
 
 ## TTS
 

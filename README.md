@@ -1,6 +1,6 @@
 # Wordfreak
 
-Wordfreak is a mobile-first vocabulary player for GitHub Pages. It loads frequency-ranked Russian, Farsi, or Spanish decks, shows the focused source word beside its English meaning, and autoplays source-language text-to-speech followed by English text-to-speech.
+Wordfreak is a mobile-first vocabulary player for GitHub Pages. It loads frequency-ranked Russian, Farsi, Spanish, French, Hindi, Japanese, or Korean decks, shows the focused source word beside its English meaning, and autoplays source-language text-to-speech followed by English text-to-speech.
 https://santismo.github.io/wordfreak/
 
 ## Features
@@ -8,6 +8,8 @@ https://santismo.github.io/wordfreak/
 - Russian National Corpus-based core deck, about 20k unique words
 - Farsi deck from a Persian Wikipedia frequency corpus, 20k words
 - Spanish deck from cleaned subtitle-frequency forms, Wiktionary-derived glosses, and machine-translation fallback, 20k words
+- French, Japanese, and Korean decks from cleaned OpenSubtitles frequency lists, 20k words each
+- Hindi deck from a FrequencyWords Hindi subtitle-frequency list, about 19.7k words
 - English glosses from dictionary data, manual high-frequency patches, and machine-translation cache files
 - Live browser translation fallback for missing glosses
 - Ordered and shuffle playback
@@ -26,6 +28,7 @@ https://santismo.github.io/wordfreak/
 python3 scripts/build_ru_data.py
 python3 scripts/build_fa_data.py
 python3 scripts/build_es_data.py
+python3 scripts/build_frequency_data.py all
 python3 -m http.server 8000
 ```
 
@@ -33,7 +36,7 @@ Open `http://localhost:8000`.
 
 ## Data
 
-The generated data files are `data/ru-core.json`, `data/fa-core.json`, and `data/es-core.json`.
+The generated data files are `data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, and `data/ko-core.json`.
 
 Sources:
 
@@ -41,6 +44,8 @@ Sources:
 - English glosses and stress data: OpenRussian dictionary data
 - Farsi frequency order: Persian Words Frequency Database, Persian Wikipedia corpus
 - Spanish frequency order and Wiktionary-derived glosses: Doozan Spanish data
+- French, Japanese, and Korean frequency order: Top OpenSubtitles cleaned word frequency lists
+- Hindi frequency order: FrequencyWords Hindi OpenSubtitles list
 - Manual patch list: small Wordfreak-maintained high-frequency fixes
 - Machine translation cache files for remaining English glosses
 

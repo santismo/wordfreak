@@ -96,6 +96,42 @@
       speechLang: "es-ES",
       translateSl: "es",
       dir: "ltr"
+    },
+    fr: {
+      label: "French",
+      shortLabel: "FR",
+      sourceHead: "French",
+      dataUrl: "data/fr-core.json",
+      speechLang: "fr-FR",
+      translateSl: "fr",
+      dir: "ltr"
+    },
+    hi: {
+      label: "Hindi",
+      shortLabel: "HI",
+      sourceHead: "Hindi",
+      dataUrl: "data/hi-core.json",
+      speechLang: "hi-IN",
+      translateSl: "hi",
+      dir: "ltr"
+    },
+    ja: {
+      label: "Japanese",
+      shortLabel: "JA",
+      sourceHead: "Japanese",
+      dataUrl: "data/ja-core.json",
+      speechLang: "ja-JP",
+      translateSl: "ja",
+      dir: "ltr"
+    },
+    ko: {
+      label: "Korean",
+      shortLabel: "KO",
+      sourceHead: "Korean",
+      dataUrl: "data/ko-core.json",
+      speechLang: "ko-KR",
+      translateSl: "ko",
+      dir: "ltr"
     }
   };
 
