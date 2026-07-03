@@ -87,6 +87,15 @@
       speechLang: "fa-IR",
       translateSl: "fa",
       dir: "rtl"
+    },
+    es: {
+      label: "Spanish",
+      shortLabel: "ES",
+      sourceHead: "Spanish",
+      dataUrl: "data/es-core.json",
+      speechLang: "es-ES",
+      translateSl: "es",
+      dir: "ltr"
     }
   };
 
@@ -451,7 +460,15 @@
   }
 
   function stripForSpeech(value) {
-    return normalizeSpaces(String(value || "").replace(/[()]/g, " "));
+    return normalizeSpaces(
+      String(value || "")
+        // Some iOS voices pronounce escaped book punctuation literally.
+        .replace(/[\\/"“”„‟«»‹›()[\]{}<>|*_~^#=+]/g, " ")
+        .replace(/[—–―]/g, " ")
+        .replace(/\.\.\.|…/g, " ")
+        .replace(/[;:]/g, ",")
+        .replace(/\s+([,.!?])/g, "$1")
+    );
   }
 
   function clamp(value, min, max) {

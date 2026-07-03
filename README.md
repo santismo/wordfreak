@@ -1,13 +1,14 @@
 # Wordfreak
 
-Wordfreak is a mobile-first vocabulary player for GitHub Pages. It loads frequency-ranked Russian or Farsi decks, shows the focused source word beside its English meaning, and autoplays source-language text-to-speech followed by English text-to-speech.
+Wordfreak is a mobile-first vocabulary player for GitHub Pages. It loads frequency-ranked Russian, Farsi, or Spanish decks, shows the focused source word beside its English meaning, and autoplays source-language text-to-speech followed by English text-to-speech.
 https://santismo.github.io/wordfreak/
 
 ## Features
 
 - Russian National Corpus-based core deck, about 20k unique words
 - Farsi deck from a Persian Wikipedia frequency corpus, 20k words
-- English glosses from OpenRussian and machine-translation cache files
+- Spanish deck from cleaned subtitle-frequency forms, Wiktionary-derived glosses, and machine-translation fallback, 20k words
+- English glosses from dictionary data, manual high-frequency patches, and machine-translation cache files
 - Live browser translation fallback for missing glosses
 - Ordered and shuffle playback
 - Language and frequency-band controls in the settings panel
@@ -24,6 +25,7 @@ https://santismo.github.io/wordfreak/
 ```bash
 python3 scripts/build_ru_data.py
 python3 scripts/build_fa_data.py
+python3 scripts/build_es_data.py
 python3 -m http.server 8000
 ```
 
@@ -31,13 +33,14 @@ Open `http://localhost:8000`.
 
 ## Data
 
-The generated data files are `data/ru-core.json` and `data/fa-core.json`.
+The generated data files are `data/ru-core.json`, `data/fa-core.json`, and `data/es-core.json`.
 
 Sources:
 
 - Russian frequency order: Russian National Corpus frequency dictionary via Wiktionary
 - English glosses and stress data: OpenRussian dictionary data
 - Farsi frequency order: Persian Words Frequency Database, Persian Wikipedia corpus
+- Spanish frequency order and Wiktionary-derived glosses: Doozan Spanish data
 - Manual patch list: small Wordfreak-maintained high-frequency fixes
 - Machine translation cache files for remaining English glosses
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import build_fa_data
+import build_es_data
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,7 +83,7 @@ def translate_words(words: list[str], source_language: str, batch_size: int) -> 
         for word, meaning in zip(batch, translated):
             if meaning and meaning != word:
                 results[word] = meaning
-        print(f"{source_language}: {min(start + batch_size, len(words))}/{len(words)}")
+        print(f"{source_language}: {min(start + batch_size, len(words))}/{len(words)}", flush=True)
         time.sleep(0.12)
     return results
 
@@ -106,9 +107,14 @@ def fa_words(limit: int) -> list[str]:
     return [entry["word"] for entry in build_fa_data.parse_frequency(raw, limit)]
 
 
+def es_words(limit: int) -> list[str]:
+    raw = build_es_data.fetch_text(build_es_data.FREQUENCY_URL)
+    return [entry["word"] for entry in build_es_data.parse_frequency(raw, limit)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("language", choices=["ru", "fa"])
+    parser.add_argument("language", choices=["ru", "fa", "es"])
     parser.add_argument("--limit", type=int, default=20000)
     parser.add_argument("--batch-size", type=int, default=80)
     args = parser.parse_args()
@@ -120,13 +126,20 @@ def main() -> int:
         translated = translate_words(words, "ru", args.batch_size)
         existing.update({normalize_ru(word): meaning for word, meaning in translated.items()})
         write_cache(path, "ru", existing)
-    else:
+    elif args.language == "fa":
         path = ROOT / "data" / "fa-machine-translations.json"
         existing = load_cache(path)
         words = [word for word in fa_words(args.limit) if word not in existing]
         translated = translate_words(words, "fa", args.batch_size)
         existing.update(translated)
         write_cache(path, "fa", existing)
+    else:
+        path = ROOT / "data" / "es-machine-translations.json"
+        existing = load_cache(path)
+        words = [word for word in es_words(args.limit) if build_es_data.normalize_es(word) not in existing]
+        translated = translate_words(words, "es", args.batch_size)
+        existing.update({build_es_data.normalize_es(word): meaning for word, meaning in translated.items()})
+        write_cache(path, "es", existing)
 
     print(f"Wrote {path.relative_to(ROOT)}")
     return 0
