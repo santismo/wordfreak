@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Wordfreak">
+  <rect width="512" height="512" rx="96" fill="#0b0d0f"/>
+  <rect x="70" y="86" width="372" height="340" rx="42" fill="#121518" stroke="#8ccf9f" stroke-width="18"/>
+  <path d="M128 166h112v48H128zm0 84h112v48H128zm0 84h112v48H128z" fill="#f4f7f4"/>
+  <path d="M282 166h102v48H282zm0 84h102v48H282zm0 84h102v48H282z" fill="#b7e66b"/>
+  <path d="M256 126v260" stroke="#2a3136" stroke-width="16" stroke-linecap="round"/>
+</svg>
