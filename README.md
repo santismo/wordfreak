@@ -3,6 +3,10 @@
 Wordfreak is a mobile-first vocabulary player for GitHub Pages. It loads frequency-ranked Russian, Farsi, Spanish, French, Hindi, Japanese, or Korean decks, shows the focused source word beside its English meaning, and autoplays source-language text-to-speech followed by English text-to-speech.
 https://santismo.github.io/wordfreak/
 
+Offline vocabulary edition for SPCK and airplane-mode use:
+
+https://santismo.github.io/wordfreak/wordfreak-offline/
+
 ## Features
 
 - Russian National Corpus-based core deck, about 20k unique words
