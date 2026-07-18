@@ -1,12 +1,12 @@
-const CACHE_NAME = "wordfreak-v43";
+const CACHE_NAME = "wordfreak-v44";
 const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v3";
 const ASSETS = [
   "./",
   "./index.html",
   "./desktop.html",
   "./desktop.css?v=1",
-  "./styles.css?v=22",
-  "./app.js?v=43",
+  "./styles.css?v=23",
+  "./app.js?v=44",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./data/ru-core.json",

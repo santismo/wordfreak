@@ -1298,9 +1298,75 @@
     });
   }
 
+  function readerHighlightLayer(node) {
+    const pane = node?.closest?.(".reader-pane");
+    if (!pane) return null;
+    let layer = pane.querySelector(":scope > .reader-highlight-layer");
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.className = "reader-highlight-layer";
+      layer.setAttribute("aria-hidden", "true");
+      pane.appendChild(layer);
+    }
+    return layer;
+  }
+
+  function clearReaderHighlightLayer(node) {
+    const pane = node?.closest?.(".reader-pane");
+    const layer = pane?.querySelector?.(":scope > .reader-highlight-layer");
+    if (layer) layer.replaceChildren();
+  }
+
+  function renderReaderHighlight(node, text, activeIndexes, activeClass, ranges) {
+    if (!node) return;
+    const clean = String(text || "");
+    const indexes = [...new Set((Array.isArray(activeIndexes) ? activeIndexes : [activeIndexes])
+      .filter((index) => Number.isInteger(index) && index >= 0 && ranges[index]))];
+    if (node.textContent !== clean || node.childNodes.length !== 1 || node.firstChild?.nodeType !== Node.TEXT_NODE) {
+      node.textContent = clean;
+    }
+    const layer = readerHighlightLayer(node);
+    if (layer) layer.replaceChildren();
+    const textNode = node.firstChild;
+    const pane = node.closest?.(".reader-pane");
+    const canPosition = Boolean(
+      indexes.length
+      && layer
+      && pane
+      && textNode
+      && typeof document.createRange === "function"
+    );
+    if (!canPosition) return;
+
+    const probe = document.createRange();
+    if (typeof probe.getClientRects !== "function") {
+      node.innerHTML = highlightedTextHtml(clean, indexes, activeClass, ranges);
+      return;
+    }
+    const paneRect = pane.getBoundingClientRect();
+    indexes.forEach((index) => {
+      const word = ranges[index];
+      const range = document.createRange();
+      range.setStart(textNode, word.start);
+      range.setEnd(textNode, word.end);
+      Array.from(range.getClientRects()).forEach((rect) => {
+        if (!rect.width || !rect.height) return;
+        const block = document.createElement("span");
+        block.className = `reader-highlight-block ${activeClass}`;
+        block.dataset.wordIndex = String(index);
+        block.style.left = `${rect.left - paneRect.left - 1}px`;
+        block.style.top = `${rect.top - paneRect.top + 1}px`;
+        block.style.width = `${rect.width + 2}px`;
+        block.style.height = `${Math.max(1, rect.height - 2)}px`;
+        layer.appendChild(block);
+      });
+    });
+  }
+
   function clearSpeechHighlights(targets = state.activeHighlights) {
     const normalizedTargets = normalizeHighlightTargets(targets, "");
     normalizedTargets.forEach((target) => {
+      clearReaderHighlightLayer(target.node);
       target.node.textContent = target.text || "";
     });
     const activeNodes = new Set(state.activeHighlights.map((target) => target.node));
@@ -1329,13 +1395,19 @@
     }
   }
 
-  function normalizeAlignmentText(value) {
-    return String(value || "")
+  function normalizeAlignmentText(value, language = "") {
+    let normalized = String(value || "")
       .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[\p{M}\u0640]/gu, "")
       .toLocaleLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, "")
-      .trim();
+      .replace(/[يى]/g, "ی")
+      .replace(/ك/g, "ک")
+      .replace(/[ۀة]/g, "ه")
+      .replace(/ё/g, "е");
+    if (language === "en") {
+      normalized = normalized.replace(/[’']s\b/gu, "");
+    }
+    return normalized.replace(/[^\p{L}\p{N}]+/gu, "").trim();
   }
 
   function bestGuessWordMap(fromCount, toCount) {
@@ -1363,9 +1435,9 @@
     ));
   }
 
-  function alignmentSimilarity(left, right) {
-    const a = normalizeAlignmentText(left);
-    const b = normalizeAlignmentText(right);
+  function alignmentSimilarity(left, right, language = "") {
+    const a = normalizeAlignmentText(left, language);
+    const b = normalizeAlignmentText(right, language);
     if (!a || !b) return 0;
     if (a === b) return 1;
     if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length);
@@ -1386,19 +1458,19 @@
     return (2 * matches) / Math.max(1, leftGrams.length + rightGrams.length);
   }
 
-  function locateAlignedPhrase(text, ranges, phrase, expectedIndexes = []) {
+  function locateAlignedPhrase(text, ranges, phrase, expectedIndexes = [], language = "") {
     const cleanPhrase = String(phrase || "").trim();
-    const normalizedPhrase = normalizeAlignmentText(cleanPhrase);
+    const normalizedPhrase = normalizeAlignmentText(cleanPhrase, language);
     if (!normalizedPhrase || !ranges.length) return { indexes: [], confidence: 0 };
     const expected = expectedIndexes[0] ?? 0;
-    const phraseWordCount = Math.max(1, wordRanges(cleanPhrase).length);
+    const phraseWordCount = Math.max(1, wordRanges(cleanPhrase, language).length);
     let best = { confidence: 0, similarity: 0, indexes: [] };
     for (let start = 0; start < ranges.length; start += 1) {
       for (let length = 1; length <= READER_ALIGNMENT_MAX_TARGET_WORDS && start + length <= ranges.length; length += 1) {
         const endRange = ranges[start + length - 1];
         const candidate = String(text || "").slice(ranges[start].start, endRange.end);
-        const exact = normalizeAlignmentText(candidate) === normalizedPhrase;
-        const similarity = exact ? 1 : alignmentSimilarity(candidate, cleanPhrase);
+        const exact = normalizeAlignmentText(candidate, language) === normalizedPhrase;
+        const similarity = exact ? 1 : alignmentSimilarity(candidate, cleanPhrase, language);
         const distancePenalty = Math.abs(start - expected) * 0.012;
         const lengthPenalty = Math.abs(length - phraseWordCount) * 0.035;
         const confidence = similarity - distancePenalty - lengthPenalty;
@@ -1486,36 +1558,121 @@
     };
   }
 
-  async function enrichReaderAlignment(alignment) {
-    const fromText = alignment.newsMode ? alignment.sourceText : alignment.englishText;
-    const toText = alignment.newsMode ? alignment.englishText : alignment.sourceText;
-    const fromRanges = alignment.newsMode ? alignment.sourceRanges : alignment.englishRanges;
-    const toRanges = alignment.newsMode ? alignment.englishRanges : alignment.sourceRanges;
-    const sourceLanguage = alignment.newsMode ? alignment.sourceLanguage : "en";
-    const targetLanguage = alignment.newsMode ? "en" : alignment.sourceLanguage;
-    const fallback = bestGuessWordMap(fromRanges.length, toRanges.length);
-    const phrases = await fetchContextualAlignmentPhrases(fromText, fromRanges, sourceLanguage, targetLanguage);
-    let contextualWordCount = 0;
-    const contextualMap = fallback.map((indexes, index) => {
-      const located = locateAlignedPhrase(toText, toRanges, phrases[index], indexes);
-      if (!located.indexes.length) return indexes;
-      contextualWordCount += located.indexes.length;
-      return located.indexes;
+  function mapContextualPhrases(toText, toRanges, phrases, fallback, targetLanguage) {
+    let matchedWordCount = 0;
+    const matched = [];
+    const map = fallback.map((indexes, index) => {
+      const located = locateAlignedPhrase(toText, toRanges, phrases[index], indexes, targetLanguage);
+      matched[index] = Boolean(located.indexes.length);
+      if (!matched[index]) return indexes;
+      const alignedIndexes = targetLanguage === "en"
+        ? expandEnglishAlignedPhrase(toText, toRanges, located.indexes)
+        : located.indexes;
+      matchedWordCount += alignedIndexes.length;
+      return alignedIndexes;
     });
-    const inverse = invertWordMap(
-      contextualMap,
-      toRanges.length,
-      bestGuessWordMap(toRanges.length, fromRanges.length)
+    return { map, matched, matchedWordCount };
+  }
+
+  function expandEnglishAlignedPhrase(text, ranges, indexes) {
+    if (indexes.length !== 1 || indexes[0] <= 0) return indexes;
+    const index = indexes[0];
+    const previous = normalizeAlignmentText(
+      String(text || "").slice(ranges[index - 1].start, ranges[index - 1].end),
+      "en"
     );
-    if (alignment.newsMode) {
-      alignment.sourceToEnglish = contextualMap;
-      alignment.englishToSource = inverse;
-    } else {
-      alignment.englishToSource = contextualMap;
-      alignment.sourceToEnglish = inverse;
+    const auxiliaries = new Set([
+      "am", "is", "are", "was", "were", "be", "been", "being",
+      "have", "has", "had", "do", "does", "did", "will", "would",
+      "shall", "should", "can", "could", "may", "might", "must",
+      "im", "youre", "hes", "shes", "its", "theyre", "ive", "youve",
+      "weve", "theyve", "ill", "youll", "hell", "shell", "well", "theyll"
+    ]);
+    return auxiliaries.has(previous) ? [index - 1, index] : indexes;
+  }
+
+  function reconcileBidirectionalMap(direct, reverseMap, fallback) {
+    const reverseEvidence = invertWordMap(reverseMap, direct.map.length);
+    return direct.map.map((targets, index) => {
+      if (!direct.matched[index]) return reverseEvidence[index]?.length ? reverseEvidence[index] : fallback[index];
+      const mutuallySupported = targets.filter((targetIndex) => reverseMap[targetIndex]?.includes(index));
+      return mutuallySupported.length ? mutuallySupported : targets;
+    });
+  }
+
+  async function enrichReaderAlignment(alignment) {
+    const sourceFallback = bestGuessWordMap(alignment.sourceRanges.length, alignment.englishRanges.length);
+    const englishFallback = bestGuessWordMap(alignment.englishRanges.length, alignment.sourceRanges.length);
+    const bidirectional = ["ru", "fa"].includes(alignment.sourceLanguage);
+    const directions = bidirectional
+      ? [
+          {
+            key: "source",
+            fromText: alignment.sourceText,
+            fromRanges: alignment.sourceRanges,
+            sourceLanguage: alignment.sourceLanguage,
+            targetLanguage: "en",
+            toText: alignment.englishText,
+            toRanges: alignment.englishRanges,
+            fallback: sourceFallback
+          },
+          {
+            key: "english",
+            fromText: alignment.englishText,
+            fromRanges: alignment.englishRanges,
+            sourceLanguage: "en",
+            targetLanguage: alignment.sourceLanguage,
+            toText: alignment.sourceText,
+            toRanges: alignment.sourceRanges,
+            fallback: englishFallback
+          }
+        ]
+      : [{
+          key: alignment.newsMode ? "source" : "english",
+          fromText: alignment.newsMode ? alignment.sourceText : alignment.englishText,
+          fromRanges: alignment.newsMode ? alignment.sourceRanges : alignment.englishRanges,
+          sourceLanguage: alignment.newsMode ? alignment.sourceLanguage : "en",
+          targetLanguage: alignment.newsMode ? "en" : alignment.sourceLanguage,
+          toText: alignment.newsMode ? alignment.englishText : alignment.sourceText,
+          toRanges: alignment.newsMode ? alignment.englishRanges : alignment.sourceRanges,
+          fallback: alignment.newsMode ? sourceFallback : englishFallback
+        }];
+
+    const settled = await Promise.allSettled(directions.map(async (direction) => {
+      const phrases = await fetchContextualAlignmentPhrases(
+        direction.fromText,
+        direction.fromRanges,
+        direction.sourceLanguage,
+        direction.targetLanguage
+      );
+      return {
+        key: direction.key,
+        ...mapContextualPhrases(
+          direction.toText,
+          direction.toRanges,
+          phrases,
+          direction.fallback,
+          direction.targetLanguage
+        )
+      };
+    }));
+    const results = Object.fromEntries(settled
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => [result.value.key, result.value]));
+
+    if (results.source && results.english) {
+      alignment.sourceToEnglish = reconcileBidirectionalMap(results.source, results.english.map, sourceFallback);
+      alignment.englishToSource = reconcileBidirectionalMap(results.english, results.source.map, englishFallback);
+    } else if (results.source) {
+      alignment.sourceToEnglish = results.source.map;
+      alignment.englishToSource = invertWordMap(results.source.map, alignment.englishRanges.length, englishFallback);
+    } else if (results.english) {
+      alignment.englishToSource = results.english.map;
+      alignment.sourceToEnglish = invertWordMap(results.english.map, alignment.sourceRanges.length, sourceFallback);
     }
-    alignment.alignedWordCount = contextualWordCount;
-    alignment.contextual = contextualWordCount > 0;
+
+    alignment.alignedWordCount = (results.source?.matchedWordCount || 0) + (results.english?.matchedWordCount || 0);
+    alignment.contextual = alignment.alignedWordCount > 0;
     return alignment;
   }
 
@@ -1557,13 +1714,15 @@
     ], "");
     clearCorrespondingHighlights();
     state.activeHighlights = targets;
-    els.bookSourceSentence.innerHTML = highlightedTextHtml(
+    renderReaderHighlight(
+      els.bookSourceSentence,
       alignment.sourceText,
       sourceIndexes,
       speakingPane === "source" ? "active" : "translation-active",
       alignment.sourceRanges
     );
-    els.bookEnglishSentence.innerHTML = highlightedTextHtml(
+    renderReaderHighlight(
+      els.bookEnglishSentence,
       alignment.englishText,
       englishIndexes,
       speakingPane === "english" ? "active" : "translation-active",
@@ -4562,6 +4721,8 @@
     });
 
     window.addEventListener("resize", () => {
+      clearReaderHighlightLayer(els.bookSourceSentence);
+      clearReaderHighlightLayer(els.bookEnglishSentence);
       renderVisibleRows();
       fitRussianFocusWord();
       fitEnglishFocusWord();
