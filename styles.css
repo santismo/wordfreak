@@ -303,7 +303,7 @@ body.book-mode .dataset-meta {
 }
 
 .book-shelf-controls {
-  grid-template-columns: minmax(86px, 0.7fr) minmax(104px, 0.8fr) minmax(118px, 0.9fr) minmax(170px, 1.5fr) minmax(72px, 0.55fr) minmax(82px, 0.6fr) 44px minmax(70px, 0.45fr) 44px;
+  grid-template-columns: minmax(112px, 0.9fr) minmax(104px, 0.8fr) minmax(112px, 0.85fr) minmax(130px, 1fr) minmax(170px, 1.45fr) minmax(72px, 0.55fr) minmax(82px, 0.6fr) 44px minmax(70px, 0.45fr) 44px;
 }
 
 .news-shelf-controls {
@@ -343,6 +343,17 @@ body.book-mode .dataset-meta {
 
 .book-search-field {
   min-width: 0;
+}
+
+.book-level-note {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.book-level-note[hidden] {
+  display: none;
 }
 
 .book-shelf-controls input,
@@ -464,6 +475,12 @@ body.book-mode .dataset-meta {
   box-shadow: 0 0 0 2px rgba(140, 207, 159, 0.15);
 }
 
+.speech-word.translation-active {
+  background: rgba(140, 207, 159, 0.24);
+  color: var(--text);
+  box-shadow: 0 0 0 2px rgba(140, 207, 159, 0.22);
+}
+
 .book-nearby {
   display: grid;
   gap: 6px;
@@ -581,6 +598,30 @@ body.book-mode .dataset-meta {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+}
+
+.book-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.book-level-badge,
+.book-source-badge {
+  width: fit-content;
+  padding: 2px 5px;
+  border: 1px solid rgba(140, 207, 159, 0.3);
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(140, 207, 159, 0.09);
+  font-size: 0.61rem;
+  line-height: 1.2;
+}
+
+.book-source-badge {
+  border-color: rgba(244, 247, 244, 0.14);
+  color: var(--muted);
+  background: rgba(244, 247, 244, 0.04);
 }
 
 .book-card-author,
@@ -746,6 +787,26 @@ body.book-mode .dataset-meta {
   font-variant-numeric: tabular-nums;
 }
 
+@media (min-width: 681px) and (max-width: 1100px) {
+  #bookShelfControls {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+
+  #bookShelfControls > label:nth-child(-n+4) {
+    grid-column: span 2;
+  }
+
+  #bookShelfControls > .book-search-field {
+    grid-column: span 4;
+  }
+
+  #bookSearchBtn,
+  #bookRandomBtn,
+  #bookShelfControls > .book-page-field {
+    grid-column: span 2;
+  }
+}
+
 @media (max-width: 680px) {
   .app-shell {
     padding-left: 8px;
@@ -806,7 +867,7 @@ body.book-mode .dataset-meta {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .book-shelf-controls label:nth-child(-n+3),
+  .book-shelf-controls label:nth-child(-n+4),
   #bookSearchBtn,
   #bookRandomBtn,
   #newsSearchBtn,

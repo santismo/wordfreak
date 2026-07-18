@@ -68,6 +68,8 @@ Some English glosses are generated through the Google Translate web endpoint and
 
 Treat these glosses as convenience study aids, not authoritative dictionary entries.
 
+Book and news sentence translations and moving word/phrase alignments are also generated live through public machine-translation endpoints and cached in the browser. Because languages do not map word-for-word, counterpart highlights are contextual study estimates and can occasionally be approximate or group two words together.
+
 ## Generated Deck
 
 `data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, and `data/ko-core.json` combine and adapt the sources above. Treat the generated data as CC-BY-SA-compatible material and preserve this notice when sharing modified versions.
@@ -79,3 +81,17 @@ The app uses the browser Web Speech API.
 ## Live News
 
 News mode reads current public feeds from Meduza, VOA Persian, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and Google News. Article text is fetched live in the user's browser, is not bundled with Wordfreak, and remains subject to each publisher's terms; every reader view links to the original article.
+
+## Public-Domain Books
+
+Book mode links to public-domain editions from Standard Ebooks and Project Gutenberg. Standard Ebooks dedicates its ebook productions to the public domain under CC0. Project Gutenberg determines public-domain status under United States law; a work's status may differ elsewhere. Wordfreak links every reader view to its source edition and does not bundle book text.
+
+Project Gutenberg catalog metadata and current text-format URLs are retrieved through the open-source Gutendex API. Gutendex is an independent catalog service and recommends self-hosting for long-term production use.
+
+Book difficulty levels are Wordfreak study estimates based on English Flesch-Kincaid-style sentence and word measurements, total word count, and light curation for literary complexity. They are not CEFR classifications or guarantees that a machine translation will have the same difficulty.
+
+Sources:
+
+- https://standardebooks.org/about
+- https://www.gutenberg.org/policy/permission.html
+- https://gutendex.com/

@@ -4,14 +4,42 @@
   const LEGACY_RU_TRANSLATION_CACHE_KEY = "wordfreak:ru-en-cache";
   const BOOK_PROGRESS_KEY = "wordfreak:book-progress:v1";
   const BOOK_FAVORITES_KEY = "wordfreak:book-favorites:v1";
+  const BOOK_DIFFICULTY_KEY = "wordfreak:book-difficulty:v1";
+  const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v1";
   const STANDARD_EBOOKS_LIST_URL = "https://standardebooks.org/ebooks";
+  const GUTENDEX_BOOKS_URL = "https://gutendex.com/books/";
   const STANDARD_EBOOKS_PER_PAGE = 48;
   const STANDARD_EBOOKS_RANDOM_PAGE_MAX = 24;
   const STANDARD_EBOOKS_SEARCH_SCAN_PAGE_MAX = 24;
   const STANDARD_EBOOKS_SEARCH_RESULT_LIMIT = 48;
   const BOOK_FETCH_TIMEOUT_MS = 22000;
   const BOOK_TRANSLATION_CACHE_LIMIT = 350;
+  const READER_DOCUMENT_CACHE_LIMIT = 6;
+  const READER_ALIGNMENT_CACHE_LIMIT = 120;
   const BOOK_NEARBY_RADIUS = 3;
+  const BOOK_SHELF_KINDS = new Set(["guided", "library", "gutenberg", "favorites"]);
+  const BOOK_LEVELS = {
+    starter: {
+      label: "Level 1 · Starter",
+      shortLabel: "Starter",
+      description: "Very short stories with relatively clear sentence patterns."
+    },
+    easy: {
+      label: "Level 2 · Easy classics",
+      shortLabel: "Easy classics",
+      description: "Approachable classics with moderate length and measured readability."
+    },
+    steady: {
+      label: "Level 3 · Steady reader",
+      shortLabel: "Steady reader",
+      description: "Longer books or denser stories for sustained reading practice."
+    },
+    stretch: {
+      label: "Level 4 · Literary stretch",
+      shortLabel: "Literary stretch",
+      description: "Long, syntactically dense, or more literary English."
+    }
+  };
   const NEWS_ARTICLE_LIMIT = 60;
   const NEWS_SOURCES = {
     ru: [
@@ -101,6 +129,29 @@
     { title: "Moby-Dick", author: "Herman Melville", link: "https://standardebooks.org/ebooks/herman-melville/moby-dick" },
     { title: "Little Women", author: "Louisa May Alcott", link: "https://standardebooks.org/ebooks/louisa-may-alcott/little-women" }
   ];
+  const GUIDED_BOOKS = [
+    { gutenbergId: 14838, title: "The Tale of Peter Rabbit", author: "Beatrix Potter", level: "starter", wordCount: 974, estimatedGrade: 5.3, averageSentenceWords: 13.9, genres: ["childrens", "shorts"] },
+    { gutenbergId: 18155, title: "The Story of the Three Little Pigs", author: "L. Leslie Brooke", level: "starter", wordCount: 1035, estimatedGrade: 4.9, averageSentenceWords: 18.5, genres: ["childrens", "shorts"] },
+    { gutenbergId: 11757, title: "The Velveteen Rabbit", author: "Margery Williams Bianco", level: "starter", wordCount: 3948, estimatedGrade: 5.4, averageSentenceWords: 16.3, genres: ["childrens", "fantasy", "shorts"] },
+    { gutenbergId: 902, title: "The Happy Prince, and Other Tales", author: "Oscar Wilde", level: "easy", wordCount: 16245, estimatedGrade: 5.5, averageSentenceWords: 15.6, genres: ["childrens", "fantasy", "shorts"] },
+    { gutenbergId: 11, title: "Alice's Adventures in Wonderland", author: "Lewis Carroll", level: "easy", wordCount: 26518, estimatedGrade: 5.8, averageSentenceWords: 16.3, genres: ["childrens", "fantasy"] },
+    { gutenbergId: 55, title: "The Wonderful Wizard of Oz", author: "L. Frank Baum", level: "easy", wordCount: 39661, estimatedGrade: 6, averageSentenceWords: 17.6, genres: ["adventure", "childrens", "fantasy"] },
+    { gutenbergId: 35, title: "The Time Machine", author: "H. G. Wells", level: "steady", wordCount: 32578, estimatedGrade: 7.2, averageSentenceWords: 16.7, genres: ["adventure", "science-fiction"] },
+    { gutenbergId: 289, title: "The Wind in the Willows", author: "Kenneth Grahame", level: "steady", wordCount: 58836, estimatedGrade: 7, averageSentenceWords: 18.1, genres: ["childrens", "fantasy"] },
+    { gutenbergId: 120, title: "Treasure Island", author: "Robert Louis Stevenson", level: "steady", wordCount: 68628, estimatedGrade: 5.5, averageSentenceWords: 16.1, genres: ["adventure", "childrens"] },
+    { gutenbergId: 174, title: "The Picture of Dorian Gray", author: "Oscar Wilde", level: "steady", wordCount: 79191, estimatedGrade: 4.7, averageSentenceWords: 11.9, genres: ["fiction", "horror", "philosophy"] },
+    { gutenbergId: 17396, title: "The Secret Garden", author: "Frances Hodgson Burnett", level: "steady", wordCount: 81378, estimatedGrade: 4.3, averageSentenceWords: 12.9, genres: ["childrens", "fiction"] },
+    { gutenbergId: 1661, title: "The Adventures of Sherlock Holmes", author: "Arthur Conan Doyle", level: "steady", wordCount: 104548, estimatedGrade: 5.5, averageSentenceWords: 14.4, genres: ["mystery", "shorts"] },
+    { gutenbergId: 21, title: "Three Hundred Aesop's Fables", author: "Aesop, translated by George Fyler Townsend", level: "stretch", wordCount: 43888, estimatedGrade: 9.4, averageSentenceWords: 24.3, genres: ["childrens", "shorts"] },
+    { gutenbergId: 84, title: "Frankenstein", author: "Mary Shelley", level: "stretch", wordCount: 75089, estimatedGrade: 9.8, averageSentenceWords: 22.3, genres: ["fiction", "horror", "science-fiction"] },
+    { gutenbergId: 1342, title: "Pride and Prejudice", author: "Jane Austen", level: "stretch", wordCount: 126819, estimatedGrade: 8.1, averageSentenceWords: 17.5, genres: ["comedy", "fiction"] },
+    { gutenbergId: 2701, title: "Moby-Dick", author: "Herman Melville", level: "stretch", wordCount: 214004, estimatedGrade: 8.9, averageSentenceWords: 20.7, genres: ["adventure", "fiction"] }
+  ].map((book) => ({
+    ...book,
+    id: `gutenberg:${book.gutenbergId}`,
+    source: "gutenberg",
+    link: `https://www.gutenberg.org/ebooks/${book.gutenbergId}`
+  }));
   const LANGUAGES = {
     ru: {
       label: "Russian",
@@ -206,6 +257,8 @@
     bookRandomBtn: document.getElementById("bookRandomBtn"),
     bookLanguageSelect: document.getElementById("bookLanguageSelect"),
     bookGenreSelect: document.getElementById("bookGenreSelect"),
+    bookLevelSelect: document.getElementById("bookLevelSelect"),
+    bookLevelNote: document.getElementById("bookLevelNote"),
     bookSearchInput: document.getElementById("bookSearchInput"),
     bookSearchBtn: document.getElementById("bookSearchBtn"),
     bookPageInput: document.getElementById("bookPageInput"),
@@ -252,6 +305,9 @@
     progressText: document.getElementById("progressText")
   };
 
+  const bookDifficultyCache = loadBookDifficultyCache();
+  const readerTranslationCache = loadReaderTranslationCache();
+
   const state = {
     entries: [],
     meta: null,
@@ -275,10 +331,13 @@
     bookMode: false,
     contentMode: "books",
     bookViewMode: "shelf",
-    bookShelfKind: "library",
+    bookShelfKind: "guided",
     bookPage: 1,
+    bookHasNextPage: true,
+    bookHasPreviousPage: false,
     bookSearch: "",
     bookGenre: "",
+    bookLevel: "",
     bookBooks: [],
     bookLoadedBook: null,
     bookSentences: [],
@@ -290,7 +349,15 @@
     bookRenderToken: 0,
     bookProgress: loadBookProgress(),
     bookFavorites: loadBookFavorites(),
-    bookTranslationCache: new Map(),
+    bookDifficulty: bookDifficultyCache,
+    bookTranslationCache: readerTranslationCache,
+    bookTranslationPromises: new Map(),
+    readerAlignmentCache: new Map(),
+    readerDocumentCache: new Map(),
+    readerDocumentPromises: new Map(),
+    readerPrefetchTimer: 0,
+    readerSentencePrefetchTimer: 0,
+    readerTranslationSaveTimer: 0,
     newsSourceByLanguage: {},
     newsAllArticles: [],
     newsSearch: "",
@@ -314,8 +381,9 @@
       state.band = String(prefs.band || state.band);
       state.shuffle = Boolean(prefs.shuffle);
       state.currentPos = Number.isFinite(prefs.currentPos) ? prefs.currentPos : 0;
-      state.bookShelfKind = prefs.bookShelfKind === "favorites" ? "favorites" : state.bookShelfKind;
+      state.bookShelfKind = BOOK_SHELF_KINDS.has(prefs.bookShelfKind) ? prefs.bookShelfKind : state.bookShelfKind;
       state.bookGenre = BOOK_GENRES[prefs.bookGenre] ? prefs.bookGenre : "";
+      state.bookLevel = BOOK_LEVELS[prefs.bookLevel] ? prefs.bookLevel : "";
       state.newsSourceByLanguage = prefs.newsSourceByLanguage && typeof prefs.newsSourceByLanguage === "object"
         ? { ...prefs.newsSourceByLanguage }
         : {};
@@ -344,6 +412,7 @@
       currentPos: state.currentPos,
       bookShelfKind: state.bookShelfKind,
       bookGenre: state.bookGenre,
+      bookLevel: state.bookLevel,
       newsSourceByLanguage: state.newsSourceByLanguage,
       bookReadEnglish: els.bookReadEnglish.checked,
       voicePrefs: state.voicePrefs,
@@ -410,6 +479,24 @@
     }
   }
 
+  function loadBookDifficultyCache() {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(BOOK_DIFFICULTY_KEY) || "{}");
+      return value && typeof value === "object" ? value : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function loadReaderTranslationCache() {
+    try {
+      const values = JSON.parse(window.localStorage.getItem(READER_TRANSLATIONS_KEY) || "[]");
+      return new Map(Array.isArray(values) ? values.slice(-BOOK_TRANSLATION_CACHE_LIMIT) : []);
+    } catch {
+      return new Map();
+    }
+  }
+
   function loadBookFavorites() {
     try {
       const value = JSON.parse(window.localStorage.getItem(BOOK_FAVORITES_KEY) || "{}");
@@ -444,6 +531,25 @@
     } catch (error) {
       console.warn("Book progress save failed:", error);
     }
+  }
+
+  function saveBookDifficultyStore() {
+    try {
+      window.localStorage.setItem(BOOK_DIFFICULTY_KEY, JSON.stringify(state.bookDifficulty));
+    } catch (error) {
+      console.warn("Book difficulty save failed:", error);
+    }
+  }
+
+  function scheduleReaderTranslationSave() {
+    window.clearTimeout(state.readerTranslationSaveTimer);
+    state.readerTranslationSaveTimer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(READER_TRANSLATIONS_KEY, JSON.stringify(Array.from(state.bookTranslationCache.entries())));
+      } catch (error) {
+        console.warn("Reader translation cache save failed:", error);
+      }
+    }, 350);
   }
 
   function setStatus(message) {
@@ -913,22 +1019,37 @@
       .replace(/"/g, "&quot;");
   }
 
-  function wordRanges(text) {
-    const ranges = [];
+  function wordRanges(text, locale = undefined) {
     const clean = String(text || "");
+    if (typeof Intl.Segmenter === "function") {
+      try {
+        const segmenter = new Intl.Segmenter(locale, { granularity: "word" });
+        const segmented = Array.from(segmenter.segment(clean))
+          .filter((part) => part.isWordLike || /[\p{L}\p{N}]/u.test(part.segment))
+          .map((part) => ({
+            start: part.index,
+            end: part.index + part.segment.length,
+            text: part.segment
+          }));
+        if (segmented.length) return segmented;
+      } catch {
+        // Fall through to Unicode word matching.
+      }
+    }
+    const ranges = [];
     const wordPattern = /[\p{L}\p{N}]+(?:[-'][\p{L}\p{N}]+)*/gu;
     let match = null;
     while ((match = wordPattern.exec(clean)) !== null) {
       ranges.push({
         start: match.index,
-        end: match.index + match[0].length
+        end: match.index + match[0].length,
+        text: match[0]
       });
     }
     return ranges;
   }
 
-  function activeWordIndexForChar(text, charIndex) {
-    const ranges = wordRanges(text);
+  function activeWordIndexForChar(text, charIndex, ranges = wordRanges(text)) {
     if (!ranges.length) return -1;
     const index = Math.max(0, Number(charIndex) || 0);
     const found = ranges.findIndex((range) => index >= range.start && index < range.end);
@@ -939,10 +1060,10 @@
     return 0;
   }
 
-  function highlightedTextHtml(text, activeIndex) {
+  function highlightedTextHtml(text, activeIndexes, activeClass = "active", ranges = wordRanges(text)) {
     const clean = String(text || "");
-    const ranges = wordRanges(clean);
-    if (!ranges.length || activeIndex < 0) {
+    const indexes = new Set(Array.isArray(activeIndexes) ? activeIndexes : [activeIndexes]);
+    if (!ranges.length || !Array.from(indexes).some((index) => index >= 0)) {
       return escapeHtml(clean);
     }
 
@@ -950,7 +1071,7 @@
     let cursor = 0;
     ranges.forEach((range, index) => {
       html += escapeHtml(clean.slice(cursor, range.start));
-      const className = index === activeIndex ? "speech-word active" : "speech-word";
+      const className = indexes.has(index) ? `speech-word ${activeClass}` : "speech-word";
       html += `<span class="${className}">${escapeHtml(clean.slice(range.start, range.end))}</span>`;
       cursor = range.end;
     });
@@ -1011,6 +1132,234 @@
     if (targets === state.activeCorrespondingHighlights) {
       state.activeCorrespondingHighlights = [];
     }
+  }
+
+  function normalizeAlignmentText(value) {
+    return String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, "")
+      .trim();
+  }
+
+  function proportionalWordMap(fromCount, toCount) {
+    if (!fromCount || !toCount) return Array.from({ length: fromCount }, () => []);
+    return Array.from({ length: fromCount }, (_, index) => {
+      const start = Math.min(toCount - 1, Math.floor((index * toCount) / fromCount));
+      const naturalEnd = Math.max(start + 1, Math.ceil(((index + 1) * toCount) / fromCount));
+      const end = Math.min(toCount, start + 2, naturalEnd);
+      return Array.from({ length: Math.max(1, end - start) }, (value, offset) => start + offset);
+    });
+  }
+
+  function invertWordMap(wordMap, targetCount) {
+    const inverted = Array.from({ length: targetCount }, () => []);
+    wordMap.forEach((targets, sourceIndex) => {
+      targets.forEach((targetIndex) => {
+        if (inverted[targetIndex] && !inverted[targetIndex].includes(sourceIndex)) {
+          inverted[targetIndex].push(sourceIndex);
+        }
+      });
+    });
+    const fallback = proportionalWordMap(targetCount, wordMap.length);
+    return inverted.map((values, index) => (values.length ? values.slice(0, 2) : fallback[index]));
+  }
+
+  function alignmentSimilarity(left, right) {
+    const a = normalizeAlignmentText(left);
+    const b = normalizeAlignmentText(right);
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length);
+    const grams = (value) => {
+      if (value.length < 2) return [value];
+      return Array.from({ length: value.length - 1 }, (_, index) => value.slice(index, index + 2));
+    };
+    const leftGrams = grams(a);
+    const rightGrams = grams(b);
+    const remaining = [...rightGrams];
+    let matches = 0;
+    leftGrams.forEach((gram) => {
+      const index = remaining.indexOf(gram);
+      if (index < 0) return;
+      matches += 1;
+      remaining.splice(index, 1);
+    });
+    return (2 * matches) / Math.max(1, leftGrams.length + rightGrams.length);
+  }
+
+  function wordIndexesForCharSpan(ranges, start, end) {
+    return ranges
+      .map((range, index) => (range.end > start && range.start < end ? index : -1))
+      .filter((index) => index >= 0)
+      .slice(0, 2);
+  }
+
+  function locateAlignedPhrase(text, ranges, phrase, expectedIndexes = []) {
+    const cleanPhrase = String(phrase || "").trim();
+    if (!cleanPhrase || !ranges.length) return [];
+    const expected = expectedIndexes[0] ?? 0;
+    const exactCandidates = [];
+    const lowerText = String(text || "").toLocaleLowerCase();
+    const lowerPhrase = cleanPhrase.toLocaleLowerCase();
+    let offset = 0;
+    while (lowerPhrase && offset < lowerText.length) {
+      const position = lowerText.indexOf(lowerPhrase, offset);
+      if (position < 0) break;
+      const indexes = wordIndexesForCharSpan(ranges, position, position + cleanPhrase.length);
+      if (indexes.length) exactCandidates.push(indexes);
+      offset = position + Math.max(1, cleanPhrase.length);
+    }
+    if (exactCandidates.length) {
+      return exactCandidates.sort((left, right) => Math.abs(left[0] - expected) - Math.abs(right[0] - expected))[0];
+    }
+
+    let best = { score: 0, indexes: [] };
+    for (let start = 0; start < ranges.length; start += 1) {
+      for (let length = 1; length <= 2 && start + length <= ranges.length; length += 1) {
+        const endRange = ranges[start + length - 1];
+        const candidate = String(text || "").slice(ranges[start].start, endRange.end);
+        const distancePenalty = Math.abs(start - expected) * 0.025;
+        const score = alignmentSimilarity(candidate, cleanPhrase) - distancePenalty;
+        if (score > best.score) {
+          best = { score, indexes: Array.from({ length }, (value, offsetIndex) => start + offsetIndex) };
+        }
+      }
+    }
+    return best.score >= 0.48 ? best.indexes : [];
+  }
+
+  async function fetchContextualAlignmentPhrases(text, ranges, sourceLanguage, targetLanguage) {
+    if (!text || !ranges.length || sourceLanguage === targetLanguage) return [];
+    const variants = ranges.map((range) => (
+      `${text.slice(0, range.start)}⟦${text.slice(range.start, range.end)}⟧${text.slice(range.end)}`
+    ));
+    const batches = [];
+    for (let index = 0; index < variants.length; index += 18) {
+      batches.push(variants.slice(index, index + 18));
+    }
+    const translatedBatches = await Promise.all(batches.map(async (batch) => {
+      const body = new URLSearchParams({
+        client: "gtx",
+        sl: sourceLanguage,
+        tl: targetLanguage,
+        dt: "t",
+        q: batch.join("\n")
+      });
+      const response = await withTimeout(fetch("https://translate.googleapis.com/translate_a/single", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body,
+        cache: "no-store"
+      }), 12000, "word alignment");
+      if (!response.ok) throw new Error(`Word alignment ${response.status}`);
+      const payload = await response.json();
+      const translated = Array.isArray(payload?.[0])
+        ? payload[0].map((chunk) => chunk?.[0] || "").join("")
+        : "";
+      return translated.split("\n");
+    }));
+    const lines = translatedBatches.flat();
+    return ranges.map((range, index) => {
+      const match = String(lines[index] || "").match(/⟦([\s\S]*?)⟧/u);
+      return normalizeSpaces(match?.[1] || "");
+    });
+  }
+
+  function readerAlignmentKey(pair, newsMode, language) {
+    return `${newsMode ? "news" : "book"}:${language}:${bookHash(pair.source)}:${pair.source.length}:${bookHash(pair.english)}:${pair.english.length}`;
+  }
+
+  function buildReaderAlignment(pair, newsMode, language) {
+    const sourceLanguage = LANGUAGES[language]?.translateSl || activeLanguage().translateSl;
+    const sourceRanges = wordRanges(pair.source, sourceLanguage);
+    const englishRanges = wordRanges(pair.english, "en");
+    return {
+      sourceText: pair.source,
+      englishText: pair.english,
+      sourceLanguage,
+      sourceRanges,
+      englishRanges,
+      sourceToEnglish: proportionalWordMap(sourceRanges.length, englishRanges.length),
+      englishToSource: proportionalWordMap(englishRanges.length, sourceRanges.length),
+      newsMode,
+      contextual: false
+    };
+  }
+
+  async function enrichReaderAlignment(alignment) {
+    const fromText = alignment.newsMode ? alignment.sourceText : alignment.englishText;
+    const toText = alignment.newsMode ? alignment.englishText : alignment.sourceText;
+    const fromRanges = alignment.newsMode ? alignment.sourceRanges : alignment.englishRanges;
+    const toRanges = alignment.newsMode ? alignment.englishRanges : alignment.sourceRanges;
+    const sourceLanguage = alignment.newsMode ? alignment.sourceLanguage : "en";
+    const targetLanguage = alignment.newsMode ? "en" : alignment.sourceLanguage;
+    const fallback = proportionalWordMap(fromRanges.length, toRanges.length);
+    const phrases = await fetchContextualAlignmentPhrases(fromText, fromRanges, sourceLanguage, targetLanguage);
+    const contextualMap = fallback.map((indexes, index) => {
+      const located = locateAlignedPhrase(toText, toRanges, phrases[index], indexes);
+      return located.length ? located : indexes;
+    });
+    const inverse = invertWordMap(contextualMap, toRanges.length);
+    if (alignment.newsMode) {
+      alignment.sourceToEnglish = contextualMap;
+      alignment.englishToSource = inverse;
+    } else {
+      alignment.englishToSource = contextualMap;
+      alignment.sourceToEnglish = inverse;
+    }
+    alignment.contextual = true;
+    return alignment;
+  }
+
+  function ensureReaderAlignment(
+    pair,
+    language = state.language,
+    newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news"
+  ) {
+    const key = readerAlignmentKey(pair, newsMode, language);
+    if (state.readerAlignmentCache.has(key)) return state.readerAlignmentCache.get(key);
+    const alignment = buildReaderAlignment(pair, newsMode, language);
+    state.readerAlignmentCache.set(key, alignment);
+    while (state.readerAlignmentCache.size > READER_ALIGNMENT_CACHE_LIMIT) {
+      state.readerAlignmentCache.delete(state.readerAlignmentCache.keys().next().value);
+    }
+    alignment.enrichmentPromise = enrichReaderAlignment(alignment).catch((error) => {
+      console.warn("Contextual word alignment unavailable:", error);
+      return alignment;
+    });
+    return alignment;
+  }
+
+  function applyReaderWordHighlight(alignment, speakingPane, charIndex, spokenText = "") {
+    if (!alignment) return;
+    const speakingRanges = speakingPane === "source" ? alignment.sourceRanges : alignment.englishRanges;
+    const renderedText = speakingPane === "source" ? alignment.sourceText : alignment.englishText;
+    const boundaryRanges = wordRanges(spokenText || renderedText, speakingPane === "source" ? alignment.sourceLanguage : "en");
+    const activeIndex = activeWordIndexForChar(spokenText || renderedText, charIndex, boundaryRanges);
+    const mappedIndexes = speakingPane === "source"
+      ? alignment.sourceToEnglish[activeIndex] || []
+      : alignment.englishToSource[activeIndex] || [];
+    const sourceIndexes = speakingPane === "source" ? [activeIndex] : mappedIndexes;
+    const englishIndexes = speakingPane === "english" ? [activeIndex] : mappedIndexes;
+    const targets = normalizeHighlightTargets([
+      { id: "bookSourceSentence", text: alignment.sourceText },
+      { id: "bookEnglishSentence", text: alignment.englishText }
+    ], "");
+    state.activeHighlights = targets;
+    els.bookSourceSentence.innerHTML = highlightedTextHtml(
+      alignment.sourceText,
+      sourceIndexes,
+      speakingPane === "source" ? "active" : "translation-active",
+      alignment.sourceRanges
+    );
+    els.bookEnglishSentence.innerHTML = highlightedTextHtml(
+      alignment.englishText,
+      englishIndexes,
+      speakingPane === "english" ? "active" : "translation-active",
+      alignment.englishRanges
+    );
   }
 
   async function ensureMeaning(entry) {
@@ -1130,13 +1479,60 @@
     return BOOK_GENRES[value] || "All";
   }
 
+  function bookLevelInfo(bookOrLevel) {
+    const level = typeof bookOrLevel === "string" ? bookOrLevel : bookOrLevel?.level;
+    return BOOK_LEVELS[level] || null;
+  }
+
+  function bookLevelLabel(bookOrLevel) {
+    return bookLevelInfo(bookOrLevel)?.label || "Not rated";
+  }
+
+  function bookSourceLabel(book) {
+    return book?.source === "gutenberg" ? "Project Gutenberg" : "Standard Ebooks";
+  }
+
+  function formatBookWordCount(value) {
+    const count = Math.max(0, Number(value) || 0);
+    if (!count) return "";
+    if (count < 1000) return `${Math.round(count)} words`;
+    const digits = count < 10000 ? 1 : 0;
+    return `~${(count / 1000).toFixed(digits)}k words`;
+  }
+
+  function bookDifficultySummary(book) {
+    const values = [];
+    const wordCount = formatBookWordCount(book?.wordCount);
+    if (wordCount) values.push(wordCount);
+    const grade = optionalBookNumber(book?.estimatedGrade);
+    if (grade !== null) {
+      values.push(`English grade ${grade.toFixed(1)}`);
+    }
+    return values.join(" · ");
+  }
+
+  function bookMatchesLevel(book, level = state.bookLevel) {
+    return !BOOK_LEVELS[level] || book?.level === level;
+  }
+
+  function bookMatchesGenre(book, genre = state.bookGenre) {
+    if (!BOOK_GENRES[genre]) return true;
+    if (Array.isArray(book?.genres) && book.genres.includes(genre)) return true;
+    const haystack = normalizeBookSearchValue([
+      ...(Array.isArray(book?.subjects) ? book.subjects : []),
+      ...(Array.isArray(book?.bookshelves) ? book.bookshelves : [])
+    ].join(" "));
+    const terms = normalizeBookSearchValue(`${genre} ${BOOK_GENRES[genre]}`).split(/\s+/).filter(Boolean);
+    return terms.some((term) => haystack.includes(term));
+  }
+
   function favoriteBooks() {
     return Object.values(state.bookFavorites)
       .sort((left, right) => (right.favoritedAt || 0) - (left.favoritedAt || 0));
   }
 
   function isBookFavorite(book) {
-    const id = normalizeStandardEbookLink(book?.link || "");
+    const id = normalizeBookRecord(book)?.id || "";
     return Boolean(id && state.bookFavorites[id]);
   }
 
@@ -1173,7 +1569,12 @@
     } catch {
       pathText = "";
     }
-    return normalizeBookSearchValue(`${book?.title || ""} ${book?.author || ""} ${pathText}`);
+    const metadata = [
+      ...(Array.isArray(book?.subjects) ? book.subjects : []),
+      ...(Array.isArray(book?.bookshelves) ? book.bookshelves : []),
+      ...(Array.isArray(book?.genres) ? book.genres.map((genre) => BOOK_GENRES[genre] || genre) : [])
+    ].join(" ");
+    return normalizeBookSearchValue(`${book?.title || ""} ${book?.author || ""} ${book?.summary || ""} ${metadata} ${pathText}`);
   }
 
   function bookMatchesSearch(book, query) {
@@ -1185,7 +1586,16 @@
 
   function visibleFavoriteBooks() {
     const cleanQuery = normalizeSpaces(state.bookSearch);
-    return favoriteBooks().filter((book) => bookMatchesSearch(book, cleanQuery));
+    return favoriteBooks().filter((book) => bookMatchesSearch(book, cleanQuery) && bookMatchesLevel(book));
+  }
+
+  function visibleGuidedBooks() {
+    const cleanQuery = normalizeSpaces(state.bookSearch);
+    return dedupeBooks(GUIDED_BOOKS).filter((book) => (
+      bookMatchesSearch(book, cleanQuery)
+      && bookMatchesGenre(book)
+      && bookMatchesLevel(book)
+    ));
   }
 
   function bookHash(text) {
@@ -1208,6 +1618,21 @@
     while (state.bookTranslationCache.size > BOOK_TRANSLATION_CACHE_LIMIT) {
       state.bookTranslationCache.delete(state.bookTranslationCache.keys().next().value);
     }
+    scheduleReaderTranslationSave();
+  }
+
+  async function sharedBookTranslation(key, run) {
+    if (state.bookTranslationCache.has(key)) return state.bookTranslationCache.get(key);
+    if (state.bookTranslationPromises.has(key)) return state.bookTranslationPromises.get(key);
+    const promise = Promise.resolve()
+      .then(run)
+      .then((value) => {
+        if (value) rememberBookTranslation(key, value);
+        return value;
+      })
+      .finally(() => state.bookTranslationPromises.delete(key));
+    state.bookTranslationPromises.set(key, promise);
+    return promise;
   }
 
   async function translateFromEn(text, targetLanguage = state.language) {
@@ -1265,29 +1690,27 @@
 
   async function ensureBookSourceSentence(english, language = state.language) {
     const key = bookTranslationKey(english, language);
-    if (state.bookTranslationCache.has(key)) {
-      return state.bookTranslationCache.get(key);
-    }
-    const translated = await translateFromEn(english, language);
-    const finalText = translated || english;
-    rememberBookTranslation(key, finalText);
-    return finalText;
+    return sharedBookTranslation(key, async () => {
+      const translated = await translateFromEn(english, language);
+      return translated || english;
+    });
   }
 
   async function ensureNewsEnglishSentence(sourceText, language = state.language) {
     const key = `en:${bookTranslationKey(sourceText, language)}`;
-    if (state.bookTranslationCache.has(key)) {
-      return state.bookTranslationCache.get(key);
-    }
-    const translated = await translateToEn(sourceText, language);
-    const finalText = translated || sourceText;
-    rememberBookTranslation(key, finalText);
-    return finalText;
+    return sharedBookTranslation(key, async () => {
+      const translated = await translateToEn(sourceText, language);
+      return translated || sourceText;
+    });
   }
 
-  async function readerSentencePair(sentence, language = state.language) {
+  async function readerSentencePair(
+    sentence,
+    language = state.language,
+    newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news"
+  ) {
     if (!sentence) return { source: "", english: "" };
-    if (isNewsMode() || state.bookLoadedBook?.kind === "news") {
+    if (newsMode) {
       return {
         source: sentence.text,
         english: await ensureNewsEnglishSentence(sentence.text, language)
@@ -1315,25 +1738,36 @@
     return `${STANDARD_EBOOKS_LIST_URL}?${params.toString()}`;
   }
 
+  async function fetchTextCandidate(proxy, url, label, signal) {
+    const response = await withTimeout(
+      fetch(proxy.build(url), { cache: "no-store", signal }),
+      BOOK_FETCH_TIMEOUT_MS,
+      `${proxy.name} ${label}`
+    );
+    if (!response.ok) throw new Error(`${response.status}`);
+    let text = await withTimeout(response.text(), BOOK_FETCH_TIMEOUT_MS, `${proxy.name} body`);
+    if (proxy.unwrap) text = proxy.unwrap(text);
+    if (!normalizeSpaces(text)) throw new Error("empty response");
+    return { text, proxy: proxy.name };
+  }
+
   async function fetchTextWithProxies(url, label) {
     const failures = [];
-    for (const proxy of PROXY_CANDIDATES) {
+    const waves = [PROXY_CANDIDATES.slice(0, 3), PROXY_CANDIDATES.slice(3)];
+    for (const wave of waves) {
+      const controllers = wave.map(() => new AbortController());
       try {
-        const requestUrl = proxy.build(url);
-        const response = await withTimeout(
-          fetch(requestUrl, { cache: "no-store" }),
-          BOOK_FETCH_TIMEOUT_MS,
-          `${proxy.name} ${label}`
-        );
-        if (!response.ok) throw new Error(`${response.status}`);
-        let text = await withTimeout(response.text(), BOOK_FETCH_TIMEOUT_MS, `${proxy.name} body`);
-        if (proxy.unwrap) {
-          text = proxy.unwrap(text);
-        }
-        if (!normalizeSpaces(text)) throw new Error("empty response");
-        return { text, proxy: proxy.name };
-      } catch (error) {
-        failures.push(`${proxy.name}: ${error.message}`);
+        const result = await Promise.any(wave.map((proxy, index) => (
+          fetchTextCandidate(proxy, url, label, controllers[index].signal).catch((error) => {
+            failures.push(`${proxy.name}: ${error.message}`);
+            throw error;
+          })
+        )));
+        controllers.forEach((controller) => controller.abort());
+        return result;
+      } catch {
+        controllers.forEach((controller) => controller.abort());
+        // Try the less reliable fallback services only if the fast wave fails.
       }
     }
     throw new Error(`${label} failed: ${failures.slice(0, 3).join(" | ")}`);
@@ -1532,6 +1966,24 @@
     }
   }
 
+  function normalizeGutenbergId(rawBook) {
+    const directId = Number.parseInt(rawBook?.gutenbergId ?? rawBook?.id, 10);
+    if (Number.isFinite(directId) && directId > 0) return directId;
+    try {
+      const url = new URL(rawBook?.link || "");
+      if (!/(^|\.)gutenberg\.org$/i.test(url.hostname)) return 0;
+      const match = url.pathname.match(/\/ebooks\/(\d+)/i);
+      return Number.parseInt(match?.[1] || "0", 10) || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function gutenbergLandingPage(id) {
+    const safeId = Math.max(0, Number.parseInt(id, 10) || 0);
+    return safeId ? `https://www.gutenberg.org/ebooks/${safeId}` : "";
+  }
+
   function isStandardEbookWorkLink(link) {
     try {
       const url = new URL(link);
@@ -1577,14 +2029,58 @@
       .trim();
   }
 
+  function cleanBookStringList(value) {
+    return Array.isArray(value) ? value.map((item) => normalizeSpaces(item)).filter(Boolean) : [];
+  }
+
+  function optionalBookNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
   function normalizeBookRecord(rawBook) {
+    if (!rawBook || typeof rawBook !== "object") return null;
+    const gutenbergId = normalizeGutenbergId(rawBook);
+    if (rawBook.source === "gutenberg" || gutenbergId) {
+      if (!gutenbergId) return null;
+      const cachedDifficulty = bookDifficultyCache[`gutenberg:${gutenbergId}`] || {};
+      return {
+        ...rawBook,
+        id: `gutenberg:${gutenbergId}`,
+        source: "gutenberg",
+        gutenbergId,
+        link: gutenbergLandingPage(gutenbergId),
+        title: cleanBookTitle(rawBook.title) || `Project Gutenberg #${gutenbergId}`,
+        author: normalizeSpaces(rawBook.author) || "Unknown author",
+        level: BOOK_LEVELS[rawBook.level] ? rawBook.level : (BOOK_LEVELS[cachedDifficulty.level] ? cachedDifficulty.level : ""),
+        wordCount: Math.max(0, Number(rawBook.wordCount) || Number(cachedDifficulty.wordCount) || 0),
+        estimatedGrade: optionalBookNumber(rawBook.estimatedGrade) ?? optionalBookNumber(cachedDifficulty.estimatedGrade),
+        averageSentenceWords: optionalBookNumber(rawBook.averageSentenceWords) ?? optionalBookNumber(cachedDifficulty.averageSentenceWords),
+        genres: cleanBookStringList(rawBook.genres).filter((genre) => BOOK_GENRES[genre]),
+        subjects: cleanBookStringList(rawBook.subjects),
+        bookshelves: cleanBookStringList(rawBook.bookshelves),
+        textUrls: cleanBookStringList(rawBook.textUrls).filter((url) => /^https?:\/\//i.test(url)),
+        summary: normalizeSpaces(rawBook.summary)
+      };
+    }
     const link = normalizeStandardEbookLink(rawBook.link);
     if (!isStandardEbookWorkLink(link)) return null;
+    const cachedDifficulty = bookDifficultyCache[link] || {};
     return {
+      ...rawBook,
       id: link,
+      source: "standard",
       link,
       title: cleanBookTitle(rawBook.title) || bookTitleFromUrl(link),
-      author: normalizeSpaces(rawBook.author) || bookAuthorFromUrl(link)
+      author: normalizeSpaces(rawBook.author) || bookAuthorFromUrl(link),
+      level: BOOK_LEVELS[rawBook.level] ? rawBook.level : (BOOK_LEVELS[cachedDifficulty.level] ? cachedDifficulty.level : ""),
+      wordCount: Math.max(0, Number(rawBook.wordCount) || Number(cachedDifficulty.wordCount) || 0),
+      estimatedGrade: optionalBookNumber(rawBook.estimatedGrade) ?? optionalBookNumber(cachedDifficulty.estimatedGrade),
+      averageSentenceWords: optionalBookNumber(rawBook.averageSentenceWords) ?? optionalBookNumber(cachedDifficulty.averageSentenceWords),
+      genres: cleanBookStringList(rawBook.genres).filter((genre) => BOOK_GENRES[genre]),
+      subjects: cleanBookStringList(rawBook.subjects),
+      bookshelves: cleanBookStringList(rawBook.bookshelves)
     };
   }
 
@@ -1654,6 +2150,149 @@
     return dedupeBooks(books);
   }
 
+  function formatGutenbergAuthorName(value) {
+    const clean = normalizeSpaces(value);
+    const parts = clean.split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length !== 2 || /\(|\)/.test(clean)) return clean;
+    return `${parts[1]} ${parts[0]}`;
+  }
+
+  function inferBookGenres(values) {
+    const haystack = normalizeBookSearchValue(cleanBookStringList(values).join(" "));
+    const keywordMap = {
+      adventure: ["adventure", "pirate", "sea stories"],
+      autobiography: ["autobiograph"],
+      biography: ["biograph"],
+      childrens: ["children", "juvenile"],
+      comedy: ["comedy", "humorous"],
+      drama: ["drama", "plays"],
+      fantasy: ["fantasy", "fairy tale"],
+      fiction: ["fiction", "novels"],
+      horror: ["horror", "gothic"],
+      memoir: ["memoir"],
+      mystery: ["mystery", "detective", "crime"],
+      nonfiction: ["nonfiction", "non fiction"],
+      philosophy: ["philosoph"],
+      poetry: ["poetry", "poems"],
+      satire: ["satire", "satirical"],
+      "science-fiction": ["science fiction"],
+      shorts: ["short stories", "fables"],
+      spirituality: ["spiritual", "religion"],
+      travel: ["travel"]
+    };
+    return Object.entries(keywordMap)
+      .filter(([, keywords]) => keywords.some((keyword) => haystack.includes(normalizeBookSearchValue(keyword))))
+      .map(([genre]) => genre);
+  }
+
+  function gutenbergTextUrls(formats) {
+    if (!formats || typeof formats !== "object") return [];
+    const entries = Object.entries(formats)
+      .filter(([format, url]) => /^https?:\/\//i.test(url) && /^text\/(plain|html)/i.test(format));
+    const rank = ([format]) => {
+      if (/text\/plain.*utf-8/i.test(format)) return 0;
+      if (/text\/plain/i.test(format)) return 1;
+      return 2;
+    };
+    return entries.sort((left, right) => rank(left) - rank(right)).map(([, url]) => url);
+  }
+
+  function guidedBookForGutenbergId(id) {
+    return GUIDED_BOOKS.find((book) => book.gutenbergId === Number(id)) || null;
+  }
+
+  function normalizeGutendexBook(rawBook) {
+    const gutenbergId = Number.parseInt(rawBook?.id, 10) || 0;
+    if (!gutenbergId || rawBook?.media_type !== "Text") return null;
+    const guided = guidedBookForGutenbergId(gutenbergId);
+    const subjects = cleanBookStringList(rawBook.subjects);
+    const bookshelves = cleanBookStringList(rawBook.bookshelves);
+    const author = cleanBookStringList(rawBook.authors?.map((person) => formatGutenbergAuthorName(person?.name)))
+      .join(", ");
+    return normalizeBookRecord({
+      source: "gutenberg",
+      gutenbergId,
+      title: normalizeSpaces(rawBook.title),
+      author,
+      summary: normalizeSpaces(rawBook.summaries?.[0]),
+      subjects,
+      bookshelves,
+      genres: guided?.genres?.length ? guided.genres : inferBookGenres([...subjects, ...bookshelves]),
+      textUrls: gutenbergTextUrls(rawBook.formats),
+      level: guided?.level || "",
+      wordCount: guided?.wordCount || 0,
+      estimatedGrade: guided?.estimatedGrade ?? null,
+      averageSentenceWords: guided?.averageSentenceWords ?? null
+    });
+  }
+
+  async function fetchJsonWithProxies(url, label) {
+    const failures = [];
+    const candidates = PROXY_CANDIDATES.filter((candidate) => candidate.name !== "Jina");
+    const waves = [candidates.slice(0, 2), candidates.slice(2)];
+    const fetchCandidate = async (proxy, signal) => {
+      const response = await withTimeout(
+        fetch(proxy.build(url), { cache: "no-store", signal }),
+        BOOK_FETCH_TIMEOUT_MS,
+        `${proxy.name} ${label}`
+      );
+      if (!response.ok) throw new Error(`${response.status}`);
+      let text = await withTimeout(response.text(), BOOK_FETCH_TIMEOUT_MS, `${proxy.name} body`);
+      if (proxy.unwrap) text = proxy.unwrap(text);
+      const payload = JSON.parse(text);
+      if (!payload || typeof payload !== "object") throw new Error("invalid JSON");
+      return { payload, proxy: proxy.name };
+    };
+    for (const wave of waves) {
+      const controllers = wave.map(() => new AbortController());
+      try {
+        const result = await Promise.any(wave.map((proxy, index) => (
+          fetchCandidate(proxy, controllers[index].signal).catch((error) => {
+            failures.push(`${proxy.name}: ${error.message}`);
+            throw error;
+          })
+        )));
+        controllers.forEach((controller) => controller.abort());
+        return result;
+      } catch {
+        controllers.forEach((controller) => controller.abort());
+        // Continue to the fallback proxy wave.
+      }
+    }
+    throw new Error(`${label} failed: ${failures.slice(0, 3).join(" | ")}`);
+  }
+
+  function gutenbergCatalogUrl(page = state.bookPage, query = state.bookSearch, genre = state.bookGenre) {
+    const params = new URLSearchParams({
+      languages: "en",
+      copyright: "false",
+      mime_type: "text/",
+      sort: "popular",
+      page: String(Math.max(1, Number.parseInt(page, 10) || 1))
+    });
+    const cleanQuery = normalizeSpaces(query);
+    if (cleanQuery) params.set("search", cleanQuery);
+    if (BOOK_GENRES[genre]) params.set("topic", BOOK_GENRES[genre]);
+    return `${GUTENDEX_BOOKS_URL}?${params.toString()}`;
+  }
+
+  async function fetchGutenbergCatalogPage(page = state.bookPage, query = state.bookSearch, genre = state.bookGenre) {
+    const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
+    const { payload, proxy } = await fetchJsonWithProxies(
+      gutenbergCatalogUrl(safePage, query, genre),
+      "Project Gutenberg catalog"
+    );
+    const books = dedupeBooks((Array.isArray(payload.results) ? payload.results : []).map(normalizeGutendexBook).filter(Boolean));
+    if (!books.length) throw new Error("No Project Gutenberg books found");
+    return {
+      books,
+      proxy: `Gutendex via ${proxy}`,
+      page: safePage,
+      hasNext: Boolean(payload.next),
+      hasPrevious: Boolean(payload.previous)
+    };
+  }
+
   async function fetchBookCatalogPage(page = state.bookPage, query = state.bookSearch, genre = state.bookGenre) {
     const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
     const { text, proxy } = await fetchTextWithProxies(standardEbooksPageUrl(safePage, query, genre), "book shelf");
@@ -1678,7 +2317,7 @@
     const matches = [];
     const seedBooks = genre
       ? state.bookBooks
-      : [...favoriteBooks(), ...state.bookBooks, ...FALLBACK_BOOKS];
+      : [...favoriteBooks(), ...state.bookBooks, ...FALLBACK_BOOKS].filter((book) => book?.source !== "gutenberg");
     collectMatchedBooks(matches, seedBooks, query);
     if (matches.length) {
       return { books: matches, proxy: "saved books", page: 1 };
@@ -1705,11 +2344,51 @@
 
   async function loadBookCatalogPage(page = state.bookPage) {
     const cleanQuery = normalizeSpaces(state.bookSearch);
+    if (state.bookShelfKind === "guided") {
+      state.bookBooks = visibleGuidedBooks();
+      state.bookPage = 1;
+      els.bookPageInput.value = "1";
+      renderBookShelf();
+      const filters = [
+        state.bookLevel ? bookLevelInfo(state.bookLevel)?.shortLabel : "",
+        state.bookGenre ? genreLabel() : "",
+        cleanQuery ? `“${cleanQuery}”` : ""
+      ].filter(Boolean);
+      setStatus(`${state.bookBooks.length} guided books${filters.length ? ` · ${filters.join(" · ")}` : ""}`);
+      return;
+    }
     if (state.bookShelfKind === "favorites") {
       state.bookBooks = visibleFavoriteBooks();
       els.bookPageInput.value = "1";
       renderBookShelf();
-      setStatus(cleanQuery ? `Searched ${state.bookBooks.length} favorite books` : `${state.bookBooks.length} favorite books`);
+      const levelText = state.bookLevel ? ` at ${bookLevelInfo(state.bookLevel)?.shortLabel}` : "";
+      setStatus(cleanQuery
+        ? `Searched ${state.bookBooks.length} favorite books${levelText}`
+        : `${state.bookBooks.length} favorite books${levelText}`);
+      return;
+    }
+
+    if (state.bookShelfKind === "gutenberg") {
+      const genreText = state.bookGenre ? `${genreLabel()} ` : "";
+      setStatus(cleanQuery
+        ? `Searching ${genreText}Project Gutenberg for "${cleanQuery}"`
+        : `Loading ${genreText}Project Gutenberg page ${page}`);
+      try {
+        const result = await fetchGutenbergCatalogPage(page, cleanQuery, state.bookGenre);
+        state.bookPage = result.page;
+        state.bookHasNextPage = result.hasNext;
+        state.bookHasPreviousPage = result.hasPrevious;
+        state.bookBooks = result.books;
+        els.bookPageInput.value = String(result.page);
+        renderBookShelf();
+        setStatus(cleanQuery
+          ? `Found ${result.books.length} Project Gutenberg books via ${result.proxy}`
+          : `Loaded ${result.books.length} Project Gutenberg books via ${result.proxy}`);
+      } catch (error) {
+        state.bookBooks = [];
+        renderBookShelf();
+        setStatus(cleanQuery ? `No Project Gutenberg books found for "${cleanQuery}"` : error.message);
+      }
       return;
     }
 
@@ -1742,6 +2421,8 @@
         throw new Error("No matching books found");
       }
       state.bookPage = safePage;
+      state.bookHasPreviousPage = safePage > 1;
+      state.bookHasNextPage = books.length >= STANDARD_EBOOKS_PER_PAGE;
       state.bookBooks = books;
       els.bookPageInput.value = String(safePage);
       renderBookShelf();
@@ -1772,13 +2453,17 @@
       populateNewsSourceSelect();
       return;
     }
-    const favorites = state.bookShelfKind === "favorites";
+    const paged = state.bookShelfKind === "library" || state.bookShelfKind === "gutenberg";
+    const levelsAvailable = state.bookShelfKind === "guided" || state.bookShelfKind === "favorites";
     els.bookShelfViewSelect.value = state.bookShelfKind;
     els.bookGenreSelect.value = state.bookGenre;
-    els.bookPageInput.disabled = favorites;
-    els.bookPrevPageBtn.disabled = favorites;
-    els.bookNextPageBtn.disabled = favorites;
-    els.bookGenreSelect.disabled = favorites;
+    els.bookLevelSelect.value = state.bookLevel;
+    els.bookPageInput.disabled = !paged;
+    els.bookPrevPageBtn.disabled = !paged || !state.bookHasPreviousPage;
+    els.bookNextPageBtn.disabled = !paged || !state.bookHasNextPage;
+    els.bookGenreSelect.disabled = state.bookShelfKind === "favorites";
+    els.bookLevelSelect.disabled = !levelsAvailable;
+    els.bookLevelNote.hidden = !levelsAvailable;
   }
 
   function bookShelfTitle() {
@@ -1790,12 +2475,21 @@
     }
     const cleanQuery = normalizeSpaces(state.bookSearch);
     if (state.bookShelfKind === "favorites") {
-      return cleanQuery ? `Favorites "${cleanQuery}"` : "Favorites";
+      const levelText = state.bookLevel ? `${bookLevelInfo(state.bookLevel)?.shortLabel} ` : "";
+      return cleanQuery ? `${levelText}Favorites "${cleanQuery}"` : `${levelText}Favorites`;
+    }
+    if (state.bookShelfKind === "guided") {
+      const levelText = state.bookLevel ? `${bookLevelInfo(state.bookLevel)?.shortLabel} · ` : "";
+      const genreText = state.bookGenre ? `${genreLabel()} · ` : "";
+      return cleanQuery
+        ? `${levelText}${genreText}Guided "${cleanQuery}"`
+        : `${levelText}${genreText}Guided levels`;
     }
     const genreText = state.bookGenre ? `${genreLabel()} ` : "";
+    const sourceText = state.bookShelfKind === "gutenberg" ? "Project Gutenberg" : "Standard Ebooks";
     return cleanQuery
-      ? `${genreText}Search "${cleanQuery}"`
-      : `${genreText}Library page ${state.bookPage}`;
+      ? `${genreText}${sourceText} "${cleanQuery}"`
+      : `${genreText}${sourceText} page ${state.bookPage}`;
   }
 
   function renderBookShelf() {
@@ -1807,6 +2501,7 @@
       }
       if (!state.bookBooks.length) {
         els.bookShelf.innerHTML = `<div class="book-empty">${state.newsSearch ? "No current articles match this filter." : "Refresh to load current news articles."}</div>`;
+        scheduleShelfReaderPrefetch();
         return;
       }
       els.bookShelf.innerHTML = state.bookBooks.map((article, index) => {
@@ -1821,6 +2516,7 @@
           </article>
         `;
       }).join("");
+      scheduleShelfReaderPrefetch();
       return;
     }
     const cleanQuery = normalizeSpaces(state.bookSearch);
@@ -1830,8 +2526,13 @@
     if (!state.bookBooks.length) {
       const emptyText = state.bookShelfKind === "favorites"
         ? (cleanQuery ? "No matching favorite books found." : "Favorite books will appear here.")
-        : (cleanQuery ? "No matching books found." : "Load a Standard Ebooks shelf page to begin.");
+        : state.bookShelfKind === "guided"
+          ? "No guided books match these filters. Try another level or genre."
+          : state.bookShelfKind === "gutenberg"
+            ? (cleanQuery ? "No Project Gutenberg books match this search." : "Load the Project Gutenberg catalog to begin.")
+            : (cleanQuery ? "No matching books found." : "Load a Standard Ebooks shelf page to begin.");
       els.bookShelf.innerHTML = `<div class="book-empty">${emptyText}</div>`;
+      scheduleShelfReaderPrefetch();
       return;
     }
 
@@ -1839,11 +2540,18 @@
       const percent = bookProgressPercent(book);
       const progressLabel = percent ? `${percent}% read` : "Not started";
       const favorite = isBookFavorite(book);
+      const level = bookLevelInfo(book);
+      const difficulty = bookDifficultySummary(book);
       return `
         <article class="book-card" data-book-index="${index}">
           <button class="book-open-btn" type="button" data-book-index="${index}">
             <span class="book-card-title">${escapeHtml(book.title)}</span>
             <span class="book-card-author">${escapeHtml(book.author || "Unknown author")}</span>
+            <span class="book-card-badges">
+              ${level ? `<span class="book-level-badge" title="${escapeHtml(level.description)}">${escapeHtml(level.label)}</span>` : ""}
+              <span class="book-source-badge">${escapeHtml(bookSourceLabel(book))}</span>
+            </span>
+            ${difficulty ? `<span class="book-card-meta">${escapeHtml(difficulty)}</span>` : ""}
           </button>
           <button class="book-favorite-btn${favorite ? " active" : ""}" type="button" data-book-index="${index}" aria-pressed="${favorite}" aria-label="${favorite ? "Remove favorite" : "Add favorite"}" title="${favorite ? "Remove favorite" : "Add favorite"}">${favorite ? "&#9733;" : "&#9734;"}</button>
           <span class="book-card-progress">
@@ -1853,9 +2561,22 @@
         </article>
       `;
     }).join("");
+    scheduleShelfReaderPrefetch();
   }
 
-  function bookTextCandidates(book) {
+  async function bookTextCandidates(book) {
+    if (book?.source === "gutenberg" || book?.gutenbergId) {
+      if (Array.isArray(book.textUrls) && book.textUrls.length) {
+        return [...new Set(book.textUrls)];
+      }
+      const gutenbergId = normalizeGutenbergId(book);
+      if (!gutenbergId) return [];
+      const { payload } = await fetchJsonWithProxies(`${GUTENDEX_BOOKS_URL}${gutenbergId}/`, "Project Gutenberg metadata");
+      const textUrls = gutenbergTextUrls(payload.formats);
+      if (!textUrls.length) throw new Error("No readable Project Gutenberg text format found");
+      book.textUrls = textUrls;
+      return textUrls;
+    }
     const root = normalizeStandardEbookLink(book?.link || "");
     return [
       `${root}/text/single-page`,
@@ -2041,6 +2762,59 @@
     return looksHtml ? parseBookHtml(raw) : parseBookPlain(raw);
   }
 
+  function estimateEnglishSyllables(word) {
+    const clean = String(word || "").toLowerCase().replace(/[^a-z]/g, "");
+    if (!clean) return 0;
+    if (clean.length <= 3) return 1;
+    const trimmed = clean.replace(/(?:es|ed|e)$/i, "").replace(/^y/i, "");
+    return Math.max(1, (trimmed.match(/[aeiouy]{1,2}/g) || []).length);
+  }
+
+  function measuredBookLevel(grade, wordCount) {
+    if (grade <= 7 && wordCount <= 5000) return "starter";
+    if (grade <= 7 && wordCount <= 45000) return "easy";
+    if (grade <= 8 && wordCount <= 110000) return "steady";
+    return "stretch";
+  }
+
+  function measureBookDifficulty(sentences) {
+    let wordCount = 0;
+    let syllableCount = 0;
+    let sentenceCount = 0;
+    for (const sentence of sentences || []) {
+      const words = String(sentence?.text || "").match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g) || [];
+      if (!words.length) continue;
+      sentenceCount += 1;
+      wordCount += words.length;
+      syllableCount += words.reduce((sum, word) => sum + estimateEnglishSyllables(word), 0);
+    }
+    if (!wordCount || !sentenceCount) return null;
+    const averageSentenceWords = wordCount / sentenceCount;
+    const estimatedGrade = 0.39 * averageSentenceWords + 11.8 * (syllableCount / wordCount) - 15.59;
+    const safeGrade = Math.max(0, Math.min(18, estimatedGrade));
+    return {
+      level: measuredBookLevel(safeGrade, wordCount),
+      wordCount,
+      estimatedGrade: Number(safeGrade.toFixed(1)),
+      averageSentenceWords: Number(averageSentenceWords.toFixed(1)),
+      measuredAt: Date.now()
+    };
+  }
+
+  function rememberMeasuredBookDifficulty(book, sentences) {
+    if (!book?.id || book.kind === "news") return;
+    if (bookLevelInfo(book) && book.wordCount && optionalBookNumber(book.estimatedGrade) !== null) return;
+    const difficulty = measureBookDifficulty(sentences);
+    if (!difficulty) return;
+    Object.assign(book, difficulty);
+    state.bookDifficulty[book.id] = difficulty;
+    if (state.bookFavorites[book.id]) {
+      Object.assign(state.bookFavorites[book.id], difficulty);
+      saveBookFavoritesStore();
+    }
+    saveBookDifficultyStore();
+  }
+
   function isNewsNoise(text) {
     const clean = normalizeSpaces(text);
     if (!clean || clean.length < 2) return true;
@@ -2151,12 +2925,13 @@
     throw lastError || new Error("News article text failed");
   }
 
-  async function fetchAndParseBook(book) {
+  async function fetchAndParseBookUncached(book) {
     if (book?.kind === "news") {
       return fetchAndParseNewsArticle(book);
     }
     let lastError = null;
-    for (const candidate of bookTextCandidates(book)) {
+    const candidates = await bookTextCandidates(book);
+    for (const candidate of candidates) {
       try {
         const { text, proxy } = await fetchTextWithProxies(candidate, "book text");
         const parsed = parseBookText(text);
@@ -2169,6 +2944,68 @@
     throw lastError || new Error("Book text failed");
   }
 
+  function readerDocumentKey(book) {
+    const identity = book?.id || book?.link || "";
+    return identity ? `${book?.kind === "news" ? "news" : "book"}:${identity}` : "";
+  }
+
+  function rememberReaderDocument(key, parsed) {
+    if (!key || !parsed) return;
+    state.readerDocumentCache.delete(key);
+    state.readerDocumentCache.set(key, parsed);
+    while (state.readerDocumentCache.size > READER_DOCUMENT_CACHE_LIMIT) {
+      state.readerDocumentCache.delete(state.readerDocumentCache.keys().next().value);
+    }
+  }
+
+  async function fetchAndParseBook(book) {
+    const key = readerDocumentKey(book);
+    if (key && state.readerDocumentCache.has(key)) {
+      const parsed = state.readerDocumentCache.get(key);
+      state.readerDocumentCache.delete(key);
+      state.readerDocumentCache.set(key, parsed);
+      return parsed;
+    }
+    if (key && state.readerDocumentPromises.has(key)) {
+      return state.readerDocumentPromises.get(key);
+    }
+    const promise = fetchAndParseBookUncached(book)
+      .then((parsed) => {
+        rememberReaderDocument(key, parsed);
+        return parsed;
+      })
+      .finally(() => state.readerDocumentPromises.delete(key));
+    if (key) state.readerDocumentPromises.set(key, promise);
+    return promise;
+  }
+
+  function prefetchBookDocument(book) {
+    if (!book?.link) return;
+    fetchAndParseBook(book).catch((error) => {
+      console.warn(`Reader prefetch failed for ${book.title || "item"}:`, error);
+    });
+  }
+
+  function scheduleShelfReaderPrefetch() {
+    window.clearTimeout(state.readerPrefetchTimer);
+    const book = state.bookBooks[0];
+    const mode = state.contentMode;
+    const shouldPrefetch = book && (mode === "news" || state.bookShelfKind === "guided");
+    if (!shouldPrefetch) return;
+    state.readerPrefetchTimer = window.setTimeout(() => {
+      if (state.contentMode !== mode || state.bookViewMode !== "shelf") return;
+      prefetchBookDocument(book);
+    }, 250);
+  }
+
+  function bookModeKickerText() {
+    if (isNewsMode()) return "Live text news";
+    if (state.bookShelfKind === "guided") return "Measured public-domain reads";
+    if (state.bookShelfKind === "gutenberg") return "Project Gutenberg via Gutendex";
+    if (state.bookShelfKind === "favorites") return "Saved books";
+    return "Standard Ebooks";
+  }
+
   function renderBookReaderShell() {
     const book = state.bookLoadedBook;
     if (!book) {
@@ -2177,11 +3014,16 @@
     }
     els.bookReader.hidden = state.bookViewMode !== "reader";
     els.bookReaderTitle.textContent = book.title;
+    const bookMeta = [
+      book.author || "Unknown author",
+      bookLevelInfo(book)?.label || "",
+      bookDifficultySummary(book)
+    ].filter(Boolean).join(" · ");
     els.bookReaderMeta.textContent = book.kind === "news"
       ? `${book.sourceLabel || book.author || "News"} · ${formatNewsDate(book.publishedAt)}`
-      : (book.author || "Unknown author");
+      : bookMeta;
     els.bookSourceLink.href = book.link || STANDARD_EBOOKS_LIST_URL;
-    els.bookSourceLink.textContent = book.kind === "news" ? "Original article" : "Source";
+    els.bookSourceLink.textContent = book.kind === "news" ? "Original article" : bookSourceLabel(book);
     els.bookChapterLabel.textContent = book.kind === "news" ? "Section" : "Chapter";
     els.bookEnglishLabel.textContent = book.kind === "news" ? "English translation" : "English original";
     els.bookProgressRange.max = String(Math.max(0, state.bookSentences.length - 1));
@@ -2238,9 +3080,30 @@
     els.bookNearbyList.innerHTML = rows.join("");
   }
 
+  function scheduleReaderSentencePrefetch(startIndex = state.bookCurrentIndex + 1, count = 2) {
+    window.clearTimeout(state.readerSentencePrefetchTimer);
+    const language = state.language;
+    const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
+    const loadedKey = readerDocumentKey(state.bookLoadedBook);
+    const sentences = Array.from({ length: count }, (value, offset) => (
+      state.bookSentences[startIndex + offset]
+    )).filter(Boolean);
+    if (!sentences.length) return;
+    state.readerSentencePrefetchTimer = window.setTimeout(() => {
+      if (state.language !== language || readerDocumentKey(state.bookLoadedBook) !== loadedKey) return;
+      sentences.forEach((sentence) => {
+        readerSentencePair(sentence, language, newsMode)
+          .then((pair) => ensureReaderAlignment(pair, language, newsMode))
+          .catch((error) => console.warn("Sentence prefetch failed:", error));
+      });
+    }, 220);
+  }
+
   async function renderBookSentence() {
     const sentence = currentBookSentence();
     const language = activeLanguage();
+    const languageKey = state.language;
+    const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
     els.bookSourceLabel.textContent = language.label;
     els.bookSourceSentence.lang = sourceLangCode();
     els.bookSourceSentence.dir = language.dir;
@@ -2264,10 +3127,12 @@
     updateBookProgressControls();
     renderBookNearby();
 
-    const pair = await readerSentencePair(sentence, state.language);
+    const pair = await readerSentencePair(sentence, languageKey, newsMode);
     if (renderToken !== state.bookRenderToken) return;
     els.bookSourceSentence.textContent = pair.source;
     els.bookEnglishSentence.textContent = pair.english;
+    ensureReaderAlignment(pair, languageKey, newsMode);
+    scheduleReaderSentencePrefetch();
   }
 
   function setBookIndex(index, options = {}) {
@@ -2309,6 +3174,7 @@
     const parsed = await fetchAndParseBook(book);
     state.bookSentences = parsed.sentences;
     state.bookChapters = parsed.chapters;
+    rememberMeasuredBookDifficulty(book, parsed.sentences);
     showBookReader();
     renderBookReaderShell();
 
@@ -2333,12 +3199,17 @@
 
   async function loadRandomBookParagraph() {
     stopSpeech();
-    if (state.bookShelfKind === "favorites") {
-      state.bookBooks = visibleFavoriteBooks();
-      const favorite = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
-      if (!favorite) throw new Error("No favorite books found");
-      await loadBook(favorite, { random: true });
-      setStatus(`Random favorite paragraph from ${favorite.title}`);
+    if (state.bookShelfKind !== "library") {
+      await loadBookCatalogPage(state.bookPage);
+      const book = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
+      if (!book) throw new Error(state.bookShelfKind === "favorites" ? "No favorite books found" : "No books match these filters");
+      await loadBook(book, { random: true });
+      const shelfLabel = state.bookShelfKind === "guided"
+        ? "guided"
+        : state.bookShelfKind === "gutenberg"
+          ? "Project Gutenberg"
+          : "favorite";
+      setStatus(`Random ${shelfLabel} paragraph from ${book.title}`);
       return;
     }
 
@@ -2361,10 +3232,11 @@
   function showBookShelf() {
     state.bookViewMode = "shelf";
     state.bookRenderToken += 1;
-    els.bookModeKicker.textContent = isNewsMode() ? "Live text news" : "Standard Ebooks";
+    els.bookModeKicker.textContent = bookModeKickerText();
     els.bookModeTitle.textContent = bookShelfTitle();
     els.bookShelfControls.hidden = isNewsMode();
     els.newsShelfControls.hidden = !isNewsMode();
+    els.bookLevelNote.hidden = isNewsMode() || !["guided", "favorites"].includes(state.bookShelfKind);
     els.bookShelf.hidden = false;
     els.bookReader.hidden = true;
     els.bookShelfBtn.hidden = true;
@@ -2378,10 +3250,11 @@
 
   function showBookReader() {
     state.bookViewMode = "reader";
-    els.bookModeKicker.textContent = isNewsMode() ? "Live text news" : "Standard Ebooks";
+    els.bookModeKicker.textContent = bookModeKickerText();
     els.bookModeTitle.textContent = isNewsMode() ? "Current article" : "Current book";
     els.bookShelfControls.hidden = true;
     els.newsShelfControls.hidden = true;
+    els.bookLevelNote.hidden = true;
     els.bookShelf.hidden = true;
     els.bookReader.hidden = false;
     els.bookShelfBtn.hidden = false;
@@ -2431,16 +3304,20 @@
   async function speakBookSentence(sentence, token) {
     if (!sentence || token !== state.playToken) return;
     const language = activeLanguage();
-    const pair = await readerSentencePair(sentence, state.language);
+    const languageKey = state.language;
+    const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
+    const pair = await readerSentencePair(sentence, languageKey, newsMode);
     if (token !== state.playToken || !state.bookPlaying) return;
 
     els.bookSourceSentence.textContent = pair.source;
     els.bookEnglishSentence.textContent = pair.english;
+    const alignment = ensureReaderAlignment(pair, languageKey, newsMode);
+    await Promise.race([alignment.enrichmentPromise, delayPlain(700)]);
+    if (token !== state.playToken || !state.bookPlaying) return;
     setStatus(`${language.label} sentence ${state.bookCurrentIndex + 1}`);
     await speakText(pair.source, language.speechLang, Number(els.bookSourceRate.value), token, {
-      highlightText: pair.source,
-      highlightTargets: [{ id: "bookSourceSentence", text: pair.source }],
-      correspondingTargets: [{ id: "bookEnglishSentence", text: pair.english }]
+      alignment,
+      speakingPane: "source"
     });
     await delay(Number(els.gapMs.value), token);
     if (token !== state.playToken || !state.bookPlaying) return;
@@ -2448,8 +3325,8 @@
     if (!els.bookReadEnglish.checked) return;
     setStatus(`English sentence ${state.bookCurrentIndex + 1}`);
     await speakText(pair.english, "en-US", Number(els.bookEnRate.value), token, {
-      highlightText: pair.english,
-      highlightTargets: [{ id: "bookEnglishSentence", text: pair.english }]
+      alignment,
+      speakingPane: "english"
     });
     await delay(Number(els.gapMs.value), token);
   }
@@ -2624,24 +3501,38 @@
       const timeout = window.setTimeout(() => {
         reject(new Error("Speech did not start"));
       }, 5000);
+      const applyHighlight = (charIndex) => {
+        if (options.alignment) {
+          applyReaderWordHighlight(options.alignment, options.speakingPane, charIndex, spokenText);
+          return;
+        }
+        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, charIndex);
+      };
+      const clearHighlight = () => {
+        if (options.alignment) {
+          clearSpeechHighlights();
+          return;
+        }
+        clearSpeechHighlights(options.highlightTargets);
+      };
       utterance.onstart = () => {
         window.clearTimeout(timeout);
-        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, 0);
-        applyCorrespondingHighlight(options.correspondingTargets);
+        applyHighlight(0);
+        if (!options.alignment) applyCorrespondingHighlight(options.correspondingTargets);
       };
       utterance.onboundary = (event) => {
         if (event.name && event.name !== "word") return;
-        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, event.charIndex || 0);
+        applyHighlight(event.charIndex || 0);
       };
       utterance.onend = () => {
         window.clearTimeout(timeout);
-        clearSpeechHighlights(options.highlightTargets);
+        clearHighlight();
         clearCorrespondingHighlights();
         resolve();
       };
       utterance.onerror = (event) => {
         window.clearTimeout(timeout);
-        clearSpeechHighlights(options.highlightTargets);
+        clearHighlight();
         clearCorrespondingHighlights();
         reject(new Error(event.error || "Speech synthesis error"));
       };
@@ -2939,8 +3830,9 @@
 
     els.bookShelfControls.addEventListener("submit", async (event) => {
       event.preventDefault();
-      state.bookShelfKind = els.bookShelfViewSelect.value === "favorites" ? "favorites" : "library";
+      state.bookShelfKind = BOOK_SHELF_KINDS.has(els.bookShelfViewSelect.value) ? els.bookShelfViewSelect.value : "guided";
       state.bookGenre = BOOK_GENRES[els.bookGenreSelect.value] ? els.bookGenreSelect.value : "";
+      state.bookLevel = BOOK_LEVELS[els.bookLevelSelect.value] ? els.bookLevelSelect.value : "";
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       state.bookPage = Math.max(1, Number.parseInt(els.bookPageInput.value || "1", 10) || 1);
       setBookMode(true, "books");
@@ -2953,9 +3845,10 @@
     });
 
     els.bookShelfViewSelect.addEventListener("change", async () => {
-      state.bookShelfKind = els.bookShelfViewSelect.value === "favorites" ? "favorites" : "library";
+      state.bookShelfKind = BOOK_SHELF_KINDS.has(els.bookShelfViewSelect.value) ? els.bookShelfViewSelect.value : "guided";
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       state.bookPage = 1;
+      state.bookBooks = [];
       els.bookPageInput.value = "1";
       savePrefs();
       setBookMode(true, "books");
@@ -2982,8 +3875,23 @@
       }
     });
 
+    els.bookLevelSelect.addEventListener("change", async () => {
+      state.bookLevel = BOOK_LEVELS[els.bookLevelSelect.value] ? els.bookLevelSelect.value : "";
+      state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
+      state.bookPage = 1;
+      els.bookPageInput.value = "1";
+      savePrefs();
+      setBookMode(true, "books");
+      try {
+        await loadBookCatalogPage(1);
+      } catch (error) {
+        setStatus(error.message || "Difficulty filter failed");
+        console.error(error);
+      }
+    });
+
     els.bookPageInput.addEventListener("change", async () => {
-      if (state.bookShelfKind === "favorites") return;
+      if (!["library", "gutenberg"].includes(state.bookShelfKind)) return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true, "books");
       try {
@@ -2995,7 +3903,7 @@
     });
 
     els.bookPrevPageBtn.addEventListener("click", async () => {
-      if (state.bookShelfKind === "favorites") return;
+      if (!["library", "gutenberg"].includes(state.bookShelfKind)) return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true, "books");
       try {
@@ -3007,7 +3915,7 @@
     });
 
     els.bookNextPageBtn.addEventListener("click", async () => {
-      if (state.bookShelfKind === "favorites") return;
+      if (!["library", "gutenberg"].includes(state.bookShelfKind)) return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true, "books");
       try {
@@ -3094,6 +4002,15 @@
       savePrefs();
       setStatus(els.bookReadEnglish.checked ? "English TTS enabled" : "English TTS skipped");
     });
+
+    const prefetchShelfCard = (event) => {
+      const card = event.target.closest(".book-card");
+      if (!card) return;
+      const book = state.bookBooks[Number.parseInt(card.dataset.bookIndex || "0", 10)];
+      prefetchBookDocument(book);
+    };
+    els.bookShelf.addEventListener("pointerover", prefetchShelfCard, { passive: true });
+    els.bookShelf.addEventListener("pointerdown", prefetchShelfCard, { passive: true });
 
     els.bookShelf.addEventListener("click", async (event) => {
       const favoriteButton = event.target.closest(".book-favorite-btn");
@@ -3213,6 +4130,7 @@
     populateNewsSourceSelect();
     els.bookShelfViewSelect.value = state.bookShelfKind;
     els.bookGenreSelect.value = state.bookGenre;
+    els.bookLevelSelect.value = state.bookLevel;
     els.bandSelect.value = state.band;
     els.enLangSelect.value = state.enLang;
     syncBookAudioControlsFromSettings();
