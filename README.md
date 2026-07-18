@@ -25,8 +25,9 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Automatic English readability estimates for newly opened catalog books; levels combine sentence/word complexity with total length and are not formal CEFR ratings
 - Current text-news reader using Meduza, VOA Persian, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and optional Google News feeds
 - News headline filtering, source selection, refresh, random article loading, and full article text browsing without favorites
-- Synchronized English sentence highlighting during target-language book and news playback
+- Moving word/phrase alignment during book and news playback: the spoken word and its estimated one- or two-word grammatical counterpart are highlighted together in both languages
 - Optional English TTS skip setting shared by the book and news readers
+- Faster reader startup through parallel fetch fallbacks, in-flight request sharing, document/translation caching, and shelf/sentence preloading
 - System TTS with selectable voices, page volume, speed, and gap controls
 - First-tap speech preparation and a retry when browser speech synthesis stalls before starting
 - Prev during playback switches into reverse through the current selected or shuffled order

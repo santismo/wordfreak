@@ -5,6 +5,7 @@
   const BOOK_PROGRESS_KEY = "wordfreak:book-progress:v1";
   const BOOK_FAVORITES_KEY = "wordfreak:book-favorites:v1";
   const BOOK_DIFFICULTY_KEY = "wordfreak:book-difficulty:v1";
+  const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v1";
   const STANDARD_EBOOKS_LIST_URL = "https://standardebooks.org/ebooks";
   const GUTENDEX_BOOKS_URL = "https://gutendex.com/books/";
   const STANDARD_EBOOKS_PER_PAGE = 48;
@@ -13,6 +14,8 @@
   const STANDARD_EBOOKS_SEARCH_RESULT_LIMIT = 48;
   const BOOK_FETCH_TIMEOUT_MS = 22000;
   const BOOK_TRANSLATION_CACHE_LIMIT = 350;
+  const READER_DOCUMENT_CACHE_LIMIT = 6;
+  const READER_ALIGNMENT_CACHE_LIMIT = 120;
   const BOOK_NEARBY_RADIUS = 3;
   const BOOK_SHELF_KINDS = new Set(["guided", "library", "gutenberg", "favorites"]);
   const BOOK_LEVELS = {
@@ -303,6 +306,7 @@
   };
 
   const bookDifficultyCache = loadBookDifficultyCache();
+  const readerTranslationCache = loadReaderTranslationCache();
 
   const state = {
     entries: [],
@@ -346,7 +350,14 @@
     bookProgress: loadBookProgress(),
     bookFavorites: loadBookFavorites(),
     bookDifficulty: bookDifficultyCache,
-    bookTranslationCache: new Map(),
+    bookTranslationCache: readerTranslationCache,
+    bookTranslationPromises: new Map(),
+    readerAlignmentCache: new Map(),
+    readerDocumentCache: new Map(),
+    readerDocumentPromises: new Map(),
+    readerPrefetchTimer: 0,
+    readerSentencePrefetchTimer: 0,
+    readerTranslationSaveTimer: 0,
     newsSourceByLanguage: {},
     newsAllArticles: [],
     newsSearch: "",
@@ -477,6 +488,15 @@
     }
   }
 
+  function loadReaderTranslationCache() {
+    try {
+      const values = JSON.parse(window.localStorage.getItem(READER_TRANSLATIONS_KEY) || "[]");
+      return new Map(Array.isArray(values) ? values.slice(-BOOK_TRANSLATION_CACHE_LIMIT) : []);
+    } catch {
+      return new Map();
+    }
+  }
+
   function loadBookFavorites() {
     try {
       const value = JSON.parse(window.localStorage.getItem(BOOK_FAVORITES_KEY) || "{}");
@@ -519,6 +539,17 @@
     } catch (error) {
       console.warn("Book difficulty save failed:", error);
     }
+  }
+
+  function scheduleReaderTranslationSave() {
+    window.clearTimeout(state.readerTranslationSaveTimer);
+    state.readerTranslationSaveTimer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(READER_TRANSLATIONS_KEY, JSON.stringify(Array.from(state.bookTranslationCache.entries())));
+      } catch (error) {
+        console.warn("Reader translation cache save failed:", error);
+      }
+    }, 350);
   }
 
   function setStatus(message) {
@@ -988,22 +1019,37 @@
       .replace(/"/g, "&quot;");
   }
 
-  function wordRanges(text) {
-    const ranges = [];
+  function wordRanges(text, locale = undefined) {
     const clean = String(text || "");
+    if (typeof Intl.Segmenter === "function") {
+      try {
+        const segmenter = new Intl.Segmenter(locale, { granularity: "word" });
+        const segmented = Array.from(segmenter.segment(clean))
+          .filter((part) => part.isWordLike || /[\p{L}\p{N}]/u.test(part.segment))
+          .map((part) => ({
+            start: part.index,
+            end: part.index + part.segment.length,
+            text: part.segment
+          }));
+        if (segmented.length) return segmented;
+      } catch {
+        // Fall through to Unicode word matching.
+      }
+    }
+    const ranges = [];
     const wordPattern = /[\p{L}\p{N}]+(?:[-'][\p{L}\p{N}]+)*/gu;
     let match = null;
     while ((match = wordPattern.exec(clean)) !== null) {
       ranges.push({
         start: match.index,
-        end: match.index + match[0].length
+        end: match.index + match[0].length,
+        text: match[0]
       });
     }
     return ranges;
   }
 
-  function activeWordIndexForChar(text, charIndex) {
-    const ranges = wordRanges(text);
+  function activeWordIndexForChar(text, charIndex, ranges = wordRanges(text)) {
     if (!ranges.length) return -1;
     const index = Math.max(0, Number(charIndex) || 0);
     const found = ranges.findIndex((range) => index >= range.start && index < range.end);
@@ -1014,10 +1060,10 @@
     return 0;
   }
 
-  function highlightedTextHtml(text, activeIndex) {
+  function highlightedTextHtml(text, activeIndexes, activeClass = "active", ranges = wordRanges(text)) {
     const clean = String(text || "");
-    const ranges = wordRanges(clean);
-    if (!ranges.length || activeIndex < 0) {
+    const indexes = new Set(Array.isArray(activeIndexes) ? activeIndexes : [activeIndexes]);
+    if (!ranges.length || !Array.from(indexes).some((index) => index >= 0)) {
       return escapeHtml(clean);
     }
 
@@ -1025,7 +1071,7 @@
     let cursor = 0;
     ranges.forEach((range, index) => {
       html += escapeHtml(clean.slice(cursor, range.start));
-      const className = index === activeIndex ? "speech-word active" : "speech-word";
+      const className = indexes.has(index) ? `speech-word ${activeClass}` : "speech-word";
       html += `<span class="${className}">${escapeHtml(clean.slice(range.start, range.end))}</span>`;
       cursor = range.end;
     });
@@ -1086,6 +1132,234 @@
     if (targets === state.activeCorrespondingHighlights) {
       state.activeCorrespondingHighlights = [];
     }
+  }
+
+  function normalizeAlignmentText(value) {
+    return String(value || "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, "")
+      .trim();
+  }
+
+  function proportionalWordMap(fromCount, toCount) {
+    if (!fromCount || !toCount) return Array.from({ length: fromCount }, () => []);
+    return Array.from({ length: fromCount }, (_, index) => {
+      const start = Math.min(toCount - 1, Math.floor((index * toCount) / fromCount));
+      const naturalEnd = Math.max(start + 1, Math.ceil(((index + 1) * toCount) / fromCount));
+      const end = Math.min(toCount, start + 2, naturalEnd);
+      return Array.from({ length: Math.max(1, end - start) }, (value, offset) => start + offset);
+    });
+  }
+
+  function invertWordMap(wordMap, targetCount) {
+    const inverted = Array.from({ length: targetCount }, () => []);
+    wordMap.forEach((targets, sourceIndex) => {
+      targets.forEach((targetIndex) => {
+        if (inverted[targetIndex] && !inverted[targetIndex].includes(sourceIndex)) {
+          inverted[targetIndex].push(sourceIndex);
+        }
+      });
+    });
+    const fallback = proportionalWordMap(targetCount, wordMap.length);
+    return inverted.map((values, index) => (values.length ? values.slice(0, 2) : fallback[index]));
+  }
+
+  function alignmentSimilarity(left, right) {
+    const a = normalizeAlignmentText(left);
+    const b = normalizeAlignmentText(right);
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    if (a.includes(b) || b.includes(a)) return Math.min(a.length, b.length) / Math.max(a.length, b.length);
+    const grams = (value) => {
+      if (value.length < 2) return [value];
+      return Array.from({ length: value.length - 1 }, (_, index) => value.slice(index, index + 2));
+    };
+    const leftGrams = grams(a);
+    const rightGrams = grams(b);
+    const remaining = [...rightGrams];
+    let matches = 0;
+    leftGrams.forEach((gram) => {
+      const index = remaining.indexOf(gram);
+      if (index < 0) return;
+      matches += 1;
+      remaining.splice(index, 1);
+    });
+    return (2 * matches) / Math.max(1, leftGrams.length + rightGrams.length);
+  }
+
+  function wordIndexesForCharSpan(ranges, start, end) {
+    return ranges
+      .map((range, index) => (range.end > start && range.start < end ? index : -1))
+      .filter((index) => index >= 0)
+      .slice(0, 2);
+  }
+
+  function locateAlignedPhrase(text, ranges, phrase, expectedIndexes = []) {
+    const cleanPhrase = String(phrase || "").trim();
+    if (!cleanPhrase || !ranges.length) return [];
+    const expected = expectedIndexes[0] ?? 0;
+    const exactCandidates = [];
+    const lowerText = String(text || "").toLocaleLowerCase();
+    const lowerPhrase = cleanPhrase.toLocaleLowerCase();
+    let offset = 0;
+    while (lowerPhrase && offset < lowerText.length) {
+      const position = lowerText.indexOf(lowerPhrase, offset);
+      if (position < 0) break;
+      const indexes = wordIndexesForCharSpan(ranges, position, position + cleanPhrase.length);
+      if (indexes.length) exactCandidates.push(indexes);
+      offset = position + Math.max(1, cleanPhrase.length);
+    }
+    if (exactCandidates.length) {
+      return exactCandidates.sort((left, right) => Math.abs(left[0] - expected) - Math.abs(right[0] - expected))[0];
+    }
+
+    let best = { score: 0, indexes: [] };
+    for (let start = 0; start < ranges.length; start += 1) {
+      for (let length = 1; length <= 2 && start + length <= ranges.length; length += 1) {
+        const endRange = ranges[start + length - 1];
+        const candidate = String(text || "").slice(ranges[start].start, endRange.end);
+        const distancePenalty = Math.abs(start - expected) * 0.025;
+        const score = alignmentSimilarity(candidate, cleanPhrase) - distancePenalty;
+        if (score > best.score) {
+          best = { score, indexes: Array.from({ length }, (value, offsetIndex) => start + offsetIndex) };
+        }
+      }
+    }
+    return best.score >= 0.48 ? best.indexes : [];
+  }
+
+  async function fetchContextualAlignmentPhrases(text, ranges, sourceLanguage, targetLanguage) {
+    if (!text || !ranges.length || sourceLanguage === targetLanguage) return [];
+    const variants = ranges.map((range) => (
+      `${text.slice(0, range.start)}⟦${text.slice(range.start, range.end)}⟧${text.slice(range.end)}`
+    ));
+    const batches = [];
+    for (let index = 0; index < variants.length; index += 18) {
+      batches.push(variants.slice(index, index + 18));
+    }
+    const translatedBatches = await Promise.all(batches.map(async (batch) => {
+      const body = new URLSearchParams({
+        client: "gtx",
+        sl: sourceLanguage,
+        tl: targetLanguage,
+        dt: "t",
+        q: batch.join("\n")
+      });
+      const response = await withTimeout(fetch("https://translate.googleapis.com/translate_a/single", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body,
+        cache: "no-store"
+      }), 12000, "word alignment");
+      if (!response.ok) throw new Error(`Word alignment ${response.status}`);
+      const payload = await response.json();
+      const translated = Array.isArray(payload?.[0])
+        ? payload[0].map((chunk) => chunk?.[0] || "").join("")
+        : "";
+      return translated.split("\n");
+    }));
+    const lines = translatedBatches.flat();
+    return ranges.map((range, index) => {
+      const match = String(lines[index] || "").match(/⟦([\s\S]*?)⟧/u);
+      return normalizeSpaces(match?.[1] || "");
+    });
+  }
+
+  function readerAlignmentKey(pair, newsMode, language) {
+    return `${newsMode ? "news" : "book"}:${language}:${bookHash(pair.source)}:${pair.source.length}:${bookHash(pair.english)}:${pair.english.length}`;
+  }
+
+  function buildReaderAlignment(pair, newsMode, language) {
+    const sourceLanguage = LANGUAGES[language]?.translateSl || activeLanguage().translateSl;
+    const sourceRanges = wordRanges(pair.source, sourceLanguage);
+    const englishRanges = wordRanges(pair.english, "en");
+    return {
+      sourceText: pair.source,
+      englishText: pair.english,
+      sourceLanguage,
+      sourceRanges,
+      englishRanges,
+      sourceToEnglish: proportionalWordMap(sourceRanges.length, englishRanges.length),
+      englishToSource: proportionalWordMap(englishRanges.length, sourceRanges.length),
+      newsMode,
+      contextual: false
+    };
+  }
+
+  async function enrichReaderAlignment(alignment) {
+    const fromText = alignment.newsMode ? alignment.sourceText : alignment.englishText;
+    const toText = alignment.newsMode ? alignment.englishText : alignment.sourceText;
+    const fromRanges = alignment.newsMode ? alignment.sourceRanges : alignment.englishRanges;
+    const toRanges = alignment.newsMode ? alignment.englishRanges : alignment.sourceRanges;
+    const sourceLanguage = alignment.newsMode ? alignment.sourceLanguage : "en";
+    const targetLanguage = alignment.newsMode ? "en" : alignment.sourceLanguage;
+    const fallback = proportionalWordMap(fromRanges.length, toRanges.length);
+    const phrases = await fetchContextualAlignmentPhrases(fromText, fromRanges, sourceLanguage, targetLanguage);
+    const contextualMap = fallback.map((indexes, index) => {
+      const located = locateAlignedPhrase(toText, toRanges, phrases[index], indexes);
+      return located.length ? located : indexes;
+    });
+    const inverse = invertWordMap(contextualMap, toRanges.length);
+    if (alignment.newsMode) {
+      alignment.sourceToEnglish = contextualMap;
+      alignment.englishToSource = inverse;
+    } else {
+      alignment.englishToSource = contextualMap;
+      alignment.sourceToEnglish = inverse;
+    }
+    alignment.contextual = true;
+    return alignment;
+  }
+
+  function ensureReaderAlignment(
+    pair,
+    language = state.language,
+    newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news"
+  ) {
+    const key = readerAlignmentKey(pair, newsMode, language);
+    if (state.readerAlignmentCache.has(key)) return state.readerAlignmentCache.get(key);
+    const alignment = buildReaderAlignment(pair, newsMode, language);
+    state.readerAlignmentCache.set(key, alignment);
+    while (state.readerAlignmentCache.size > READER_ALIGNMENT_CACHE_LIMIT) {
+      state.readerAlignmentCache.delete(state.readerAlignmentCache.keys().next().value);
+    }
+    alignment.enrichmentPromise = enrichReaderAlignment(alignment).catch((error) => {
+      console.warn("Contextual word alignment unavailable:", error);
+      return alignment;
+    });
+    return alignment;
+  }
+
+  function applyReaderWordHighlight(alignment, speakingPane, charIndex, spokenText = "") {
+    if (!alignment) return;
+    const speakingRanges = speakingPane === "source" ? alignment.sourceRanges : alignment.englishRanges;
+    const renderedText = speakingPane === "source" ? alignment.sourceText : alignment.englishText;
+    const boundaryRanges = wordRanges(spokenText || renderedText, speakingPane === "source" ? alignment.sourceLanguage : "en");
+    const activeIndex = activeWordIndexForChar(spokenText || renderedText, charIndex, boundaryRanges);
+    const mappedIndexes = speakingPane === "source"
+      ? alignment.sourceToEnglish[activeIndex] || []
+      : alignment.englishToSource[activeIndex] || [];
+    const sourceIndexes = speakingPane === "source" ? [activeIndex] : mappedIndexes;
+    const englishIndexes = speakingPane === "english" ? [activeIndex] : mappedIndexes;
+    const targets = normalizeHighlightTargets([
+      { id: "bookSourceSentence", text: alignment.sourceText },
+      { id: "bookEnglishSentence", text: alignment.englishText }
+    ], "");
+    state.activeHighlights = targets;
+    els.bookSourceSentence.innerHTML = highlightedTextHtml(
+      alignment.sourceText,
+      sourceIndexes,
+      speakingPane === "source" ? "active" : "translation-active",
+      alignment.sourceRanges
+    );
+    els.bookEnglishSentence.innerHTML = highlightedTextHtml(
+      alignment.englishText,
+      englishIndexes,
+      speakingPane === "english" ? "active" : "translation-active",
+      alignment.englishRanges
+    );
   }
 
   async function ensureMeaning(entry) {
@@ -1344,6 +1618,21 @@
     while (state.bookTranslationCache.size > BOOK_TRANSLATION_CACHE_LIMIT) {
       state.bookTranslationCache.delete(state.bookTranslationCache.keys().next().value);
     }
+    scheduleReaderTranslationSave();
+  }
+
+  async function sharedBookTranslation(key, run) {
+    if (state.bookTranslationCache.has(key)) return state.bookTranslationCache.get(key);
+    if (state.bookTranslationPromises.has(key)) return state.bookTranslationPromises.get(key);
+    const promise = Promise.resolve()
+      .then(run)
+      .then((value) => {
+        if (value) rememberBookTranslation(key, value);
+        return value;
+      })
+      .finally(() => state.bookTranslationPromises.delete(key));
+    state.bookTranslationPromises.set(key, promise);
+    return promise;
   }
 
   async function translateFromEn(text, targetLanguage = state.language) {
@@ -1401,29 +1690,27 @@
 
   async function ensureBookSourceSentence(english, language = state.language) {
     const key = bookTranslationKey(english, language);
-    if (state.bookTranslationCache.has(key)) {
-      return state.bookTranslationCache.get(key);
-    }
-    const translated = await translateFromEn(english, language);
-    const finalText = translated || english;
-    rememberBookTranslation(key, finalText);
-    return finalText;
+    return sharedBookTranslation(key, async () => {
+      const translated = await translateFromEn(english, language);
+      return translated || english;
+    });
   }
 
   async function ensureNewsEnglishSentence(sourceText, language = state.language) {
     const key = `en:${bookTranslationKey(sourceText, language)}`;
-    if (state.bookTranslationCache.has(key)) {
-      return state.bookTranslationCache.get(key);
-    }
-    const translated = await translateToEn(sourceText, language);
-    const finalText = translated || sourceText;
-    rememberBookTranslation(key, finalText);
-    return finalText;
+    return sharedBookTranslation(key, async () => {
+      const translated = await translateToEn(sourceText, language);
+      return translated || sourceText;
+    });
   }
 
-  async function readerSentencePair(sentence, language = state.language) {
+  async function readerSentencePair(
+    sentence,
+    language = state.language,
+    newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news"
+  ) {
     if (!sentence) return { source: "", english: "" };
-    if (isNewsMode() || state.bookLoadedBook?.kind === "news") {
+    if (newsMode) {
       return {
         source: sentence.text,
         english: await ensureNewsEnglishSentence(sentence.text, language)
@@ -1451,25 +1738,36 @@
     return `${STANDARD_EBOOKS_LIST_URL}?${params.toString()}`;
   }
 
+  async function fetchTextCandidate(proxy, url, label, signal) {
+    const response = await withTimeout(
+      fetch(proxy.build(url), { cache: "no-store", signal }),
+      BOOK_FETCH_TIMEOUT_MS,
+      `${proxy.name} ${label}`
+    );
+    if (!response.ok) throw new Error(`${response.status}`);
+    let text = await withTimeout(response.text(), BOOK_FETCH_TIMEOUT_MS, `${proxy.name} body`);
+    if (proxy.unwrap) text = proxy.unwrap(text);
+    if (!normalizeSpaces(text)) throw new Error("empty response");
+    return { text, proxy: proxy.name };
+  }
+
   async function fetchTextWithProxies(url, label) {
     const failures = [];
-    for (const proxy of PROXY_CANDIDATES) {
+    const waves = [PROXY_CANDIDATES.slice(0, 3), PROXY_CANDIDATES.slice(3)];
+    for (const wave of waves) {
+      const controllers = wave.map(() => new AbortController());
       try {
-        const requestUrl = proxy.build(url);
-        const response = await withTimeout(
-          fetch(requestUrl, { cache: "no-store" }),
-          BOOK_FETCH_TIMEOUT_MS,
-          `${proxy.name} ${label}`
-        );
-        if (!response.ok) throw new Error(`${response.status}`);
-        let text = await withTimeout(response.text(), BOOK_FETCH_TIMEOUT_MS, `${proxy.name} body`);
-        if (proxy.unwrap) {
-          text = proxy.unwrap(text);
-        }
-        if (!normalizeSpaces(text)) throw new Error("empty response");
-        return { text, proxy: proxy.name };
-      } catch (error) {
-        failures.push(`${proxy.name}: ${error.message}`);
+        const result = await Promise.any(wave.map((proxy, index) => (
+          fetchTextCandidate(proxy, url, label, controllers[index].signal).catch((error) => {
+            failures.push(`${proxy.name}: ${error.message}`);
+            throw error;
+          })
+        )));
+        controllers.forEach((controller) => controller.abort());
+        return result;
+      } catch {
+        controllers.forEach((controller) => controller.abort());
+        // Try the less reliable fallback services only if the fast wave fails.
       }
     }
     throw new Error(`${label} failed: ${failures.slice(0, 3).join(" | ")}`);
@@ -1930,21 +2228,35 @@
 
   async function fetchJsonWithProxies(url, label) {
     const failures = [];
-    for (const proxy of PROXY_CANDIDATES.filter((candidate) => candidate.name !== "Jina")) {
+    const candidates = PROXY_CANDIDATES.filter((candidate) => candidate.name !== "Jina");
+    const waves = [candidates.slice(0, 2), candidates.slice(2)];
+    const fetchCandidate = async (proxy, signal) => {
+      const response = await withTimeout(
+        fetch(proxy.build(url), { cache: "no-store", signal }),
+        BOOK_FETCH_TIMEOUT_MS,
+        `${proxy.name} ${label}`
+      );
+      if (!response.ok) throw new Error(`${response.status}`);
+      let text = await withTimeout(response.text(), BOOK_FETCH_TIMEOUT_MS, `${proxy.name} body`);
+      if (proxy.unwrap) text = proxy.unwrap(text);
+      const payload = JSON.parse(text);
+      if (!payload || typeof payload !== "object") throw new Error("invalid JSON");
+      return { payload, proxy: proxy.name };
+    };
+    for (const wave of waves) {
+      const controllers = wave.map(() => new AbortController());
       try {
-        const response = await withTimeout(
-          fetch(proxy.build(url), { cache: "no-store" }),
-          BOOK_FETCH_TIMEOUT_MS,
-          `${proxy.name} ${label}`
-        );
-        if (!response.ok) throw new Error(`${response.status}`);
-        let text = await withTimeout(response.text(), BOOK_FETCH_TIMEOUT_MS, `${proxy.name} body`);
-        if (proxy.unwrap) text = proxy.unwrap(text);
-        const payload = JSON.parse(text);
-        if (!payload || typeof payload !== "object") throw new Error("invalid JSON");
-        return { payload, proxy: proxy.name };
-      } catch (error) {
-        failures.push(`${proxy.name}: ${error.message}`);
+        const result = await Promise.any(wave.map((proxy, index) => (
+          fetchCandidate(proxy, controllers[index].signal).catch((error) => {
+            failures.push(`${proxy.name}: ${error.message}`);
+            throw error;
+          })
+        )));
+        controllers.forEach((controller) => controller.abort());
+        return result;
+      } catch {
+        controllers.forEach((controller) => controller.abort());
+        // Continue to the fallback proxy wave.
       }
     }
     throw new Error(`${label} failed: ${failures.slice(0, 3).join(" | ")}`);
@@ -2189,6 +2501,7 @@
       }
       if (!state.bookBooks.length) {
         els.bookShelf.innerHTML = `<div class="book-empty">${state.newsSearch ? "No current articles match this filter." : "Refresh to load current news articles."}</div>`;
+        scheduleShelfReaderPrefetch();
         return;
       }
       els.bookShelf.innerHTML = state.bookBooks.map((article, index) => {
@@ -2203,6 +2516,7 @@
           </article>
         `;
       }).join("");
+      scheduleShelfReaderPrefetch();
       return;
     }
     const cleanQuery = normalizeSpaces(state.bookSearch);
@@ -2218,6 +2532,7 @@
             ? (cleanQuery ? "No Project Gutenberg books match this search." : "Load the Project Gutenberg catalog to begin.")
             : (cleanQuery ? "No matching books found." : "Load a Standard Ebooks shelf page to begin.");
       els.bookShelf.innerHTML = `<div class="book-empty">${emptyText}</div>`;
+      scheduleShelfReaderPrefetch();
       return;
     }
 
@@ -2246,6 +2561,7 @@
         </article>
       `;
     }).join("");
+    scheduleShelfReaderPrefetch();
   }
 
   async function bookTextCandidates(book) {
@@ -2609,7 +2925,7 @@
     throw lastError || new Error("News article text failed");
   }
 
-  async function fetchAndParseBook(book) {
+  async function fetchAndParseBookUncached(book) {
     if (book?.kind === "news") {
       return fetchAndParseNewsArticle(book);
     }
@@ -2626,6 +2942,60 @@
       }
     }
     throw lastError || new Error("Book text failed");
+  }
+
+  function readerDocumentKey(book) {
+    const identity = book?.id || book?.link || "";
+    return identity ? `${book?.kind === "news" ? "news" : "book"}:${identity}` : "";
+  }
+
+  function rememberReaderDocument(key, parsed) {
+    if (!key || !parsed) return;
+    state.readerDocumentCache.delete(key);
+    state.readerDocumentCache.set(key, parsed);
+    while (state.readerDocumentCache.size > READER_DOCUMENT_CACHE_LIMIT) {
+      state.readerDocumentCache.delete(state.readerDocumentCache.keys().next().value);
+    }
+  }
+
+  async function fetchAndParseBook(book) {
+    const key = readerDocumentKey(book);
+    if (key && state.readerDocumentCache.has(key)) {
+      const parsed = state.readerDocumentCache.get(key);
+      state.readerDocumentCache.delete(key);
+      state.readerDocumentCache.set(key, parsed);
+      return parsed;
+    }
+    if (key && state.readerDocumentPromises.has(key)) {
+      return state.readerDocumentPromises.get(key);
+    }
+    const promise = fetchAndParseBookUncached(book)
+      .then((parsed) => {
+        rememberReaderDocument(key, parsed);
+        return parsed;
+      })
+      .finally(() => state.readerDocumentPromises.delete(key));
+    if (key) state.readerDocumentPromises.set(key, promise);
+    return promise;
+  }
+
+  function prefetchBookDocument(book) {
+    if (!book?.link) return;
+    fetchAndParseBook(book).catch((error) => {
+      console.warn(`Reader prefetch failed for ${book.title || "item"}:`, error);
+    });
+  }
+
+  function scheduleShelfReaderPrefetch() {
+    window.clearTimeout(state.readerPrefetchTimer);
+    const book = state.bookBooks[0];
+    const mode = state.contentMode;
+    const shouldPrefetch = book && (mode === "news" || state.bookShelfKind === "guided");
+    if (!shouldPrefetch) return;
+    state.readerPrefetchTimer = window.setTimeout(() => {
+      if (state.contentMode !== mode || state.bookViewMode !== "shelf") return;
+      prefetchBookDocument(book);
+    }, 250);
   }
 
   function bookModeKickerText() {
@@ -2710,9 +3080,30 @@
     els.bookNearbyList.innerHTML = rows.join("");
   }
 
+  function scheduleReaderSentencePrefetch(startIndex = state.bookCurrentIndex + 1, count = 2) {
+    window.clearTimeout(state.readerSentencePrefetchTimer);
+    const language = state.language;
+    const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
+    const loadedKey = readerDocumentKey(state.bookLoadedBook);
+    const sentences = Array.from({ length: count }, (value, offset) => (
+      state.bookSentences[startIndex + offset]
+    )).filter(Boolean);
+    if (!sentences.length) return;
+    state.readerSentencePrefetchTimer = window.setTimeout(() => {
+      if (state.language !== language || readerDocumentKey(state.bookLoadedBook) !== loadedKey) return;
+      sentences.forEach((sentence) => {
+        readerSentencePair(sentence, language, newsMode)
+          .then((pair) => ensureReaderAlignment(pair, language, newsMode))
+          .catch((error) => console.warn("Sentence prefetch failed:", error));
+      });
+    }, 220);
+  }
+
   async function renderBookSentence() {
     const sentence = currentBookSentence();
     const language = activeLanguage();
+    const languageKey = state.language;
+    const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
     els.bookSourceLabel.textContent = language.label;
     els.bookSourceSentence.lang = sourceLangCode();
     els.bookSourceSentence.dir = language.dir;
@@ -2736,10 +3127,12 @@
     updateBookProgressControls();
     renderBookNearby();
 
-    const pair = await readerSentencePair(sentence, state.language);
+    const pair = await readerSentencePair(sentence, languageKey, newsMode);
     if (renderToken !== state.bookRenderToken) return;
     els.bookSourceSentence.textContent = pair.source;
     els.bookEnglishSentence.textContent = pair.english;
+    ensureReaderAlignment(pair, languageKey, newsMode);
+    scheduleReaderSentencePrefetch();
   }
 
   function setBookIndex(index, options = {}) {
@@ -2911,16 +3304,20 @@
   async function speakBookSentence(sentence, token) {
     if (!sentence || token !== state.playToken) return;
     const language = activeLanguage();
-    const pair = await readerSentencePair(sentence, state.language);
+    const languageKey = state.language;
+    const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
+    const pair = await readerSentencePair(sentence, languageKey, newsMode);
     if (token !== state.playToken || !state.bookPlaying) return;
 
     els.bookSourceSentence.textContent = pair.source;
     els.bookEnglishSentence.textContent = pair.english;
+    const alignment = ensureReaderAlignment(pair, languageKey, newsMode);
+    await Promise.race([alignment.enrichmentPromise, delayPlain(700)]);
+    if (token !== state.playToken || !state.bookPlaying) return;
     setStatus(`${language.label} sentence ${state.bookCurrentIndex + 1}`);
     await speakText(pair.source, language.speechLang, Number(els.bookSourceRate.value), token, {
-      highlightText: pair.source,
-      highlightTargets: [{ id: "bookSourceSentence", text: pair.source }],
-      correspondingTargets: [{ id: "bookEnglishSentence", text: pair.english }]
+      alignment,
+      speakingPane: "source"
     });
     await delay(Number(els.gapMs.value), token);
     if (token !== state.playToken || !state.bookPlaying) return;
@@ -2928,8 +3325,8 @@
     if (!els.bookReadEnglish.checked) return;
     setStatus(`English sentence ${state.bookCurrentIndex + 1}`);
     await speakText(pair.english, "en-US", Number(els.bookEnRate.value), token, {
-      highlightText: pair.english,
-      highlightTargets: [{ id: "bookEnglishSentence", text: pair.english }]
+      alignment,
+      speakingPane: "english"
     });
     await delay(Number(els.gapMs.value), token);
   }
@@ -3104,24 +3501,38 @@
       const timeout = window.setTimeout(() => {
         reject(new Error("Speech did not start"));
       }, 5000);
+      const applyHighlight = (charIndex) => {
+        if (options.alignment) {
+          applyReaderWordHighlight(options.alignment, options.speakingPane, charIndex, spokenText);
+          return;
+        }
+        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, charIndex);
+      };
+      const clearHighlight = () => {
+        if (options.alignment) {
+          clearSpeechHighlights();
+          return;
+        }
+        clearSpeechHighlights(options.highlightTargets);
+      };
       utterance.onstart = () => {
         window.clearTimeout(timeout);
-        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, 0);
-        applyCorrespondingHighlight(options.correspondingTargets);
+        applyHighlight(0);
+        if (!options.alignment) applyCorrespondingHighlight(options.correspondingTargets);
       };
       utterance.onboundary = (event) => {
         if (event.name && event.name !== "word") return;
-        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, event.charIndex || 0);
+        applyHighlight(event.charIndex || 0);
       };
       utterance.onend = () => {
         window.clearTimeout(timeout);
-        clearSpeechHighlights(options.highlightTargets);
+        clearHighlight();
         clearCorrespondingHighlights();
         resolve();
       };
       utterance.onerror = (event) => {
         window.clearTimeout(timeout);
-        clearSpeechHighlights(options.highlightTargets);
+        clearHighlight();
         clearCorrespondingHighlights();
         reject(new Error(event.error || "Speech synthesis error"));
       };
@@ -3591,6 +4002,15 @@
       savePrefs();
       setStatus(els.bookReadEnglish.checked ? "English TTS enabled" : "English TTS skipped");
     });
+
+    const prefetchShelfCard = (event) => {
+      const card = event.target.closest(".book-card");
+      if (!card) return;
+      const book = state.bookBooks[Number.parseInt(card.dataset.bookIndex || "0", 10)];
+      prefetchBookDocument(book);
+    };
+    els.bookShelf.addEventListener("pointerover", prefetchShelfCard, { passive: true });
+    els.bookShelf.addEventListener("pointerdown", prefetchShelfCard, { passive: true });
 
     els.bookShelf.addEventListener("click", async (event) => {
       const favoriteButton = event.target.closest(".book-favorite-btn");

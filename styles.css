@@ -475,6 +475,12 @@ body.book-mode .dataset-meta {
   box-shadow: 0 0 0 2px rgba(140, 207, 159, 0.15);
 }
 
+.speech-word.translation-active {
+  background: rgba(140, 207, 159, 0.24);
+  color: var(--text);
+  box-shadow: 0 0 0 2px rgba(140, 207, 159, 0.22);
+}
+
 .book-nearby {
   display: grid;
   gap: 6px;

@@ -68,6 +68,8 @@ Some English glosses are generated through the Google Translate web endpoint and
 
 Treat these glosses as convenience study aids, not authoritative dictionary entries.
 
+Book and news sentence translations and moving word/phrase alignments are also generated live through public machine-translation endpoints and cached in the browser. Because languages do not map word-for-word, counterpart highlights are contextual study estimates and can occasionally be approximate or group two words together.
+
 ## Generated Deck
 
 `data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, and `data/ko-core.json` combine and adapt the sources above. Treat the generated data as CC-BY-SA-compatible material and preserve this notice when sharing modified versions.
