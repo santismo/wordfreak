@@ -25,11 +25,13 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Automatic English readability estimates for newly opened catalog books; levels combine sentence/word complexity with total length and are not formal CEFR ratings
 - Current text-news reader using Meduza, VOA Persian, Radio Farda, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and optional Google News feeds
 - News headline filtering, source selection, refresh, random article loading, and full article text browsing without favorites
-- Confidence-gated word/phrase alignment during book and news playback: a spoken word highlights only a high-confidence one-to-four-word counterpart; otherwise the other sentence receives a subtle context cue
+- Immediate word-by-word pairing during book and news playback: each spoken word gets a monotonic best-guess counterpart right away, then contextual translation refines it to a one-to-four-word phrase when it finds a stronger match
+- Speech and translation skip punctuation-only fragments, including Persian/Arabic punctuation, so a voice never reads a symbol as a word
 - Optional English TTS skip setting shared by the book and news readers
 - Faster reader startup through a full-page CORS route ahead of fallback readers, persistent document/translation caching, shelf/sentence preloading, and quick news previews while full articles load
 - Canonical Standard Ebooks subject pages for reliable genre filtering; Google Persian results are restricted to Persian-script headlines
 - System TTS with selectable voices, page volume, speed, and gap controls
+- Dedicated GitHub Pages desktop view with a wider reading layout, language-matched system voices, and optional browser-Piper TTS where a matching model exists
 - First-tap speech preparation and a retry when browser speech synthesis stalls before starting
 - Prev during playback switches into reverse through the current selected or shuffled order
 - Concise English speech cues while still displaying full definitions
@@ -46,6 +48,10 @@ python3 -m http.server 8000
 ```
 
 Open `http://localhost:8000`.
+
+## Desktop GitHub Pages view
+
+Open [`desktop.html`](desktop.html) for the wider desktop layout. Its settings include an optional Piper browser engine for Russian, Farsi, Spanish, French, Hindi, and English; the matching model is downloaded only after selecting it. Japanese and Korean, plus the normal mobile page, use their matching system voices.
 
 ## Data
 

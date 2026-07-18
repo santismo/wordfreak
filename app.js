@@ -1,4 +1,7 @@
 (() => {
+  if (new URLSearchParams(window.location.search).get("layout") === "desktop") {
+    document.body.classList.add("desktop-edition");
+  }
   const STORE_KEY = "wordfreak:v2";
   const TRANSLATION_CACHE_KEY = "wordfreak:translation-cache";
   const LEGACY_RU_TRANSLATION_CACHE_KEY = "wordfreak:ru-en-cache";
@@ -26,6 +29,18 @@
   const BOOK_DOCUMENT_CACHE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
   const NEWS_ARTICLE_QUICK_WAIT_MS = 700;
   const BOOK_NEARBY_RADIUS = 3;
+  const PIPER_ESM_URL = "https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/+esm";
+  const PIPER_ESM_FALLBACK_URL = "https://esm.sh/@mintplex-labs/piper-tts-web@1.0.4";
+  const PIPER_RU_VOICE_ID = "ru_RU-irina-medium";
+  const PIPER_FA_VOICE_ID = "fa_IR-gyro-medium";
+  const PIPER_ES_VOICE_ID = "es_ES-carlfm-x_low";
+  const PIPER_FR_VOICE_ID = "fr_FR-siwis-low";
+  const PIPER_HI_VOICE_ID = "hi_IN-pratham-medium";
+  const PIPER_EN_VOICE_ID = "en_US-lessac-low";
+  const PIPER_CACHE_LIMIT = 24;
+  const PIPER_IMPORT_TIMEOUT_MS = 20000;
+  const PIPER_DOWNLOAD_TIMEOUT_MS = 90000;
+  const PIPER_PREDICT_TIMEOUT_MS = 45000;
   const BOOK_SHELF_KINDS = new Set(["guided", "library", "gutenberg", "favorites"]);
   const BOOK_LEVELS = {
     starter: {
@@ -317,6 +332,7 @@
     playBtn: document.getElementById("playBtn"),
     nextBtn: document.getElementById("nextBtn"),
     shuffleBtn: document.getElementById("shuffleBtn"),
+    engineSelect: document.getElementById("engineSelect"),
     sourceVoiceLabel: document.getElementById("sourceVoiceLabel"),
     sourceVoiceSelect: document.getElementById("sourceVoiceSelect"),
     enVoiceSelect: document.getElementById("enVoiceSelect"),
@@ -399,6 +415,7 @@
     playDirection: 1,
     playing: false,
     playToken: 0,
+    ttsEngine: "system",
     shuffle: false,
     band: "20000",
     voices: [],
@@ -445,6 +462,12 @@
     newsFeedLoadToken: 0,
     newsAllArticles: [],
     newsSearch: "",
+    activeAudio: null,
+    activeAudioUrl: "",
+    piperModules: new Map(),
+    piperAudioCache: new Map(),
+    piperAudioPending: new Map(),
+    piperHighlightTimer: 0,
     activeHighlights: [],
     activeCorrespondingHighlights: [],
     scrollTimer: 0,
@@ -475,6 +498,9 @@
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
       state.enLang = typeof prefs.enLang === "string" ? prefs.enLang : state.enLang;
+      if (isDesktopPiperAvailable()) {
+        state.ttsEngine = prefs.desktopTtsEngine === "piper" ? "piper" : "system";
+      }
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
       els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
@@ -501,6 +527,7 @@
       bookReadEnglish: els.bookReadEnglish.checked,
       voicePrefs: state.voicePrefs,
       enLang: state.enLang,
+      desktopTtsEngine: state.ttsEngine,
       ruRate: els.ruRate.value,
       enRate: els.enRate.value,
       pageVolume: els.pageVolume.value,
@@ -720,11 +747,10 @@
   function matchingVoices(lang) {
     const lower = String(lang || "").toLowerCase();
     const prefix = langPrefix(lang);
-    const exactLang = lower.includes("-");
     return state.voices
       .filter((voice) => {
         const voiceLang = String(voice.lang || "").toLowerCase();
-        return voiceLang === lower || (!exactLang && voiceLang.startsWith(prefix));
+        return voiceLang === lower || voiceLang === prefix || voiceLang.startsWith(`${prefix}-`);
       })
       .sort((a, b) => {
         const aLang = String(a.lang || "").toLowerCase();
@@ -791,16 +817,21 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
+  function hasLinguisticContent(value) {
+    return /[\p{L}\p{N}]/u.test(String(value || ""));
+  }
+
   function stripForSpeech(value) {
-    return normalizeSpaces(
-      String(value || "")
-        // Some iOS voices pronounce escaped book punctuation literally.
-        .replace(/[\\/"“”„‟«»‹›()[\]{}<>|*_~^#=+]/g, " ")
-        .replace(/[—–―]/g, " ")
-        .replace(/\.\.\.|…/g, " ")
-        .replace(/[;:]/g, ",")
-        .replace(/\s+([,.!?])/g, "$1")
-    );
+    const clean = String(value || "")
+      .normalize("NFKC")
+      // Directional and zero-width characters are not words, but can make a
+      // voice spell or name nearby punctuation.
+      .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "")
+      // Keep a joined word a single speech/highlight token before dropping
+      // every punctuation and symbol class, including Persian/Arabic marks.
+      .replace(/([\p{L}\p{N}])['\u2018\u2019\u201B\u02BC\-‐‑]+([\p{L}\p{N}])/gu, "$1$2")
+      .replace(/[\p{P}\p{S}]+/gu, " ");
+    return hasLinguisticContent(clean) ? normalizeSpaces(clean) : "";
   }
 
   function clamp(value, min, max) {
@@ -809,6 +840,14 @@
 
   function pageVolume() {
     return clamp(els.pageVolume.value, 0, 1);
+  }
+
+  function isDesktopPiperAvailable() {
+    return document.body.classList.contains("desktop-edition") && Boolean(els.engineSelect);
+  }
+
+  function isDesktopPiperEnabled() {
+    return isDesktopPiperAvailable() && state.ttsEngine === "piper";
   }
 
   function syncBookAudioControlsFromSettings() {
@@ -1248,18 +1287,18 @@
       .trim();
   }
 
-  function proportionalWordMap(fromCount, toCount) {
+  function bestGuessWordMap(fromCount, toCount) {
     if (!fromCount || !toCount) return Array.from({ length: fromCount }, () => []);
     return Array.from({ length: fromCount }, (_, index) => {
-      const start = Math.min(toCount - 1, Math.floor((index * toCount) / fromCount));
-      const naturalEnd = Math.max(start + 1, Math.ceil(((index + 1) * toCount) / fromCount));
-      const end = Math.min(toCount, start + 2, naturalEnd);
-      return Array.from({ length: Math.max(1, end - start) }, (value, offset) => start + offset);
+      // This is a monotonic, one-word estimate. It makes both columns move in
+      // sync immediately while contextual translation looks for a better match.
+      const position = ((index + 0.5) * toCount) / fromCount - 0.5;
+      const targetIndex = Math.min(toCount - 1, Math.max(0, Math.round(position)));
+      return [targetIndex];
     });
   }
 
-  function invertWordMap(wordMap, targetCount, options = {}) {
-    const useFallback = Boolean(options.fallback);
+  function invertWordMap(wordMap, targetCount, fallbackMap = []) {
     const inverted = Array.from({ length: targetCount }, () => []);
     wordMap.forEach((targets, sourceIndex) => {
       targets.forEach((targetIndex) => {
@@ -1268,8 +1307,9 @@
         }
       });
     });
-    const fallback = useFallback ? proportionalWordMap(targetCount, wordMap.length) : [];
-    return inverted.map((values, index) => (values.length ? values.slice(0, 3) : (fallback[index] || [])));
+    return inverted.map((values, index) => (
+      values.length ? values.slice(0, READER_ALIGNMENT_MAX_TARGET_WORDS) : (fallbackMap[index] || [])
+    ));
   }
 
   function alignmentSimilarity(left, right) {
@@ -1373,14 +1413,22 @@
     const sourceLanguage = LANGUAGES[language]?.translateSl || activeLanguage().translateSl;
     const sourceRanges = wordRanges(pair.source, sourceLanguage);
     const englishRanges = wordRanges(pair.english, "en");
+    const fromRanges = newsMode ? sourceRanges : englishRanges;
+    const toRanges = newsMode ? englishRanges : sourceRanges;
+    const forwardBestGuess = bestGuessWordMap(fromRanges.length, toRanges.length);
+    const reverseBestGuess = invertWordMap(
+      forwardBestGuess,
+      toRanges.length,
+      bestGuessWordMap(toRanges.length, fromRanges.length)
+    );
     return {
       sourceText: pair.source,
       englishText: pair.english,
       sourceLanguage,
       sourceRanges,
       englishRanges,
-      sourceToEnglish: Array.from({ length: sourceRanges.length }, () => []),
-      englishToSource: Array.from({ length: englishRanges.length }, () => []),
+      sourceToEnglish: newsMode ? forwardBestGuess : reverseBestGuess,
+      englishToSource: newsMode ? reverseBestGuess : forwardBestGuess,
       newsMode,
       contextual: false,
       alignedWordCount: 0
@@ -1394,13 +1442,20 @@
     const toRanges = alignment.newsMode ? alignment.englishRanges : alignment.sourceRanges;
     const sourceLanguage = alignment.newsMode ? alignment.sourceLanguage : "en";
     const targetLanguage = alignment.newsMode ? "en" : alignment.sourceLanguage;
-    const fallback = proportionalWordMap(fromRanges.length, toRanges.length);
+    const fallback = bestGuessWordMap(fromRanges.length, toRanges.length);
     const phrases = await fetchContextualAlignmentPhrases(fromText, fromRanges, sourceLanguage, targetLanguage);
+    let contextualWordCount = 0;
     const contextualMap = fallback.map((indexes, index) => {
       const located = locateAlignedPhrase(toText, toRanges, phrases[index], indexes);
+      if (!located.indexes.length) return indexes;
+      contextualWordCount += located.indexes.length;
       return located.indexes;
     });
-    const inverse = invertWordMap(contextualMap, toRanges.length);
+    const inverse = invertWordMap(
+      contextualMap,
+      toRanges.length,
+      bestGuessWordMap(toRanges.length, fromRanges.length)
+    );
     if (alignment.newsMode) {
       alignment.sourceToEnglish = contextualMap;
       alignment.englishToSource = inverse;
@@ -1408,8 +1463,8 @@
       alignment.englishToSource = contextualMap;
       alignment.sourceToEnglish = inverse;
     }
-    alignment.alignedWordCount = contextualMap.reduce((count, indexes) => count + indexes.length, 0);
-    alignment.contextual = alignment.alignedWordCount > 0;
+    alignment.alignedWordCount = contextualWordCount;
+    alignment.contextual = contextualWordCount > 0;
     return alignment;
   }
 
@@ -1447,6 +1502,7 @@
       { id: "bookSourceSentence", text: alignment.sourceText },
       { id: "bookEnglishSentence", text: alignment.englishText }
     ], "");
+    clearCorrespondingHighlights();
     state.activeHighlights = targets;
     els.bookSourceSentence.innerHTML = highlightedTextHtml(
       alignment.sourceText,
@@ -1460,13 +1516,6 @@
       speakingPane === "english" ? "active" : "translation-active",
       alignment.englishRanges
     );
-    if (mappedIndexes.length) {
-      clearCorrespondingHighlights();
-    } else {
-      applyCorrespondingHighlight([
-        { id: speakingPane === "source" ? "bookEnglishSentence" : "bookSourceSentence" }
-      ]);
-    }
   }
 
   async function ensureMeaning(entry) {
@@ -1493,6 +1542,7 @@
 
   async function translateToEn(text, language = state.language) {
     const word = normalizeSpaces(text);
+    if (!word || !hasLinguisticContent(word)) return "";
     const source = LANGUAGES[language]?.translateSl || activeLanguage().translateSl;
     const translators = [
       {
@@ -1745,7 +1795,7 @@
   async function translateFromEn(text, targetLanguage = state.language) {
     const clean = normalizeSpaces(text);
     const target = LANGUAGES[targetLanguage]?.translateSl || "ru";
-    if (!clean) return "";
+    if (!clean || !hasLinguisticContent(clean)) return "";
 
     const translators = [
       {
@@ -1799,7 +1849,7 @@
     const key = bookTranslationKey(english, language);
     return sharedBookTranslation(key, async () => {
       const translated = await translateFromEn(english, language);
-      return translated || english;
+      return translated || (hasLinguisticContent(english) ? english : "");
     });
   }
 
@@ -1807,7 +1857,7 @@
     const key = `en:${bookTranslationKey(sourceText, language)}`;
     return sharedBookTranslation(key, async () => {
       const translated = await translateToEn(sourceText, language);
-      return translated || sourceText;
+      return translated || (hasLinguisticContent(sourceText) ? sourceText : "");
     });
   }
 
@@ -2790,7 +2840,12 @@
     return sentences
       .flatMap((sentence) => restoreSentenceAbbreviations(sentence, values).split(/;\s+(?=[A-Z"'\u201c\u2018])/))
       .map(cleanBookText)
-      .filter((sentence) => sentence.length >= 2 && sentence.length <= 520 && !isBookNoise(sentence));
+      .filter((sentence) => (
+        sentence.length >= 2
+        && sentence.length <= 520
+        && hasLinguisticContent(sentence)
+        && !isBookNoise(sentence)
+      ));
   }
 
   function cleanChapterTitle(value, fallback) {
@@ -2994,7 +3049,12 @@
     }
     return values
       .map(cleanBookText)
-      .filter((sentence) => sentence.length >= 2 && sentence.length <= 700 && !isNewsNoise(sentence));
+      .filter((sentence) => (
+        sentence.length >= 2
+        && sentence.length <= 700
+        && hasLinguisticContent(sentence)
+        && !isNewsNoise(sentence)
+      ));
   }
 
   function finalizeNewsParagraphs(paragraphs) {
@@ -3675,6 +3735,7 @@
     els.bookPlayBtn.textContent = "Play";
     clearSpeechHighlights();
     clearCorrespondingHighlights();
+    stopPiperAudio();
     if (window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
@@ -3707,10 +3768,23 @@
 
   async function speakText(text, lang, rate, token, options = {}) {
     if (token !== state.playToken || !text) return;
+    if (isDesktopPiperEnabled() && piperVoiceIdForLang(lang)) {
+      try {
+        await speakWithPiper(text, lang, rate, token, options);
+        return;
+      } catch (error) {
+        if (token !== state.playToken) return;
+        console.warn("Piper failed, using the system voice:", error);
+        setStatus("Piper unavailable, using system voice");
+      }
+    }
     await speakWithSystemVoice(text, lang, rate, token, options);
   }
 
   async function prepareSpeechEngine() {
+    if (isDesktopPiperEnabled() && piperVoiceIdForLang(activeLanguage().speechLang)) {
+      return;
+    }
     if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
       throw new Error("Speech synthesis unavailable");
     }
@@ -3781,12 +3855,13 @@
       const utterance = new SpeechSynthesisUtterance(spokenText);
       utterance.rate = rate;
       utterance.volume = pageVolume();
-      const voice = findVoice(lang);
+      const speechLang = systemSpeechLang(lang) || lang;
+      const voice = findVoice(speechLang);
       if (voice) {
         utterance.voice = voice;
-        utterance.lang = voice.lang || lang;
-      } else if (shouldSetSystemLanguage(lang)) {
-        utterance.lang = systemSpeechLang(lang);
+        utterance.lang = voice.lang || speechLang;
+      } else if (shouldSetSystemLanguage(speechLang)) {
+        utterance.lang = speechLang;
       }
       const timeout = window.setTimeout(() => {
         reject(new Error("Speech did not start"));
@@ -3833,25 +3908,186 @@
     });
   }
 
+  async function speakWithPiper(text, lang, rate, token, options = {}) {
+    const clip = await getPiperClip(text, lang);
+    if (token !== state.playToken || !clip) return;
+    await playPiperClip(clip, lang, rate, token, options);
+  }
+
+  function piperVoiceIdForLang(lang) {
+    const lower = String(lang || "").toLowerCase();
+    if (lower.startsWith("ru")) return PIPER_RU_VOICE_ID;
+    if (lower.startsWith("fa")) return PIPER_FA_VOICE_ID;
+    if (lower.startsWith("es")) return PIPER_ES_VOICE_ID;
+    if (lower.startsWith("fr")) return PIPER_FR_VOICE_ID;
+    if (lower.startsWith("hi")) return PIPER_HI_VOICE_ID;
+    if (lower.startsWith("en")) return PIPER_EN_VOICE_ID;
+    return "";
+  }
+
+  async function loadPiperModule(voiceId) {
+    const cached = state.piperModules.get(voiceId);
+    if (cached) return cached;
+    const urls = [
+      `${PIPER_ESM_URL}?voice=${encodeURIComponent(voiceId)}`,
+      `${PIPER_ESM_FALLBACK_URL}?bundle&voice=${encodeURIComponent(voiceId)}`
+    ];
+    let lastError = null;
+    for (const url of urls) {
+      try {
+        const module = await withTimeout(import(url), PIPER_IMPORT_TIMEOUT_MS, "Piper module load");
+        if (typeof module.download === "function") {
+          await withTimeout(module.download(voiceId), PIPER_DOWNLOAD_TIMEOUT_MS, "Piper voice download");
+        }
+        state.piperModules.set(voiceId, module);
+        return module;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error("Piper module could not load");
+  }
+
+  async function getPiperClip(text, lang) {
+    const clean = stripForSpeech(text);
+    const voiceId = piperVoiceIdForLang(lang);
+    if (!clean || !voiceId) return null;
+    const key = `${voiceId}:${clean}`;
+    if (state.piperAudioCache.has(key)) return state.piperAudioCache.get(key);
+    if (state.piperAudioPending.has(key)) return state.piperAudioPending.get(key);
+
+    const pending = (async () => {
+      const module = await loadPiperModule(voiceId);
+      const blob = await withTimeout(
+        module.predict({ text: clean, voiceId }),
+        PIPER_PREDICT_TIMEOUT_MS,
+        "Piper speech"
+      );
+      const clip = { blob, text: clean, voiceId };
+      state.piperAudioCache.set(key, clip);
+      while (state.piperAudioCache.size > PIPER_CACHE_LIMIT) {
+        state.piperAudioCache.delete(state.piperAudioCache.keys().next().value);
+      }
+      return clip;
+    })();
+    state.piperAudioPending.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      state.piperAudioPending.delete(key);
+    }
+  }
+
+  function applyPiperHighlight(options, text, lang, charIndex) {
+    if (options.alignment) {
+      applyReaderWordHighlight(options.alignment, options.speakingPane, charIndex, text);
+      return;
+    }
+    applySpeechHighlight(options.highlightTargets, options.highlightText || text, charIndex);
+    applyCorrespondingHighlight(options.correspondingTargets);
+  }
+
+  function clearPiperHighlight(options) {
+    window.clearTimeout(state.piperHighlightTimer);
+    state.piperHighlightTimer = 0;
+    if (options.alignment) {
+      clearSpeechHighlights();
+    } else {
+      clearSpeechHighlights(options.highlightTargets);
+    }
+    clearCorrespondingHighlights();
+  }
+
+  function startPiperWordHighlights(text, lang, durationMs, token, options) {
+    window.clearTimeout(state.piperHighlightTimer);
+    const ranges = wordRanges(text, lang);
+    if (!ranges.length) return;
+    const weights = ranges.map((range) => Math.max(1, Array.from(range.text).length));
+    const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+    const speakWord = (index) => {
+      if (token !== state.playToken || index >= ranges.length) return;
+      applyPiperHighlight(options, text, lang, ranges[index].start);
+      const stepMs = Math.max(70, (durationMs * weights[index]) / Math.max(1, totalWeight));
+      state.piperHighlightTimer = window.setTimeout(() => speakWord(index + 1), stepMs);
+    };
+    speakWord(0);
+  }
+
+  function stopPiperAudio() {
+    window.clearTimeout(state.piperHighlightTimer);
+    state.piperHighlightTimer = 0;
+    if (state.activeAudio) {
+      state.activeAudio.pause();
+      state.activeAudio.removeAttribute("src");
+      state.activeAudio.load();
+      state.activeAudio = null;
+    }
+    if (state.activeAudioUrl) {
+      URL.revokeObjectURL(state.activeAudioUrl);
+      state.activeAudioUrl = "";
+    }
+  }
+
+  async function playPiperClip(clip, lang, rate, token, options = {}) {
+    stopPiperAudio();
+    if (token !== state.playToken) return;
+    const audio = new Audio();
+    const url = URL.createObjectURL(clip.blob);
+    const playbackRate = clamp(rate || 1, 0.5, 2);
+    state.activeAudio = audio;
+    state.activeAudioUrl = url;
+    audio.src = url;
+    audio.playbackRate = playbackRate;
+    audio.volume = pageVolume();
+    audio.onloadedmetadata = () => {
+      if (token === state.playToken && Number.isFinite(audio.duration)) {
+        startPiperWordHighlights(clip.text, lang, (audio.duration / playbackRate) * 1000, token, options);
+      }
+    };
+    try {
+      await audio.play();
+      await new Promise((resolve, reject) => {
+        audio.onended = resolve;
+        audio.onerror = () => reject(new Error("Piper audio playback failed"));
+        const watch = () => {
+          if (token !== state.playToken) resolve();
+          else window.setTimeout(watch, 80);
+        };
+        watch();
+      });
+    } finally {
+      if (state.activeAudio === audio) {
+        state.activeAudio = null;
+      }
+      if (state.activeAudioUrl === url) {
+        URL.revokeObjectURL(url);
+        state.activeAudioUrl = "";
+      }
+      clearPiperHighlight(options);
+    }
+  }
+
   function shouldSetSystemLanguage(lang) {
     return Boolean(systemSpeechLang(lang));
   }
 
   function systemSpeechLang(lang) {
     if (langPrefix(lang) === "en") {
-      return state.voicePrefs.en ? lang : state.enLang;
+      return state.enLang || lang || "en-US";
     }
     return lang;
   }
 
   function findVoice(lang) {
-    const prefKey = voicePrefKeyForLang(lang);
+    const speechLang = systemSpeechLang(lang) || lang;
+    const prefKey = voicePrefKeyForLang(speechLang);
     const selected = prefKey ? state.voicePrefs[prefKey] : "";
+    const voices = matchingVoices(speechLang);
     if (selected) {
-      const selectedVoice = state.voices.find((voice) => voiceId(voice) === selected);
+      const selectedVoice = voices.find((voice) => voiceId(voice) === selected);
       if (selectedVoice) return selectedVoice;
     }
-    return null;
+    return voices.find((voice) => voice.default) || voices[0] || null;
   }
 
   function syncAvailableVoices() {
@@ -4354,6 +4590,13 @@
       savePrefs();
     });
 
+    if (els.engineSelect) {
+      els.engineSelect.addEventListener("change", () => {
+        state.ttsEngine = els.engineSelect.value === "piper" && isDesktopPiperAvailable() ? "piper" : "system";
+        savePrefs();
+      });
+    }
+
     [els.ruRate, els.enRate, els.pageVolume, els.gapMs].forEach((input) => {
       input.addEventListener("input", () => {
         if (input === els.ruRate || input === els.enRate || input === els.pageVolume) {
@@ -4423,6 +4666,9 @@
     els.bookLevelSelect.value = state.bookLevel;
     els.bandSelect.value = state.band;
     els.enLangSelect.value = state.enLang;
+    if (els.engineSelect) {
+      els.engineSelect.value = state.ttsEngine;
+    }
     syncBookAudioControlsFromSettings();
     updateShuffleButton();
     updateSettingLabels();

@@ -81,6 +81,51 @@ select {
   gap: 10px;
 }
 
+@media (min-width: 960px) {
+  body.desktop-edition .app-shell {
+    width: min(1480px, 100%);
+    padding: 24px;
+    gap: 16px;
+  }
+
+  body.desktop-edition .topbar,
+  body.desktop-edition .settings-panel,
+  body.desktop-edition .book-view {
+    border-radius: 12px;
+  }
+
+  body.desktop-edition .focus-pane {
+    min-height: 190px;
+    padding: 24px;
+  }
+
+  body.desktop-edition .settings-panel {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  body.desktop-edition .desktop-piper-setting {
+    display: grid;
+  }
+
+  body.desktop-edition .book-view {
+    padding: 18px;
+  }
+
+  body.desktop-edition .book-shelf {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  body.desktop-edition .book-card {
+    min-height: 126px;
+    padding: 12px;
+  }
+
+  body.desktop-edition .list-shell {
+    flex-basis: 420px;
+  }
+}
+
 .topbar,
 .statusbar,
 .transport,
@@ -207,6 +252,10 @@ select {
   gap: 6px;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.desktop-piper-setting {
+  display: none;
 }
 
 .setting-title {
