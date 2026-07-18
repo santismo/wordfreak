@@ -8,13 +8,12 @@
   const BOOK_PROGRESS_KEY = "wordfreak:book-progress:v1";
   const BOOK_FAVORITES_KEY = "wordfreak:book-favorites:v1";
   const BOOK_DIFFICULTY_KEY = "wordfreak:book-difficulty:v1";
-  // v2 drops failed translations that v1 could cache as the unchanged source text.
-  const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v2";
+  // v3 drops translations saved before reader text decoded entities and normalized diacritics.
+  const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v3";
   const NEWS_FEED_CACHE_KEY = "wordfreak:news-feeds:v1";
-  // v2 drops documents that may have been saved from incomplete proxy responses.
-  const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v2";
+  // v3 drops documents saved before reader text decoded entities and normalized diacritics.
+  const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v3";
   const STANDARD_EBOOKS_LIST_URL = "https://standardebooks.org/ebooks";
-  const GUTENDEX_BOOKS_URL = "https://gutendex.com/books/";
   const STANDARD_EBOOKS_PER_PAGE = 48;
   const STANDARD_EBOOKS_RANDOM_PAGE_MAX = 24;
   const BOOK_FETCH_TIMEOUT_MS = 14000;
@@ -42,7 +41,7 @@
   const PIPER_IMPORT_TIMEOUT_MS = 20000;
   const PIPER_DOWNLOAD_TIMEOUT_MS = 90000;
   const PIPER_PREDICT_TIMEOUT_MS = 45000;
-  const BOOK_SHELF_KINDS = new Set(["guided", "library", "gutenberg", "favorites"]);
+  const BOOK_SHELF_KINDS = new Set(["guided", "library", "favorites"]);
   const BOOK_LEVELS = {
     starter: {
       label: "Level 1 · Starter",
@@ -357,7 +356,6 @@
     bookLanguageSelect: document.getElementById("bookLanguageSelect"),
     bookGenreSelect: document.getElementById("bookGenreSelect"),
     bookLevelSelect: document.getElementById("bookLevelSelect"),
-    bookLevelNote: document.getElementById("bookLevelNote"),
     bookSearchInput: document.getElementById("bookSearchInput"),
     bookSearchBtn: document.getElementById("bookSearchBtn"),
     bookPageInput: document.getElementById("bookPageInput"),
@@ -505,8 +503,8 @@
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
       els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
-      els.bookSourceRate.value = els.ruRate.value;
-      els.bookEnRate.value = els.enRate.value;
+      els.bookSourceRate.value = String(clamp(prefs.bookSourceWpm || els.bookSourceRate.value, 10, 200));
+      els.bookEnRate.value = String(clamp(prefs.bookEnWpm || els.bookEnRate.value, 10, 200));
       els.bookVolume.value = els.pageVolume.value;
       els.bookReadEnglish.checked = prefs.bookReadEnglish !== false;
       els.gapMs.value = prefs.gapMs || els.gapMs.value;
@@ -526,6 +524,8 @@
       bookLevel: state.bookLevel,
       newsSourceByLanguage: state.newsSourceByLanguage,
       bookReadEnglish: els.bookReadEnglish.checked,
+      bookSourceWpm: els.bookSourceRate.value,
+      bookEnWpm: els.bookEnRate.value,
       voicePrefs: state.voicePrefs,
       enLang: state.enLang,
       desktopTtsEngine: state.ttsEngine,
@@ -552,8 +552,8 @@
     els.ruRateValue.textContent = `${Number(els.ruRate.value).toFixed(2)}x`;
     els.enRateValue.textContent = `${Number(els.enRate.value).toFixed(2)}x`;
     els.pageVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
-    els.bookSourceRateValue.textContent = `${Number(els.bookSourceRate.value).toFixed(2)}x`;
-    els.bookEnRateValue.textContent = `${Number(els.bookEnRate.value).toFixed(2)}x`;
+    els.bookSourceRateValue.textContent = `${Math.round(Number(els.bookSourceRate.value))} WPM`;
+    els.bookEnRateValue.textContent = `${Math.round(Number(els.bookEnRate.value))} WPM`;
     els.bookVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
     els.gapValue.textContent = `${Number.parseInt(els.gapMs.value, 10)} ms`;
   }
@@ -818,6 +818,25 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
+  function decodeHtmlText(value) {
+    let decoded = String(value || "");
+    const entityPattern = /&(?:#\d+|#x[\da-f]+|[a-z][\da-z]+);/i;
+    for (let pass = 0; pass < 2 && entityPattern.test(decoded); pass += 1) {
+      const decoder = document.createElement("textarea");
+      decoder.innerHTML = decoded;
+      const next = decoder.value;
+      if (next === decoded) break;
+      decoded = next;
+    }
+    return decoded;
+  }
+
+  function normalizeReaderText(value) {
+    return normalizeSpaces(decodeHtmlText(value)
+      .normalize("NFC")
+      .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, ""));
+  }
+
   function hasLinguisticContent(value) {
     return /[\p{L}\p{N}]/u.test(String(value || ""));
   }
@@ -834,7 +853,7 @@
   };
 
   function translationComparisonValue(value) {
-    return normalizeSpaces(String(value || "")
+    return normalizeSpaces(normalizeReaderText(value)
       .normalize("NFKC")
       .toLocaleLowerCase()
       .replace(/[\p{P}\p{S}]+/gu, " "));
@@ -849,8 +868,8 @@
   }
 
   function isUsableTranslation(source, translated, targetLanguage) {
-    const cleanSource = normalizeSpaces(source);
-    const cleanTranslation = normalizeSpaces(translated);
+    const cleanSource = normalizeReaderText(source);
+    const cleanTranslation = normalizeReaderText(translated);
     if (!cleanTranslation || !hasLinguisticContent(cleanTranslation)) return false;
     if (translationComparisonValue(cleanSource) === translationComparisonValue(cleanTranslation)) return false;
     if (/MYMEMORY WARNING|QUERY LENGTH LIMIT|PLEASE SELECT TWO DISTINCT LANGUAGES/i.test(cleanTranslation)) return false;
@@ -858,7 +877,7 @@
   }
 
   function stripForSpeech(value) {
-    const clean = String(value || "")
+    const clean = normalizeReaderText(value)
       .normalize("NFKC")
       // Directional and zero-width characters are not words, but can make a
       // voice spell or name nearby punctuation.
@@ -887,14 +906,10 @@
   }
 
   function syncBookAudioControlsFromSettings() {
-    els.bookSourceRate.value = els.ruRate.value;
-    els.bookEnRate.value = els.enRate.value;
     els.bookVolume.value = els.pageVolume.value;
   }
 
   function syncSettingsAudioControlsFromBook() {
-    els.ruRate.value = els.bookSourceRate.value;
-    els.enRate.value = els.bookEnRate.value;
     els.pageVolume.value = els.bookVolume.value;
   }
 
@@ -1523,12 +1538,14 @@
     return alignment;
   }
 
-  function applyReaderWordHighlight(alignment, speakingPane, charIndex, spokenText = "") {
+  function applyReaderWordHighlight(alignment, speakingPane, charIndex, spokenText = "", forcedWordIndex = null) {
     if (!alignment) return;
     const speakingRanges = speakingPane === "source" ? alignment.sourceRanges : alignment.englishRanges;
     const renderedText = speakingPane === "source" ? alignment.sourceText : alignment.englishText;
     const boundaryRanges = wordRanges(spokenText || renderedText, speakingPane === "source" ? alignment.sourceLanguage : "en");
-    const activeIndex = activeWordIndexForChar(spokenText || renderedText, charIndex, boundaryRanges);
+    const activeIndex = Number.isInteger(forcedWordIndex)
+      ? clamp(forcedWordIndex, 0, Math.max(0, speakingRanges.length - 1))
+      : activeWordIndexForChar(spokenText || renderedText, charIndex, boundaryRanges);
     const mappedIndexes = speakingPane === "source"
       ? alignment.sourceToEnglish[activeIndex] || []
       : alignment.englishToSource[activeIndex] || [];
@@ -1618,7 +1635,7 @@
     const failures = [];
     for (const translator of translators) {
       try {
-        const translated = await translator.run();
+        const translated = normalizeReaderText(await translator.run());
         if (isUsableTranslation(word, translated, "en")) return translated;
         failures.push(`${translator.name}: unchanged or wrong-language response`);
       } catch (error) {
@@ -1817,7 +1834,7 @@
 
   async function sharedBookTranslation(key, run, validate = hasLinguisticContent) {
     if (state.bookTranslationCache.has(key)) {
-      const cached = state.bookTranslationCache.get(key);
+      const cached = normalizeReaderText(state.bookTranslationCache.get(key));
       if (validate(cached)) return cached;
       state.bookTranslationCache.delete(key);
       scheduleReaderTranslationSave();
@@ -1826,9 +1843,10 @@
     const promise = Promise.resolve()
       .then(run)
       .then((value) => {
-        if (!validate(value)) return "";
-        rememberBookTranslation(key, value);
-        return value;
+        const cleanValue = normalizeReaderText(value);
+        if (!validate(cleanValue)) return "";
+        rememberBookTranslation(key, cleanValue);
+        return cleanValue;
       })
       .finally(() => state.bookTranslationPromises.delete(key));
     state.bookTranslationPromises.set(key, promise);
@@ -1878,7 +1896,7 @@
     const failures = [];
     for (const translator of translators) {
       try {
-        const translated = await translator.run();
+        const translated = normalizeReaderText(await translator.run());
         if (isUsableTranslation(clean, translated, target)) return translated;
         failures.push(`${translator.name}: unchanged or wrong-language response`);
       } catch (error) {
@@ -2432,149 +2450,6 @@
     return dedupeBooks(books);
   }
 
-  function formatGutenbergAuthorName(value) {
-    const clean = normalizeSpaces(value);
-    const parts = clean.split(",").map((part) => part.trim()).filter(Boolean);
-    if (parts.length !== 2 || /\(|\)/.test(clean)) return clean;
-    return `${parts[1]} ${parts[0]}`;
-  }
-
-  function inferBookGenres(values) {
-    const haystack = normalizeBookSearchValue(cleanBookStringList(values).join(" "));
-    const keywordMap = {
-      adventure: ["adventure", "pirate", "sea stories"],
-      autobiography: ["autobiograph"],
-      biography: ["biograph"],
-      childrens: ["children", "juvenile"],
-      comedy: ["comedy", "humorous"],
-      drama: ["drama", "plays"],
-      fantasy: ["fantasy", "fairy tale"],
-      fiction: ["fiction", "novels"],
-      horror: ["horror", "gothic"],
-      memoir: ["memoir"],
-      mystery: ["mystery", "detective", "crime"],
-      nonfiction: ["nonfiction", "non fiction"],
-      philosophy: ["philosoph"],
-      poetry: ["poetry", "poems"],
-      satire: ["satire", "satirical"],
-      "science-fiction": ["science fiction"],
-      shorts: ["short stories", "fables"],
-      spirituality: ["spiritual", "religion"],
-      travel: ["travel"]
-    };
-    return Object.entries(keywordMap)
-      .filter(([, keywords]) => keywords.some((keyword) => haystack.includes(normalizeBookSearchValue(keyword))))
-      .map(([genre]) => genre);
-  }
-
-  function gutenbergTextUrls(formats) {
-    if (!formats || typeof formats !== "object") return [];
-    const entries = Object.entries(formats)
-      .filter(([format, url]) => /^https?:\/\//i.test(url) && /^text\/(plain|html)/i.test(format));
-    const rank = ([format]) => {
-      if (/text\/plain.*utf-8/i.test(format)) return 0;
-      if (/text\/plain/i.test(format)) return 1;
-      return 2;
-    };
-    return entries.sort((left, right) => rank(left) - rank(right)).map(([, url]) => url);
-  }
-
-  function guidedBookForGutenbergId(id) {
-    return GUIDED_BOOKS.find((book) => book.gutenbergId === Number(id)) || null;
-  }
-
-  function normalizeGutendexBook(rawBook) {
-    const gutenbergId = Number.parseInt(rawBook?.id, 10) || 0;
-    if (!gutenbergId || rawBook?.media_type !== "Text") return null;
-    const guided = guidedBookForGutenbergId(gutenbergId);
-    const subjects = cleanBookStringList(rawBook.subjects);
-    const bookshelves = cleanBookStringList(rawBook.bookshelves);
-    const author = cleanBookStringList(rawBook.authors?.map((person) => formatGutenbergAuthorName(person?.name)))
-      .join(", ");
-    return normalizeBookRecord({
-      source: "gutenberg",
-      gutenbergId,
-      title: normalizeSpaces(rawBook.title),
-      author,
-      summary: normalizeSpaces(rawBook.summaries?.[0]),
-      subjects,
-      bookshelves,
-      genres: guided?.genres?.length ? guided.genres : inferBookGenres([...subjects, ...bookshelves]),
-      textUrls: gutenbergTextUrls(rawBook.formats),
-      level: guided?.level || "",
-      wordCount: guided?.wordCount || 0,
-      estimatedGrade: guided?.estimatedGrade ?? null,
-      averageSentenceWords: guided?.averageSentenceWords ?? null
-    });
-  }
-
-  async function fetchJsonWithProxies(url, label) {
-    const failures = [];
-    const candidates = PROXY_CANDIDATES.filter((candidate) => candidate.name !== "Jina");
-    const waves = [candidates.slice(0, 2), candidates.slice(2)];
-    const fetchCandidate = async (proxy, signal) => {
-      const response = await withTimeout(
-        fetch(proxy.build(url), { cache: "no-store", signal }),
-        BOOK_FETCH_TIMEOUT_MS,
-        `${proxy.name} ${label}`
-      );
-      if (!response.ok) throw new Error(`${response.status}`);
-      let text = await withTimeout(response.text(), BOOK_FETCH_TIMEOUT_MS, `${proxy.name} body`);
-      if (proxy.unwrap) text = proxy.unwrap(text);
-      const payload = JSON.parse(text);
-      if (!payload || typeof payload !== "object") throw new Error("invalid JSON");
-      return { payload, proxy: proxy.name };
-    };
-    for (const wave of waves) {
-      const controllers = wave.map(() => new AbortController());
-      try {
-        const result = await Promise.any(wave.map((proxy, index) => (
-          fetchCandidate(proxy, controllers[index].signal).catch((error) => {
-            failures.push(`${proxy.name}: ${error.message}`);
-            throw error;
-          })
-        )));
-        controllers.forEach((controller) => controller.abort());
-        return result;
-      } catch {
-        controllers.forEach((controller) => controller.abort());
-        // Continue to the fallback proxy wave.
-      }
-    }
-    throw new Error(`${label} failed: ${failures.slice(0, 3).join(" | ")}`);
-  }
-
-  function gutenbergCatalogUrl(page = state.bookPage, query = state.bookSearch, genre = state.bookGenre) {
-    const params = new URLSearchParams({
-      languages: "en",
-      copyright: "false",
-      mime_type: "text/",
-      sort: "popular",
-      page: String(Math.max(1, Number.parseInt(page, 10) || 1))
-    });
-    const cleanQuery = normalizeSpaces(query);
-    if (cleanQuery) params.set("search", cleanQuery);
-    if (BOOK_GENRES[genre]) params.set("topic", BOOK_GENRES[genre]);
-    return `${GUTENDEX_BOOKS_URL}?${params.toString()}`;
-  }
-
-  async function fetchGutenbergCatalogPage(page = state.bookPage, query = state.bookSearch, genre = state.bookGenre) {
-    const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
-    const { payload, proxy } = await fetchJsonWithProxies(
-      gutenbergCatalogUrl(safePage, query, genre),
-      "Project Gutenberg catalog"
-    );
-    const books = dedupeBooks((Array.isArray(payload.results) ? payload.results : []).map(normalizeGutendexBook).filter(Boolean));
-    if (!books.length) throw new Error("No Project Gutenberg books found");
-    return {
-      books,
-      proxy: `Gutendex via ${proxy}`,
-      page: safePage,
-      hasNext: Boolean(payload.next),
-      hasPrevious: Boolean(payload.previous)
-    };
-  }
-
   async function fetchBookCatalogPage(page = state.bookPage, query = state.bookSearch, genre = state.bookGenre) {
     const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
     const { text, proxy } = await fetchTextWithProxies(standardEbooksPageUrl(safePage, query, genre), "book shelf");
@@ -2614,30 +2489,6 @@
       setStatus(cleanQuery
         ? `Searched ${state.bookBooks.length} favorite books${levelText}`
         : `${state.bookBooks.length} favorite books${levelText}`);
-      return;
-    }
-
-    if (state.bookShelfKind === "gutenberg") {
-      const genreText = state.bookGenre ? `${genreLabel()} ` : "";
-      setStatus(cleanQuery
-        ? `Searching ${genreText}Project Gutenberg for "${cleanQuery}"`
-        : `Loading ${genreText}Project Gutenberg page ${page}`);
-      try {
-        const result = await fetchGutenbergCatalogPage(page, cleanQuery, state.bookGenre);
-        state.bookPage = result.page;
-        state.bookHasNextPage = result.hasNext;
-        state.bookHasPreviousPage = result.hasPrevious;
-        state.bookBooks = result.books;
-        els.bookPageInput.value = String(result.page);
-        renderBookShelf();
-        setStatus(cleanQuery
-          ? `Found ${result.books.length} Project Gutenberg books via ${result.proxy}`
-          : `Loaded ${result.books.length} Project Gutenberg books via ${result.proxy}`);
-      } catch (error) {
-        state.bookBooks = [];
-        renderBookShelf();
-        setStatus(cleanQuery ? `No Project Gutenberg books found for "${cleanQuery}"` : error.message);
-      }
       return;
     }
 
@@ -2691,7 +2542,7 @@
       populateNewsSourceSelect();
       return;
     }
-    const paged = state.bookShelfKind === "library" || state.bookShelfKind === "gutenberg";
+    const paged = state.bookShelfKind === "library";
     const levelsAvailable = state.bookShelfKind === "guided" || state.bookShelfKind === "favorites";
     els.bookShelfViewSelect.value = state.bookShelfKind;
     els.bookGenreSelect.value = state.bookGenre;
@@ -2701,7 +2552,6 @@
     els.bookNextPageBtn.disabled = !paged || !state.bookHasNextPage;
     els.bookGenreSelect.disabled = state.bookShelfKind === "favorites";
     els.bookLevelSelect.disabled = !levelsAvailable;
-    els.bookLevelNote.hidden = !levelsAvailable;
   }
 
   function bookShelfTitle() {
@@ -2724,7 +2574,7 @@
         : `${levelText}${genreText}Guided levels`;
     }
     const genreText = state.bookGenre ? `${genreLabel()} ` : "";
-    const sourceText = state.bookShelfKind === "gutenberg" ? "Project Gutenberg" : "Standard Ebooks";
+    const sourceText = "Fast public-domain library";
     return cleanQuery
       ? `${genreText}${sourceText} "${cleanQuery}"`
       : `${genreText}${sourceText} page ${state.bookPage}`;
@@ -2748,9 +2598,8 @@
           <article class="book-card news-card" data-book-index="${index}">
             <button class="book-open-btn" type="button" data-book-index="${index}">
               <span class="book-card-title">${escapeHtml(article.title)}</span>
-              <span class="book-card-author">${escapeHtml(article.sourceLabel || article.author || "News")}</span>
             </button>
-            <span class="book-card-meta">${escapeHtml(date)} · current article</span>
+            <span class="book-card-meta">${escapeHtml(date)}</span>
           </article>
         `;
       }).join("");
@@ -2766,9 +2615,7 @@
         ? (cleanQuery ? "No matching favorite books found." : "Favorite books will appear here.")
         : state.bookShelfKind === "guided"
           ? "No guided books match these filters. Try another level or genre."
-          : state.bookShelfKind === "gutenberg"
-            ? (cleanQuery ? "No Project Gutenberg books match this search." : "Load the Project Gutenberg catalog to begin.")
-            : (cleanQuery ? "No matching books found." : "Load a Standard Ebooks shelf page to begin.");
+          : (cleanQuery ? "No matching books found." : "Load the public-domain library to begin.");
       els.bookShelf.innerHTML = `<div class="book-empty">${emptyText}</div>`;
       scheduleShelfReaderPrefetch();
       return;
@@ -2833,7 +2680,7 @@
   }
 
   function cleanBookText(raw) {
-    return normalizeSpaces(raw)
+    return normalizeReaderText(raw)
       .replace(/\u00a0/g, " ")
       .replace(/\u200b/g, "")
       .replace(/\s+([,.;:!?])/g, "$1")
@@ -3362,9 +3209,8 @@
   function bookModeKickerText() {
     if (isNewsMode()) return "Live text news";
     if (state.bookShelfKind === "guided") return "Curated public-domain levels";
-    if (state.bookShelfKind === "gutenberg") return "Project Gutenberg via Gutendex";
     if (state.bookShelfKind === "favorites") return "Saved books";
-    return "Standard Ebooks";
+    return "Fast public-domain library";
   }
 
   function renderBookReaderShell() {
@@ -3609,11 +3455,7 @@
       const book = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
       if (!book) throw new Error(state.bookShelfKind === "favorites" ? "No favorite books found" : "No books match these filters");
       await loadBook(book, { random: true });
-      const shelfLabel = state.bookShelfKind === "guided"
-        ? "guided"
-        : state.bookShelfKind === "gutenberg"
-          ? "Project Gutenberg"
-          : "favorite";
+      const shelfLabel = state.bookShelfKind === "guided" ? "guided" : "favorite";
       setStatus(`Random ${shelfLabel} paragraph from ${book.title}`);
       return;
     }
@@ -3641,7 +3483,6 @@
     els.bookModeTitle.textContent = bookShelfTitle();
     els.bookShelfControls.hidden = isNewsMode();
     els.newsShelfControls.hidden = !isNewsMode();
-    els.bookLevelNote.hidden = isNewsMode() || !["guided", "favorites"].includes(state.bookShelfKind);
     els.bookShelf.hidden = false;
     els.bookReader.hidden = true;
     els.bookShelfBtn.hidden = true;
@@ -3659,7 +3500,6 @@
     els.bookModeTitle.textContent = isNewsMode() ? "Current article" : "Current book";
     els.bookShelfControls.hidden = true;
     els.newsShelfControls.hidden = true;
-    els.bookLevelNote.hidden = true;
     els.bookShelf.hidden = true;
     els.bookReader.hidden = false;
     els.bookShelfBtn.hidden = false;
@@ -3723,7 +3563,7 @@
     await Promise.race([alignment.enrichmentPromise, delayPlain(700)]);
     if (token !== state.playToken || !state.bookPlaying) return;
     setStatus(`${language.label} sentence ${state.bookCurrentIndex + 1}`);
-    await speakText(pair.source, language.speechLang, Number(els.bookSourceRate.value), token, {
+    await speakTextWithWordPacing(pair.source, language.speechLang, Number(els.bookSourceRate.value), token, {
       alignment,
       speakingPane: "source"
     });
@@ -3732,7 +3572,7 @@
 
     if (!els.bookReadEnglish.checked) return;
     setStatus(`English sentence ${state.bookCurrentIndex + 1}`);
-    await speakText(pair.english, "en-US", Number(els.bookEnRate.value), token, {
+    await speakTextWithWordPacing(pair.english, "en-US", Number(els.bookEnRate.value), token, {
       alignment,
       speakingPane: "english"
     });
@@ -3839,6 +3679,24 @@
     await speakWithSystemVoice(text, lang, rate, token, options);
   }
 
+  async function speakTextWithWordPacing(text, lang, wordsPerMinute, token, options = {}) {
+    const spokenText = stripForSpeech(text);
+    const ranges = wordRanges(spokenText, lang);
+    if (token !== state.playToken || !ranges.length) return;
+    const intervalMs = 60000 / clamp(wordsPerMinute, 10, 200);
+    for (let index = 0; index < ranges.length; index += 1) {
+      if (token !== state.playToken) return;
+      const started = window.performance?.now?.() ?? Date.now();
+      await speakText(ranges[index].text, lang, 1, token, {
+        ...options,
+        readerWordIndex: index
+      });
+      if (token !== state.playToken || index === ranges.length - 1) return;
+      const finished = window.performance?.now?.() ?? Date.now();
+      await delay(Math.max(0, intervalMs - (finished - started)), token);
+    }
+  }
+
   async function prepareSpeechEngine() {
     if (isDesktopPiperEnabled() && piperVoiceIdForLang(activeLanguage().speechLang)) {
       return;
@@ -3926,7 +3784,13 @@
       }, 5000);
       const applyHighlight = (charIndex) => {
         if (options.alignment) {
-          applyReaderWordHighlight(options.alignment, options.speakingPane, charIndex, spokenText);
+          applyReaderWordHighlight(
+            options.alignment,
+            options.speakingPane,
+            charIndex,
+            spokenText,
+            Number.isInteger(options.readerWordIndex) ? options.readerWordIndex : null
+          );
           return;
         }
         applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, charIndex);
@@ -4038,7 +3902,13 @@
 
   function applyPiperHighlight(options, text, lang, charIndex) {
     if (options.alignment) {
-      applyReaderWordHighlight(options.alignment, options.speakingPane, charIndex, text);
+      applyReaderWordHighlight(
+        options.alignment,
+        options.speakingPane,
+        charIndex,
+        text,
+        Number.isInteger(options.readerWordIndex) ? options.readerWordIndex : null
+      );
       return;
     }
     applySpeechHighlight(options.highlightTargets, options.highlightText || text, charIndex);
@@ -4475,7 +4345,7 @@
     });
 
     els.bookPageInput.addEventListener("change", async () => {
-      if (!["library", "gutenberg"].includes(state.bookShelfKind)) return;
+      if (state.bookShelfKind !== "library") return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true, "books");
       try {
@@ -4487,7 +4357,7 @@
     });
 
     els.bookPrevPageBtn.addEventListener("click", async () => {
-      if (!["library", "gutenberg"].includes(state.bookShelfKind)) return;
+      if (state.bookShelfKind !== "library") return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true, "books");
       try {
@@ -4499,7 +4369,7 @@
     });
 
     els.bookNextPageBtn.addEventListener("click", async () => {
-      if (!["library", "gutenberg"].includes(state.bookShelfKind)) return;
+      if (state.bookShelfKind !== "library") return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       setBookMode(true, "books");
       try {

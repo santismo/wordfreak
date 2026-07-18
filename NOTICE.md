@@ -86,12 +86,7 @@ News mode reads current public feeds from Meduza, VOA Persian, Radio Farda, DW E
 
 Book mode links to public-domain editions from Standard Ebooks and Project Gutenberg. Standard Ebooks dedicates its ebook productions to the public domain under CC0. Project Gutenberg determines public-domain status under United States law; a work's status may differ elsewhere. Wordfreak links every reader view to its source edition and does not bundle book text.
 
-Project Gutenberg catalog metadata and current text-format URLs are retrieved through the open-source Gutendex API. Gutendex is an independent catalog service and recommends self-hosting for long-term production use.
-
-Book difficulty levels are Wordfreak study estimates based on English Flesch-Kincaid-style sentence and word measurements, total word count, and light curation for literary complexity. They are not CEFR classifications or guarantees that a machine translation will have the same difficulty.
-
 Sources:
 
 - https://standardebooks.org/about
 - https://www.gutenberg.org/policy/permission.html
-- https://gutendex.com/

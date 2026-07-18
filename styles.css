@@ -394,17 +394,6 @@ body.book-mode .dataset-meta {
   min-width: 0;
 }
 
-.book-level-note {
-  margin: -2px 0 0;
-  color: var(--muted);
-  font-size: 0.69rem;
-  line-height: 1.35;
-}
-
-.book-level-note[hidden] {
-  display: none;
-}
-
 .book-shelf-controls input,
 .book-shelf-controls select,
 .book-reader-controls input,
@@ -615,6 +604,10 @@ body.book-mode .dataset-meta {
 
 .book-card.news-card .book-open-btn {
   padding-right: 0;
+}
+
+.book-card.news-card {
+  min-height: 78px;
 }
 
 .book-favorite-btn {

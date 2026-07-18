@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=21">
+  <link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
   <main class="app-shell">
@@ -140,7 +140,7 @@
     <section id="bookView" class="book-view" hidden>
       <div class="book-mode-head">
         <div class="book-heading">
-          <div id="bookModeKicker" class="book-kicker">Standard Ebooks</div>
+          <div id="bookModeKicker" class="book-kicker">Public-domain reading</div>
           <h2 id="bookModeTitle">Library</h2>
         </div>
         <div class="book-head-actions">
@@ -153,8 +153,7 @@
           View
           <select id="bookShelfViewSelect">
             <option value="guided" selected>Guided levels</option>
-            <option value="library">Standard Ebooks</option>
-            <option value="gutenberg">Project Gutenberg</option>
+            <option value="library">Fast public-domain library</option>
             <option value="favorites">Favorites</option>
           </select>
         </label>
@@ -197,7 +196,7 @@
         </label>
         <label>
           Difficulty
-          <select id="bookLevelSelect" aria-describedby="bookLevelNote">
+          <select id="bookLevelSelect">
             <option value="">All levels</option>
             <option value="starter">Level 1 · Starter</option>
             <option value="easy">Level 2 · Easy classics</option>
@@ -218,8 +217,6 @@
         </label>
         <button id="bookNextPageBtn" type="button" aria-label="Next page" title="Next page">&#8250;</button>
       </form>
-      <p id="bookLevelNote" class="book-level-note">Levels are curated estimates based on English readability, sentence length, and total length—not formal CEFR ratings. Newly added guided books are refined after their first full load.</p>
-
       <form id="newsShelfControls" class="book-shelf-controls news-shelf-controls" hidden>
         <label>
           Language
@@ -256,17 +253,17 @@
       <div id="bookAudioPanel" class="book-audio-panel" hidden>
         <label>
           <span class="setting-title">
-            Source speed
-            <output id="bookSourceRateValue">0.82x</output>
+            Source pacing
+            <output id="bookSourceRateValue">90 WPM</output>
           </span>
-          <input id="bookSourceRate" type="range" min="0.55" max="1.25" step="0.05" value="0.82">
+          <input id="bookSourceRate" type="range" min="10" max="200" step="5" value="90" aria-label="Source words per minute">
         </label>
         <label>
           <span class="setting-title">
-            EN speed
-            <output id="bookEnRateValue">0.95x</output>
+            English pacing
+            <output id="bookEnRateValue">120 WPM</output>
           </span>
-          <input id="bookEnRate" type="range" min="0.65" max="1.35" step="0.05" value="0.95">
+          <input id="bookEnRate" type="range" min="10" max="200" step="5" value="120" aria-label="English words per minute">
         </label>
         <label>
           <span class="setting-title">
@@ -338,6 +335,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=42" defer></script>
+  <script src="app.js?v=43" defer></script>
 </body>
 </html>
