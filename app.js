@@ -12,6 +12,38 @@
   const BOOK_FETCH_TIMEOUT_MS = 22000;
   const BOOK_TRANSLATION_CACHE_LIMIT = 350;
   const BOOK_NEARBY_RADIUS = 3;
+  const NEWS_ARTICLE_LIMIT = 60;
+  const NEWS_SOURCES = {
+    ru: [
+      { id: "meduza", label: "Meduza", feed: "https://meduza.io/rss/all", home: "https://meduza.io/" },
+      { id: "google", label: "Google News Russian", feed: "https://news.google.com/rss?hl=ru&gl=RU&ceid=RU:ru", home: "https://news.google.com/?hl=ru&gl=RU&ceid=RU:ru" }
+    ],
+    fa: [
+      { id: "voa", label: "VOA Persian", feed: "https://ir.voanews.com/api/zkup_l-vomx-tpejiyy", home: "https://ir.voanews.com/" },
+      { id: "google", label: "Google News Persian", feed: "https://news.google.com/rss?hl=fa&gl=IR&ceid=IR:fa", home: "https://news.google.com/?hl=fa&gl=IR&ceid=IR:fa" }
+    ],
+    es: [
+      { id: "dw", label: "DW Español", feed: "https://rss.dw.com/rdf/rss-sp-all", home: "https://www.dw.com/es/" },
+      { id: "google", label: "Google Noticias", feed: "https://news.google.com/rss?hl=es&gl=US&ceid=US:es", home: "https://news.google.com/?hl=es&gl=US&ceid=US:es" }
+    ],
+    fr: [
+      { id: "rfi", label: "RFI Français", feed: "https://www.rfi.fr/fr/rss", home: "https://www.rfi.fr/fr/" },
+      { id: "france24", label: "France 24", feed: "https://www.france24.com/fr/rss", home: "https://www.france24.com/fr/" },
+      { id: "google", label: "Google Actualités", feed: "https://news.google.com/rss?hl=fr&gl=FR&ceid=FR:fr", home: "https://news.google.com/?hl=fr&gl=FR&ceid=FR:fr" }
+    ],
+    hi: [
+      { id: "bbc", label: "BBC हिन्दी", feed: "https://feeds.bbci.co.uk/hindi/rss.xml", home: "https://www.bbc.com/hindi" },
+      { id: "google", label: "Google समाचार", feed: "https://news.google.com/rss?hl=hi&gl=IN&ceid=IN:hi", home: "https://news.google.com/?hl=hi&gl=IN&ceid=IN:hi" }
+    ],
+    ja: [
+      { id: "nhk", label: "NHK ニュース", feed: "https://www3.nhk.or.jp/rss/news/cat0.xml", home: "https://www3.nhk.or.jp/news/" },
+      { id: "google", label: "Google ニュース", feed: "https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja", home: "https://news.google.com/?hl=ja&gl=JP&ceid=JP:ja" }
+    ],
+    ko: [
+      { id: "voa", label: "VOA 한국어", feed: "https://www.voakorea.com/api/zpokyl-vomx-tpe_kjt", home: "https://www.voakorea.com/" },
+      { id: "google", label: "Google 뉴스", feed: "https://news.google.com/rss?hl=ko&gl=KR&ceid=KR:ko", home: "https://news.google.com/?hl=ko&gl=KR&ceid=KR:ko" }
+    ]
+  };
   const BOOK_GENRES = {
     adventure: "Adventure",
     autobiography: "Autobiography",
@@ -39,6 +71,10 @@
       build: (url) => url
     },
     {
+      name: "Jina",
+      build: (url) => `https://r.jina.ai/http://${String(url || "").replace(/^https?:\/\//i, "")}`
+    },
+    {
       name: "CodeTabs",
       build: (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`
     },
@@ -53,10 +89,6 @@
         const payload = JSON.parse(text);
         return String(payload?.contents || "");
       }
-    },
-    {
-      name: "Jina",
-      build: (url) => `https://r.jina.ai/http://${String(url || "").replace(/^https?:\/\//i, "")}`
     }
   ];
   const FALLBACK_BOOKS = [
@@ -140,6 +172,7 @@
     languageSelect: document.getElementById("languageSelect"),
     bandSelect: document.getElementById("bandSelect"),
     bookToggle: document.getElementById("bookToggle"),
+    newsToggle: document.getElementById("newsToggle"),
     settingsToggle: document.getElementById("settingsToggle"),
     settingsPanel: document.getElementById("settingsPanel"),
     rankLabel: document.getElementById("rankLabel"),
@@ -165,6 +198,7 @@
     gapMs: document.getElementById("gapMs"),
     gapValue: document.getElementById("gapValue"),
     bookView: document.getElementById("bookView"),
+    bookModeKicker: document.getElementById("bookModeKicker"),
     bookModeTitle: document.getElementById("bookModeTitle"),
     bookShelfBtn: document.getElementById("bookShelfBtn"),
     bookShelfControls: document.getElementById("bookShelfControls"),
@@ -177,6 +211,13 @@
     bookPageInput: document.getElementById("bookPageInput"),
     bookPrevPageBtn: document.getElementById("bookPrevPageBtn"),
     bookNextPageBtn: document.getElementById("bookNextPageBtn"),
+    newsShelfControls: document.getElementById("newsShelfControls"),
+    newsLanguageSelect: document.getElementById("newsLanguageSelect"),
+    newsSourceSelect: document.getElementById("newsSourceSelect"),
+    newsSearchInput: document.getElementById("newsSearchInput"),
+    newsSearchBtn: document.getElementById("newsSearchBtn"),
+    newsRefreshBtn: document.getElementById("newsRefreshBtn"),
+    newsRandomBtn: document.getElementById("newsRandomBtn"),
     bookPrevSentenceBtn: document.getElementById("bookPrevSentenceBtn"),
     bookPlayBtn: document.getElementById("bookPlayBtn"),
     bookNextSentenceBtn: document.getElementById("bookNextSentenceBtn"),
@@ -188,15 +229,18 @@
     bookEnRateValue: document.getElementById("bookEnRateValue"),
     bookVolume: document.getElementById("bookVolume"),
     bookVolumeValue: document.getElementById("bookVolumeValue"),
+    bookReadEnglish: document.getElementById("bookReadEnglish"),
     bookReader: document.getElementById("bookReader"),
     bookReaderMeta: document.getElementById("bookReaderMeta"),
     bookReaderTitle: document.getElementById("bookReaderTitle"),
     bookSourceLink: document.getElementById("bookSourceLink"),
+    bookChapterLabel: document.getElementById("bookChapterLabel"),
     bookChapterSelect: document.getElementById("bookChapterSelect"),
     bookProgressValue: document.getElementById("bookProgressValue"),
     bookProgressRange: document.getElementById("bookProgressRange"),
     bookSourceLabel: document.getElementById("bookSourceLabel"),
     bookSourceSentence: document.getElementById("bookSourceSentence"),
+    bookEnglishLabel: document.getElementById("bookEnglishLabel"),
     bookEnglishSentence: document.getElementById("bookEnglishSentence"),
     bookNearbyList: document.getElementById("bookNearbyList"),
     bookShelf: document.getElementById("bookShelf"),
@@ -229,6 +273,7 @@
     rowHeight: 42,
     translationCache: loadTranslationCache(),
     bookMode: false,
+    contentMode: "books",
     bookViewMode: "shelf",
     bookShelfKind: "library",
     bookPage: 1,
@@ -246,7 +291,11 @@
     bookProgress: loadBookProgress(),
     bookFavorites: loadBookFavorites(),
     bookTranslationCache: new Map(),
+    newsSourceByLanguage: {},
+    newsAllArticles: [],
+    newsSearch: "",
     activeHighlights: [],
+    activeCorrespondingHighlights: [],
     scrollTimer: 0,
     programmaticScroll: false,
     ruFitRaf: 0,
@@ -267,6 +316,9 @@
       state.currentPos = Number.isFinite(prefs.currentPos) ? prefs.currentPos : 0;
       state.bookShelfKind = prefs.bookShelfKind === "favorites" ? "favorites" : state.bookShelfKind;
       state.bookGenre = BOOK_GENRES[prefs.bookGenre] ? prefs.bookGenre : "";
+      state.newsSourceByLanguage = prefs.newsSourceByLanguage && typeof prefs.newsSourceByLanguage === "object"
+        ? { ...prefs.newsSourceByLanguage }
+        : {};
       if (prefs.voicePrefs && typeof prefs.voicePrefs === "object") {
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
@@ -277,6 +329,7 @@
       els.bookSourceRate.value = els.ruRate.value;
       els.bookEnRate.value = els.enRate.value;
       els.bookVolume.value = els.pageVolume.value;
+      els.bookReadEnglish.checked = prefs.bookReadEnglish !== false;
       els.gapMs.value = prefs.gapMs || els.gapMs.value;
     } catch (error) {
       console.warn("Preference load failed:", error);
@@ -291,6 +344,8 @@
       currentPos: state.currentPos,
       bookShelfKind: state.bookShelfKind,
       bookGenre: state.bookGenre,
+      newsSourceByLanguage: state.newsSourceByLanguage,
+      bookReadEnglish: els.bookReadEnglish.checked,
       voicePrefs: state.voicePrefs,
       enLang: state.enLang,
       ruRate: els.ruRate.value,
@@ -397,6 +452,36 @@
 
   function activeLanguage() {
     return LANGUAGES[state.language] || LANGUAGES.ru;
+  }
+
+  function isNewsMode() {
+    return state.contentMode === "news";
+  }
+
+  function activeNewsSources() {
+    return NEWS_SOURCES[state.language] || NEWS_SOURCES.ru;
+  }
+
+  function activeNewsSource() {
+    const sources = activeNewsSources();
+    const selectedId = state.newsSourceByLanguage[state.language] || sources[0]?.id;
+    return sources.find((source) => source.id === selectedId) || sources[0];
+  }
+
+  function populateNewsSourceSelect() {
+    const sources = activeNewsSources();
+    const selected = activeNewsSource();
+    els.newsSourceSelect.replaceChildren();
+    sources.forEach((source) => {
+      const option = document.createElement("option");
+      option.value = source.id;
+      option.textContent = source.label;
+      els.newsSourceSelect.appendChild(option);
+    });
+    if (selected) {
+      state.newsSourceByLanguage[state.language] = selected.id;
+      els.newsSourceSelect.value = selected.id;
+    }
   }
 
   function sourceLangCode() {
@@ -909,6 +994,25 @@
     }
   }
 
+  function applyCorrespondingHighlight(targets) {
+    clearCorrespondingHighlights();
+    const normalizedTargets = normalizeHighlightTargets(targets, "");
+    state.activeCorrespondingHighlights = normalizedTargets;
+    normalizedTargets.forEach((target) => {
+      target.node.classList.add("corresponding-active");
+    });
+  }
+
+  function clearCorrespondingHighlights(targets = state.activeCorrespondingHighlights) {
+    const normalizedTargets = normalizeHighlightTargets(targets, "");
+    normalizedTargets.forEach((target) => {
+      target.node.classList.remove("corresponding-active");
+    });
+    if (targets === state.activeCorrespondingHighlights) {
+      state.activeCorrespondingHighlights = [];
+    }
+  }
+
   async function ensureMeaning(entry) {
     if (!entry) return "";
     if (entry.en) return entry.en;
@@ -931,15 +1035,27 @@
     return "";
   }
 
-  async function translateToEn(text) {
+  async function translateToEn(text, language = state.language) {
     const word = normalizeSpaces(text);
-    const source = activeLanguage().translateSl;
+    const source = LANGUAGES[language]?.translateSl || activeLanguage().translateSl;
     const translators = [
+      {
+        name: "Google",
+        run: async () => {
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${source}&tl=en&dt=t&q=${encodeURIComponent(word)}`;
+          const response = await withTimeout(fetch(url, { cache: "no-store" }), 12000, "Google translation");
+          if (!response.ok) throw new Error(`Google ${response.status}`);
+          const payload = await response.json();
+          return Array.isArray(payload?.[0])
+            ? normalizeSpaces(payload[0].map((chunk) => chunk?.[0] || "").join(""))
+            : "";
+        }
+      },
       {
         name: "Lingva",
         run: async () => {
           const url = `https://lingva.ml/api/v1/${source}/en/${encodeURIComponent(word)}`;
-          const response = await fetch(url, { cache: "no-store" });
+          const response = await withTimeout(fetch(url, { cache: "no-store" }), 12000, "Lingva translation");
           if (!response.ok) throw new Error(`Lingva ${response.status}`);
           const payload = await response.json();
           return normalizeSpaces(payload.translation || "");
@@ -949,22 +1065,10 @@
         name: "MyMemory",
         run: async () => {
           const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word)}&langpair=${source}|en`;
-          const response = await fetch(url, { cache: "no-store" });
+          const response = await withTimeout(fetch(url, { cache: "no-store" }), 12000, "MyMemory translation");
           if (!response.ok) throw new Error(`MyMemory ${response.status}`);
           const payload = await response.json();
           return normalizeSpaces(payload?.responseData?.translatedText || "");
-        }
-      },
-      {
-        name: "Google",
-        run: async () => {
-          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${source}&tl=en&dt=t&q=${encodeURIComponent(word)}`;
-          const response = await fetch(url, { cache: "no-store" });
-          if (!response.ok) throw new Error(`Google ${response.status}`);
-          const payload = await response.json();
-          return Array.isArray(payload?.[0])
-            ? normalizeSpaces(payload[0].map((chunk) => chunk?.[0] || "").join(""))
-            : "";
         }
       }
     ];
@@ -1170,6 +1274,31 @@
     return finalText;
   }
 
+  async function ensureNewsEnglishSentence(sourceText, language = state.language) {
+    const key = `en:${bookTranslationKey(sourceText, language)}`;
+    if (state.bookTranslationCache.has(key)) {
+      return state.bookTranslationCache.get(key);
+    }
+    const translated = await translateToEn(sourceText, language);
+    const finalText = translated || sourceText;
+    rememberBookTranslation(key, finalText);
+    return finalText;
+  }
+
+  async function readerSentencePair(sentence, language = state.language) {
+    if (!sentence) return { source: "", english: "" };
+    if (isNewsMode() || state.bookLoadedBook?.kind === "news") {
+      return {
+        source: sentence.text,
+        english: await ensureNewsEnglishSentence(sentence.text, language)
+      };
+    }
+    return {
+      source: await ensureBookSourceSentence(sentence.text, language),
+      english: sentence.text
+    };
+  }
+
   function standardEbooksPageUrl(page, query = state.bookSearch, genre = state.bookGenre) {
     const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
     const params = new URLSearchParams({
@@ -1208,6 +1337,183 @@
       }
     }
     throw new Error(`${label} failed: ${failures.slice(0, 3).join(" | ")}`);
+  }
+
+  function feedChild(node, names) {
+    const wanted = names.map((name) => name.toLowerCase());
+    return Array.from(node?.children || []).find((child) => wanted.includes(String(child.localName || child.tagName || "").toLowerCase())) || null;
+  }
+
+  function feedChildText(node, names) {
+    return normalizeSpaces(feedChild(node, names)?.textContent || "");
+  }
+
+  function stripNewsMarkup(value) {
+    const doc = new DOMParser().parseFromString(String(value || ""), "text/html");
+    return cleanBookText(doc.body?.textContent || value || "");
+  }
+
+  function normalizeNewsLink(value, baseUrl = "") {
+    try {
+      const url = new URL(value, baseUrl || window.location.href);
+      if (!/^https?:$/.test(url.protocol)) return "";
+      url.hash = "";
+      return url.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function normalizeNewsRecord(rawArticle, source) {
+    const link = normalizeNewsLink(rawArticle.link, source?.home || source?.feed || "");
+    const title = cleanBookText(rawArticle.title);
+    if (!link || !title) return null;
+    const publishedTime = Date.parse(rawArticle.publishedAt || "");
+    return {
+      id: link,
+      kind: "news",
+      link,
+      title,
+      author: cleanBookText(rawArticle.author || source?.label || "News"),
+      sourceLabel: cleanBookText(rawArticle.sourceLabel || rawArticle.author || source?.label || "News"),
+      publishedAt: Number.isFinite(publishedTime) ? new Date(publishedTime).toISOString() : "",
+      summary: stripNewsMarkup(rawArticle.summary || ""),
+      feedSourceId: source?.id || "",
+      feedSourceLabel: source?.label || "News"
+    };
+  }
+
+  function parseNewsFeed(text, source) {
+    const doc = new DOMParser().parseFromString(text, "application/xml");
+    if (doc.querySelector("parsererror")) {
+      throw new Error("News feed returned invalid XML");
+    }
+    const records = [];
+    const seen = new Set();
+    const entries = Array.from(doc.querySelectorAll("item, entry"));
+    entries.forEach((entry) => {
+      const linkNode = feedChild(entry, ["link"]);
+      const rawLink = linkNode?.getAttribute("href") || normalizeSpaces(linkNode?.textContent || "") || feedChildText(entry, ["guid", "id"]);
+      const sourceNode = feedChild(entry, ["source"]);
+      const sourceLabel = normalizeSpaces(sourceNode?.textContent || "");
+      let title = feedChildText(entry, ["title"]);
+      if (sourceLabel && title.endsWith(` - ${sourceLabel}`)) {
+        title = title.slice(0, -(` - ${sourceLabel}`.length)).trim();
+      }
+      const article = normalizeNewsRecord({
+        link: rawLink,
+        title,
+        author: feedChildText(entry, ["author", "creator"]) || sourceLabel,
+        sourceLabel,
+        publishedAt: feedChildText(entry, ["pubdate", "published", "updated", "date"]),
+        summary: feedChildText(entry, ["description", "summary", "content", "encoded"])
+      }, source);
+      if (!article || seen.has(article.id)) return;
+      seen.add(article.id);
+      records.push(article);
+    });
+    return records
+      .sort((left, right) => Date.parse(right.publishedAt || 0) - Date.parse(left.publishedAt || 0))
+      .slice(0, NEWS_ARTICLE_LIMIT);
+  }
+
+  function parseNewsFeedJson(payload, source) {
+    if (payload?.status !== "ok" || !Array.isArray(payload.items)) {
+      throw new Error(payload?.message || "News service returned invalid data");
+    }
+    const seen = new Set();
+    return payload.items
+      .map((item) => normalizeNewsRecord({
+        link: item.link || item.guid,
+        title: item.title,
+        author: item.author || payload.feed?.title || source.label,
+        sourceLabel: item.author || source.label,
+        publishedAt: item.pubDate,
+        summary: item.description || item.content || item.thumbnail || ""
+      }, source))
+      .filter((article) => {
+        if (!article || seen.has(article.id)) return false;
+        seen.add(article.id);
+        return true;
+      })
+      .sort((left, right) => Date.parse(right.publishedAt || 0) - Date.parse(left.publishedAt || 0))
+      .slice(0, NEWS_ARTICLE_LIMIT);
+  }
+
+  async function fetchNewsArticles(source) {
+    const rssServiceUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.feed)}`;
+    const failures = [];
+    try {
+      const response = await withTimeout(
+        fetch(rssServiceUrl, { cache: "no-store" }),
+        BOOK_FETCH_TIMEOUT_MS,
+        "news service"
+      );
+      if (!response.ok) throw new Error(`${response.status}`);
+      const articles = parseNewsFeedJson(await response.json(), source);
+      if (!articles.length) throw new Error("no articles");
+      return { articles, proxy: "live RSS" };
+    } catch (error) {
+      failures.push(`RSS service: ${error.message}`);
+    }
+
+    try {
+      const { text, proxy } = await fetchTextWithProxies(source.feed, "news feed");
+      const articles = parseNewsFeed(text, source);
+      if (!articles.length) throw new Error("no articles");
+      return { articles, proxy };
+    } catch (error) {
+      failures.push(error.message);
+    }
+    throw new Error(`News feed failed: ${failures.join(" | ")}`);
+  }
+
+  function newsSearchHaystack(article) {
+    return normalizeSpaces(`${article?.title || ""} ${article?.author || ""} ${article?.summary || ""}`)
+      .toLocaleLowerCase(state.language);
+  }
+
+  function applyNewsFilter() {
+    const query = normalizeSpaces(state.newsSearch).toLocaleLowerCase(state.language);
+    const terms = query.split(/\s+/).filter(Boolean);
+    state.bookBooks = terms.length
+      ? state.newsAllArticles.filter((article) => {
+        const haystack = newsSearchHaystack(article);
+        return terms.every((term) => haystack.includes(term));
+      })
+      : [...state.newsAllArticles];
+    renderBookShelf();
+    setStatus(terms.length
+      ? `Showing ${state.bookBooks.length} matching current articles`
+      : `${state.bookBooks.length} current articles`);
+  }
+
+  async function loadNewsFeed() {
+    const source = activeNewsSource();
+    if (!source) throw new Error(`No news source for ${activeLanguage().label}`);
+    state.newsSourceByLanguage[state.language] = source.id;
+    state.newsSearch = normalizeSpaces(els.newsSearchInput.value);
+    setStatus(`Updating ${source.label}`);
+    const { articles, proxy } = await fetchNewsArticles(source);
+    state.newsAllArticles = articles;
+    applyNewsFilter();
+    savePrefs();
+    setStatus(`Updated ${articles.length} articles from ${source.label} via ${proxy}`);
+  }
+
+  function formatNewsDate(value) {
+    const time = Date.parse(value || "");
+    if (!Number.isFinite(time)) return "Latest";
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      }).format(new Date(time));
+    } catch {
+      return new Date(time).toLocaleString();
+    }
   }
 
   function normalizeStandardEbookLink(href) {
@@ -1461,6 +1767,11 @@
   }
 
   function updateBookShelfControlState() {
+    if (isNewsMode()) {
+      els.newsLanguageSelect.value = state.language;
+      populateNewsSourceSelect();
+      return;
+    }
     const favorites = state.bookShelfKind === "favorites";
     els.bookShelfViewSelect.value = state.bookShelfKind;
     els.bookGenreSelect.value = state.bookGenre;
@@ -1471,6 +1782,12 @@
   }
 
   function bookShelfTitle() {
+    if (isNewsMode()) {
+      const source = activeNewsSource();
+      return state.newsSearch
+        ? `${source?.label || "News"} · filtered`
+        : `${source?.label || "News"} · latest`;
+    }
     const cleanQuery = normalizeSpaces(state.bookSearch);
     if (state.bookShelfKind === "favorites") {
       return cleanQuery ? `Favorites "${cleanQuery}"` : "Favorites";
@@ -1484,6 +1801,28 @@
   function renderBookShelf() {
     if (!els.bookShelf) return;
     updateBookShelfControlState();
+    if (isNewsMode()) {
+      if (state.bookViewMode === "shelf") {
+        els.bookModeTitle.textContent = bookShelfTitle();
+      }
+      if (!state.bookBooks.length) {
+        els.bookShelf.innerHTML = `<div class="book-empty">${state.newsSearch ? "No current articles match this filter." : "Refresh to load current news articles."}</div>`;
+        return;
+      }
+      els.bookShelf.innerHTML = state.bookBooks.map((article, index) => {
+        const date = formatNewsDate(article.publishedAt);
+        return `
+          <article class="book-card news-card" data-book-index="${index}">
+            <button class="book-open-btn" type="button" data-book-index="${index}">
+              <span class="book-card-title">${escapeHtml(article.title)}</span>
+              <span class="book-card-author">${escapeHtml(article.sourceLabel || article.author || "News")}</span>
+            </button>
+            <span class="book-card-meta">${escapeHtml(date)} · current article</span>
+          </article>
+        `;
+      }).join("");
+      return;
+    }
     const cleanQuery = normalizeSpaces(state.bookSearch);
     if (state.bookViewMode === "shelf") {
       els.bookModeTitle.textContent = bookShelfTitle();
@@ -1702,7 +2041,120 @@
     return looksHtml ? parseBookHtml(raw) : parseBookPlain(raw);
   }
 
+  function isNewsNoise(text) {
+    const clean = normalizeSpaces(text);
+    if (!clean || clean.length < 2) return true;
+    const lower = clean.toLowerCase();
+    return /^(share|subscribe|sign up|log in|read more|copy link|comments?|advertisement|follow us)$/i.test(clean)
+      || lower.includes("javascript is disabled")
+      || lower.includes("enable javascript")
+      || lower.includes("cookie policy")
+      || lower.includes("all rights reserved");
+  }
+
+  function splitNewsSentences(text) {
+    const clean = cleanBookText(text);
+    if (!clean || isNewsNoise(clean)) return [];
+    let values = [];
+    if (typeof Intl.Segmenter === "function") {
+      try {
+        const segmenter = new Intl.Segmenter(sourceLangCode(), { granularity: "sentence" });
+        values = Array.from(segmenter.segment(clean), (part) => part.segment);
+      } catch {
+        values = [];
+      }
+    }
+    if (!values.length) {
+      values = clean.match(/[^.!?。！？؟]+(?:[.!?。！？؟]+["'”’»）\]]*|$)/gu) || [clean];
+    }
+    return values
+      .map(cleanBookText)
+      .filter((sentence) => sentence.length >= 2 && sentence.length <= 700 && !isNewsNoise(sentence));
+  }
+
+  function finalizeNewsParagraphs(paragraphs) {
+    const sentences = [];
+    let paragraphIndex = 0;
+    paragraphs.forEach((paragraph) => {
+      const paragraphSentences = splitNewsSentences(paragraph);
+      paragraphSentences.forEach((sentence) => {
+        sentences.push({ text: sentence, paragraphIndex, chapterIndex: 0 });
+      });
+      if (paragraphSentences.length) paragraphIndex += 1;
+    });
+    return finalizeBookParse(sentences, [{ title: "Article", start: 0 }]);
+  }
+
+  function parseNewsArticleHtml(raw) {
+    const doc = new DOMParser().parseFromString(raw, "text/html");
+    doc.querySelectorAll("script,style,noscript,nav,footer,header,aside,form,button,figure,figcaption,video,audio").forEach((node) => node.remove());
+    const candidates = Array.from(doc.querySelectorAll('[data-testid*="article-body"], .article-body, .wsw, article, main'));
+    const container = candidates
+      .map((node) => ({ node, score: Array.from(node.querySelectorAll("p")).reduce((sum, paragraph) => sum + normalizeSpaces(paragraph.textContent).length, 0) }))
+      .sort((left, right) => right.score - left.score)[0]?.node
+      || doc.body;
+    const seen = new Set();
+    const paragraphs = Array.from(container?.querySelectorAll("p") || [])
+      .map((node) => cleanBookText(node.textContent || ""))
+      .filter((text) => {
+        if (text.length < 20 || isNewsNoise(text) || seen.has(text)) return false;
+        seen.add(text);
+        return true;
+      });
+    return finalizeNewsParagraphs(paragraphs);
+  }
+
+  function parseNewsArticlePlain(raw) {
+    let source = String(raw || "");
+    const markdownStart = source.indexOf("Markdown Content:");
+    if (markdownStart >= 0) {
+      source = source.slice(markdownStart + "Markdown Content:".length);
+    }
+    const clean = source
+      .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/^[-*]\s+/gm, "")
+      .replace(/^(Title|URL Source|Published Time|Markdown Content|Warning):.*$/gim, "")
+      .replace(/\r/g, "");
+    const seen = new Set();
+    const paragraphs = clean.split(/\n\s*\n+|\n(?=\S)/)
+      .map(cleanBookText)
+      .filter((text) => {
+        if (text.length < 20 || isNewsNoise(text) || seen.has(text)) return false;
+        seen.add(text);
+        return true;
+      });
+    return finalizeNewsParagraphs(paragraphs);
+  }
+
+  function parseNewsArticleText(raw) {
+    const looksHtml = /<html|<article|<main|<p[\s>]/i.test(raw);
+    return looksHtml ? parseNewsArticleHtml(raw) : parseNewsArticlePlain(raw);
+  }
+
+  async function fetchAndParseNewsArticle(article) {
+    let lastError = null;
+    try {
+      const { text, proxy } = await fetchTextWithProxies(article.link, "news article");
+      const parsed = parseNewsArticleText(text);
+      if (!parsed.sentences.length) throw new Error("no readable article sentences");
+      return { ...parsed, sourceUrl: article.link, proxy };
+    } catch (error) {
+      lastError = error;
+    }
+    const fallbackText = [article.title, article.summary].filter(Boolean).join(". ");
+    const fallback = finalizeNewsParagraphs([fallbackText]);
+    if (fallback.sentences.length) {
+      return { ...fallback, sourceUrl: article.link, proxy: "feed summary" };
+    }
+    throw lastError || new Error("News article text failed");
+  }
+
   async function fetchAndParseBook(book) {
+    if (book?.kind === "news") {
+      return fetchAndParseNewsArticle(book);
+    }
     let lastError = null;
     for (const candidate of bookTextCandidates(book)) {
       try {
@@ -1725,8 +2177,13 @@
     }
     els.bookReader.hidden = state.bookViewMode !== "reader";
     els.bookReaderTitle.textContent = book.title;
-    els.bookReaderMeta.textContent = book.author || "Unknown author";
+    els.bookReaderMeta.textContent = book.kind === "news"
+      ? `${book.sourceLabel || book.author || "News"} · ${formatNewsDate(book.publishedAt)}`
+      : (book.author || "Unknown author");
     els.bookSourceLink.href = book.link || STANDARD_EBOOKS_LIST_URL;
+    els.bookSourceLink.textContent = book.kind === "news" ? "Original article" : "Source";
+    els.bookChapterLabel.textContent = book.kind === "news" ? "Section" : "Chapter";
+    els.bookEnglishLabel.textContent = book.kind === "news" ? "English translation" : "English original";
     els.bookProgressRange.max = String(Math.max(0, state.bookSentences.length - 1));
     els.bookProgressRange.value = String(state.bookCurrentIndex);
     els.bookChapterSelect.replaceChildren();
@@ -1788,8 +2245,8 @@
     els.bookSourceSentence.lang = sourceLangCode();
     els.bookSourceSentence.dir = language.dir;
     if (!sentence) {
-      els.bookSourceSentence.textContent = "Select a book to begin.";
-      els.bookEnglishSentence.textContent = "The English original will appear here.";
+      els.bookSourceSentence.textContent = isNewsMode() ? "Select a news article to begin." : "Select a book to begin.";
+      els.bookEnglishSentence.textContent = isNewsMode() ? "The English translation will appear here." : "The English original will appear here.";
       updateBookProgressControls();
       renderBookNearby();
       return;
@@ -1797,14 +2254,20 @@
 
     const renderToken = state.bookRenderToken + 1;
     state.bookRenderToken = renderToken;
-    els.bookEnglishSentence.textContent = sentence.text;
-    els.bookSourceSentence.textContent = "Translating...";
+    if (isNewsMode() || state.bookLoadedBook?.kind === "news") {
+      els.bookSourceSentence.textContent = sentence.text;
+      els.bookEnglishSentence.textContent = "Translating...";
+    } else {
+      els.bookEnglishSentence.textContent = sentence.text;
+      els.bookSourceSentence.textContent = "Translating...";
+    }
     updateBookProgressControls();
     renderBookNearby();
 
-    const source = await ensureBookSourceSentence(sentence.text, state.language);
+    const pair = await readerSentencePair(sentence, state.language);
     if (renderToken !== state.bookRenderToken) return;
-    els.bookSourceSentence.textContent = source;
+    els.bookSourceSentence.textContent = pair.source;
+    els.bookEnglishSentence.textContent = pair.english;
   }
 
   function setBookIndex(index, options = {}) {
@@ -1832,14 +2295,14 @@
   }
 
   async function loadBook(book, options = {}) {
-    if (!book?.link) throw new Error("Missing book link");
+    if (!book?.link) throw new Error(isNewsMode() ? "Missing article link" : "Missing book link");
     stopSpeech();
     state.bookLoadedBook = book;
     state.bookSentences = [];
     state.bookChapters = [];
     state.bookCurrentIndex = 0;
     renderBookReaderShell();
-    els.bookSourceSentence.textContent = "Loading book text...";
+    els.bookSourceSentence.textContent = book.kind === "news" ? "Loading current article..." : "Loading book text...";
     els.bookEnglishSentence.textContent = book.title;
     setStatus(`Loading ${book.title}`);
 
@@ -1855,6 +2318,17 @@
       : clamp(options.index ?? saved?.index ?? 0, 0, state.bookSentences.length - 1);
     setBookIndex(index, { save: true });
     setStatus(`Loaded ${book.title} (${state.bookSentences.length.toLocaleString()} sentences via ${parsed.proxy})`);
+  }
+
+  async function loadRandomNewsArticle() {
+    stopSpeech();
+    if (!state.bookBooks.length) {
+      await loadNewsFeed();
+    }
+    const article = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
+    if (!article) throw new Error("No current news articles found");
+    await loadBook(article, { random: true });
+    setStatus(`Random current article from ${article.sourceLabel || article.author || "news"}`);
   }
 
   async function loadRandomBookParagraph() {
@@ -1887,8 +2361,10 @@
   function showBookShelf() {
     state.bookViewMode = "shelf";
     state.bookRenderToken += 1;
+    els.bookModeKicker.textContent = isNewsMode() ? "Live text news" : "Standard Ebooks";
     els.bookModeTitle.textContent = bookShelfTitle();
-    els.bookShelfControls.hidden = false;
+    els.bookShelfControls.hidden = isNewsMode();
+    els.newsShelfControls.hidden = !isNewsMode();
     els.bookShelf.hidden = false;
     els.bookReader.hidden = true;
     els.bookShelfBtn.hidden = true;
@@ -1902,8 +2378,10 @@
 
   function showBookReader() {
     state.bookViewMode = "reader";
-    els.bookModeTitle.textContent = "Current book";
+    els.bookModeKicker.textContent = isNewsMode() ? "Live text news" : "Standard Ebooks";
+    els.bookModeTitle.textContent = isNewsMode() ? "Current article" : "Current book";
     els.bookShelfControls.hidden = true;
+    els.newsShelfControls.hidden = true;
     els.bookShelf.hidden = true;
     els.bookReader.hidden = false;
     els.bookShelfBtn.hidden = false;
@@ -1913,18 +2391,34 @@
     els.bookAudioSettingsToggle.hidden = false;
   }
 
-  function setBookMode(enabled) {
+  function setBookMode(enabled, contentMode = state.contentMode) {
+    const nextMode = contentMode === "news" ? "news" : "books";
+    const modeChanged = nextMode !== state.contentMode;
+    state.contentMode = nextMode;
     state.bookMode = Boolean(enabled);
+    if (modeChanged) {
+      state.bookBooks = [];
+      state.bookLoadedBook = null;
+      state.bookSentences = [];
+      state.bookChapters = [];
+      state.bookCurrentIndex = 0;
+      state.newsAllArticles = [];
+      state.bookRenderToken += 1;
+    }
     els.bookView.hidden = !state.bookMode;
     document.body.classList.toggle("book-mode", state.bookMode);
-    els.bookToggle.setAttribute("aria-pressed", String(state.bookMode));
+    els.bookToggle.setAttribute("aria-pressed", String(state.bookMode && !isNewsMode()));
+    els.newsToggle.setAttribute("aria-pressed", String(state.bookMode && isNewsMode()));
     if (state.bookMode) {
       els.bookLanguageSelect.value = state.language;
+      els.newsLanguageSelect.value = state.language;
+      populateNewsSourceSelect();
       syncBookAudioControlsFromSettings();
       updateSettingLabels();
       showBookShelf();
-      ensureBookShelfLoaded().catch((error) => {
-        setStatus(error.message || "Book shelf failed");
+      const loadShelf = isNewsMode() ? loadNewsFeed() : ensureBookShelfLoaded();
+      loadShelf.catch((error) => {
+        setStatus(error.message || (isNewsMode() ? "News feed failed" : "Book shelf failed"));
         console.error(error);
         renderBookShelf();
       });
@@ -1937,23 +2431,25 @@
   async function speakBookSentence(sentence, token) {
     if (!sentence || token !== state.playToken) return;
     const language = activeLanguage();
-    const source = await ensureBookSourceSentence(sentence.text, state.language);
+    const pair = await readerSentencePair(sentence, state.language);
     if (token !== state.playToken || !state.bookPlaying) return;
 
-    els.bookSourceSentence.textContent = source;
+    els.bookSourceSentence.textContent = pair.source;
+    els.bookEnglishSentence.textContent = pair.english;
     setStatus(`${language.label} sentence ${state.bookCurrentIndex + 1}`);
-    await speakText(source, language.speechLang, Number(els.bookSourceRate.value), token, {
-      highlightText: source,
-      highlightTargets: [{ id: "bookSourceSentence", text: source }]
+    await speakText(pair.source, language.speechLang, Number(els.bookSourceRate.value), token, {
+      highlightText: pair.source,
+      highlightTargets: [{ id: "bookSourceSentence", text: pair.source }],
+      correspondingTargets: [{ id: "bookEnglishSentence", text: pair.english }]
     });
     await delay(Number(els.gapMs.value), token);
     if (token !== state.playToken || !state.bookPlaying) return;
 
-    els.bookEnglishSentence.textContent = sentence.text;
+    if (!els.bookReadEnglish.checked) return;
     setStatus(`English sentence ${state.bookCurrentIndex + 1}`);
-    await speakText(sentence.text, "en-US", Number(els.bookEnRate.value), token, {
-      highlightText: sentence.text,
-      highlightTargets: [{ id: "bookEnglishSentence", text: sentence.text }]
+    await speakText(pair.english, "en-US", Number(els.bookEnRate.value), token, {
+      highlightText: pair.english,
+      highlightTargets: [{ id: "bookEnglishSentence", text: pair.english }]
     });
     await delay(Number(els.gapMs.value), token);
   }
@@ -1961,7 +2457,7 @@
   async function startBookPlayback() {
     if (state.bookPlaying) return;
     if (!state.bookSentences.length) {
-      setStatus("Load a book first");
+      setStatus(isNewsMode() ? "Load a news article first" : "Load a book first");
       return;
     }
     state.bookPlaying = true;
@@ -1988,13 +2484,14 @@
       }
     } catch (error) {
       failed = true;
-      setStatus(playbackErrorMessage(error, "Book playback failed"));
+      setStatus(playbackErrorMessage(error, isNewsMode() ? "News playback failed" : "Book playback failed"));
       console.error(error);
     } finally {
       if (token === state.playToken) {
         state.bookPlaying = false;
         els.bookPlayBtn.textContent = "Play";
         clearSpeechHighlights();
+        clearCorrespondingHighlights();
         saveCurrentBookProgress();
         if (!failed) {
           setStatus("Ready");
@@ -2010,6 +2507,7 @@
     els.playBtn.textContent = "Play";
     els.bookPlayBtn.textContent = "Play";
     clearSpeechHighlights();
+    clearCorrespondingHighlights();
     if (window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
@@ -2129,6 +2627,7 @@
       utterance.onstart = () => {
         window.clearTimeout(timeout);
         applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, 0);
+        applyCorrespondingHighlight(options.correspondingTargets);
       };
       utterance.onboundary = (event) => {
         if (event.name && event.name !== "word") return;
@@ -2137,11 +2636,13 @@
       utterance.onend = () => {
         window.clearTimeout(timeout);
         clearSpeechHighlights(options.highlightTargets);
+        clearCorrespondingHighlights();
         resolve();
       };
       utterance.onerror = (event) => {
         window.clearTimeout(timeout);
         clearSpeechHighlights(options.highlightTargets);
+        clearCorrespondingHighlights();
         reject(new Error(event.error || "Speech synthesis error"));
       };
       window.speechSynthesis.cancel();
@@ -2325,12 +2826,18 @@
       state.currentPos = 0;
       state.playDirection = 1;
       els.bookLanguageSelect.value = state.language;
+      els.newsLanguageSelect.value = state.language;
       updateSettingLabels();
       updateVoiceSelectors();
       savePrefs();
       try {
         await loadData();
-        if (state.bookMode && state.bookLoadedBook) {
+        if (state.bookMode && isNewsMode()) {
+          populateNewsSourceSelect();
+          state.newsSearch = "";
+          els.newsSearchInput.value = "";
+          await loadNewsFeed();
+        } else if (state.bookMode && state.bookLoadedBook) {
           await renderBookSentence();
         }
       } catch (error) {
@@ -2345,21 +2852,87 @@
 
     els.bookToggle.addEventListener("click", () => {
       stopSpeech();
-      setBookMode(!state.bookMode);
+      const active = state.bookMode && !isNewsMode();
+      setBookMode(!active, "books");
+    });
+
+    els.newsToggle.addEventListener("click", () => {
+      stopSpeech();
+      const active = state.bookMode && isNewsMode();
+      setBookMode(!active, "news");
     });
 
     els.bookShelfBtn.addEventListener("click", () => {
-      setBookMode(true);
+      setBookMode(true, state.contentMode);
       stopSpeech();
       showBookShelf();
     });
 
     els.bookRandomBtn.addEventListener("click", async () => {
-      setBookMode(true);
+      setBookMode(true, "books");
       try {
         await loadRandomBookParagraph();
       } catch (error) {
         setStatus(error.message || "Random paragraph failed");
+        console.error(error);
+      }
+    });
+
+    els.newsShelfControls.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.newsSearch = normalizeSpaces(els.newsSearchInput.value);
+      applyNewsFilter();
+    });
+
+    els.newsRefreshBtn.addEventListener("click", async () => {
+      try {
+        await loadNewsFeed();
+      } catch (error) {
+        setStatus(error.message || "News refresh failed");
+        console.error(error);
+      }
+    });
+
+    els.newsRandomBtn.addEventListener("click", async () => {
+      try {
+        await loadRandomNewsArticle();
+      } catch (error) {
+        setStatus(error.message || "Random article failed");
+        console.error(error);
+      }
+    });
+
+    els.newsSourceSelect.addEventListener("change", async () => {
+      state.newsSourceByLanguage[state.language] = els.newsSourceSelect.value;
+      state.newsSearch = "";
+      els.newsSearchInput.value = "";
+      savePrefs();
+      try {
+        await loadNewsFeed();
+      } catch (error) {
+        setStatus(error.message || "News source failed");
+        console.error(error);
+      }
+    });
+
+    els.newsLanguageSelect.addEventListener("change", async () => {
+      stopSpeech();
+      state.language = LANGUAGES[els.newsLanguageSelect.value] ? els.newsLanguageSelect.value : "ru";
+      els.languageSelect.value = state.language;
+      els.bookLanguageSelect.value = state.language;
+      state.currentPos = 0;
+      state.playDirection = 1;
+      state.newsSearch = "";
+      els.newsSearchInput.value = "";
+      populateNewsSourceSelect();
+      updateSettingLabels();
+      updateVoiceSelectors();
+      savePrefs();
+      try {
+        await loadData();
+        await loadNewsFeed();
+      } catch (error) {
+        setStatus(error.message || "News language failed");
         console.error(error);
       }
     });
@@ -2370,7 +2943,7 @@
       state.bookGenre = BOOK_GENRES[els.bookGenreSelect.value] ? els.bookGenreSelect.value : "";
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
       state.bookPage = Math.max(1, Number.parseInt(els.bookPageInput.value || "1", 10) || 1);
-      setBookMode(true);
+      setBookMode(true, "books");
       try {
         await loadBookCatalogPage(state.bookPage);
       } catch (error) {
@@ -2385,7 +2958,7 @@
       state.bookPage = 1;
       els.bookPageInput.value = "1";
       savePrefs();
-      setBookMode(true);
+      setBookMode(true, "books");
       try {
         await loadBookCatalogPage(1);
       } catch (error) {
@@ -2400,7 +2973,7 @@
       state.bookPage = 1;
       els.bookPageInput.value = "1";
       savePrefs();
-      setBookMode(true);
+      setBookMode(true, "books");
       try {
         await loadBookCatalogPage(1);
       } catch (error) {
@@ -2412,7 +2985,7 @@
     els.bookPageInput.addEventListener("change", async () => {
       if (state.bookShelfKind === "favorites") return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
-      setBookMode(true);
+      setBookMode(true, "books");
       try {
         await loadBookCatalogPage(els.bookPageInput.value);
       } catch (error) {
@@ -2424,7 +2997,7 @@
     els.bookPrevPageBtn.addEventListener("click", async () => {
       if (state.bookShelfKind === "favorites") return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
-      setBookMode(true);
+      setBookMode(true, "books");
       try {
         await loadBookCatalogPage(Math.max(1, state.bookPage - 1));
       } catch (error) {
@@ -2436,7 +3009,7 @@
     els.bookNextPageBtn.addEventListener("click", async () => {
       if (state.bookShelfKind === "favorites") return;
       state.bookSearch = normalizeSpaces(els.bookSearchInput.value);
-      setBookMode(true);
+      setBookMode(true, "books");
       try {
         await loadBookCatalogPage(state.bookPage + 1);
       } catch (error) {
@@ -2517,6 +3090,11 @@
       });
     });
 
+    els.bookReadEnglish.addEventListener("change", () => {
+      savePrefs();
+      setStatus(els.bookReadEnglish.checked ? "English TTS enabled" : "English TTS skipped");
+    });
+
     els.bookShelf.addEventListener("click", async (event) => {
       const favoriteButton = event.target.closest(".book-favorite-btn");
       if (favoriteButton) {
@@ -2537,7 +3115,7 @@
       try {
         await loadBook(book);
       } catch (error) {
-        setStatus(error.message || "Book load failed");
+        setStatus(error.message || (isNewsMode() ? "News article load failed" : "Book load failed"));
         console.error(error);
       }
     });
@@ -2631,6 +3209,8 @@
     loadPrefs();
     els.languageSelect.value = state.language;
     els.bookLanguageSelect.value = state.language;
+    els.newsLanguageSelect.value = state.language;
+    populateNewsSourceSelect();
     els.bookShelfViewSelect.value = state.bookShelfKind;
     els.bookGenreSelect.value = state.bookGenre;
     els.bandSelect.value = state.band;

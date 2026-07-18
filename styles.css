@@ -306,6 +306,10 @@ body.book-mode .dataset-meta {
   grid-template-columns: minmax(86px, 0.7fr) minmax(104px, 0.8fr) minmax(118px, 0.9fr) minmax(170px, 1.5fr) minmax(72px, 0.55fr) minmax(82px, 0.6fr) 44px minmax(70px, 0.45fr) 44px;
 }
 
+.news-shelf-controls {
+  grid-template-columns: minmax(110px, 0.8fr) minmax(150px, 1fr) minmax(190px, 1.6fr) minmax(72px, 0.55fr) minmax(82px, 0.6fr) minmax(82px, 0.6fr);
+}
+
 .book-reader-controls {
   grid-template-columns: repeat(4, minmax(62px, 1fr));
   border-top: 1px solid rgba(42, 49, 54, 0.78);
@@ -313,7 +317,7 @@ body.book-mode .dataset-meta {
 }
 
 .book-audio-panel {
-  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
   border-top: 1px solid rgba(42, 49, 54, 0.78);
   padding-top: 10px;
 }
@@ -354,6 +358,20 @@ body.book-mode .dataset-meta {
 .book-shelf-controls select:disabled,
 .book-shelf-controls button:disabled {
   opacity: 0.45;
+}
+
+.reader-english-toggle {
+  align-self: stretch;
+  align-content: center;
+  justify-items: start;
+}
+
+.book-audio-panel .reader-english-toggle input {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .book-reader {
@@ -426,6 +444,13 @@ body.book-mode .dataset-meta {
 .english-reader-pane .reader-sentence {
   color: var(--soft);
   font-size: clamp(1rem, 3.2vw, 1.55rem);
+}
+
+.reader-sentence.corresponding-active {
+  border-radius: 7px;
+  background: rgba(140, 207, 159, 0.17);
+  box-shadow: 0 0 0 3px rgba(140, 207, 159, 0.17);
+  color: var(--text);
 }
 
 .speech-word {
@@ -519,6 +544,10 @@ body.book-mode .dataset-meta {
 .book-open-btn:hover {
   border-color: transparent;
   transform: none;
+}
+
+.book-card.news-card .book-open-btn {
+  padding-right: 0;
 }
 
 .book-favorite-btn {
@@ -779,7 +808,10 @@ body.book-mode .dataset-meta {
 
   .book-shelf-controls label:nth-child(-n+3),
   #bookSearchBtn,
-  #bookRandomBtn {
+  #bookRandomBtn,
+  #newsSearchBtn,
+  #newsRefreshBtn,
+  #newsRandomBtn {
     grid-column: span 2;
   }
 

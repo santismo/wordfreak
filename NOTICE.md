@@ -75,3 +75,7 @@ Treat these glosses as convenience study aids, not authoritative dictionary entr
 ## TTS
 
 The app uses the browser Web Speech API.
+
+## Live News
+
+News mode reads current public feeds from Meduza, VOA Persian, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and Google News. Article text is fetched live in the user's browser, is not bundled with Wordfreak, and remains subject to each publisher's terms; every reader view links to the original article.

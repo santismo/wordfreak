@@ -1,7 +1,7 @@
 {
   "name": "Wordfreak",
   "short_name": "Wordfreak",
-  "description": "Russian frequency vocabulary player with bilingual TTS.",
+  "description": "Mobile vocabulary, bilingual book, and current-news reader with TTS.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0b0d0f",
