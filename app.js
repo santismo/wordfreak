@@ -8,7 +8,8 @@
   const BOOK_PROGRESS_KEY = "wordfreak:book-progress:v1";
   const BOOK_FAVORITES_KEY = "wordfreak:book-favorites:v1";
   const BOOK_DIFFICULTY_KEY = "wordfreak:book-difficulty:v1";
-  const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v1";
+  // v2 drops failed translations that v1 could cache as the unchanged source text.
+  const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v2";
   const NEWS_FEED_CACHE_KEY = "wordfreak:news-feeds:v1";
   // v2 drops documents that may have been saved from incomplete proxy responses.
   const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v2";
@@ -821,6 +822,41 @@
     return /[\p{L}\p{N}]/u.test(String(value || ""));
   }
 
+  const TRANSLATION_SCRIPT_PATTERNS = {
+    en: /\p{Script=Latin}/u,
+    es: /\p{Script=Latin}/u,
+    fr: /\p{Script=Latin}/u,
+    ru: /\p{Script=Cyrillic}/u,
+    fa: /\p{Script=Arabic}/u,
+    hi: /\p{Script=Devanagari}/u,
+    ja: /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u,
+    ko: /\p{Script=Hangul}/u
+  };
+
+  function translationComparisonValue(value) {
+    return normalizeSpaces(String(value || "")
+      .normalize("NFKC")
+      .toLocaleLowerCase()
+      .replace(/[\p{P}\p{S}]+/gu, " "));
+  }
+
+  function expectedTranslationScriptShare(value, language) {
+    const pattern = TRANSLATION_SCRIPT_PATTERNS[language];
+    if (!pattern) return 1;
+    const letters = Array.from(String(value || "")).filter((character) => /\p{L}/u.test(character));
+    if (!letters.length) return 0;
+    return letters.filter((character) => pattern.test(character)).length / letters.length;
+  }
+
+  function isUsableTranslation(source, translated, targetLanguage) {
+    const cleanSource = normalizeSpaces(source);
+    const cleanTranslation = normalizeSpaces(translated);
+    if (!cleanTranslation || !hasLinguisticContent(cleanTranslation)) return false;
+    if (translationComparisonValue(cleanSource) === translationComparisonValue(cleanTranslation)) return false;
+    if (/MYMEMORY WARNING|QUERY LENGTH LIMIT|PLEASE SELECT TWO DISTINCT LANGUAGES/i.test(cleanTranslation)) return false;
+    return expectedTranslationScriptShare(cleanTranslation, targetLanguage) >= 0.45;
+  }
+
   function stripForSpeech(value) {
     const clean = String(value || "")
       .normalize("NFKC")
@@ -1583,7 +1619,8 @@
     for (const translator of translators) {
       try {
         const translated = await translator.run();
-        if (translated) return translated;
+        if (isUsableTranslation(word, translated, "en")) return translated;
+        failures.push(`${translator.name}: unchanged or wrong-language response`);
       } catch (error) {
         failures.push(`${translator.name}: ${error.message}`);
       }
@@ -1778,13 +1815,19 @@
     scheduleReaderTranslationSave();
   }
 
-  async function sharedBookTranslation(key, run) {
-    if (state.bookTranslationCache.has(key)) return state.bookTranslationCache.get(key);
+  async function sharedBookTranslation(key, run, validate = hasLinguisticContent) {
+    if (state.bookTranslationCache.has(key)) {
+      const cached = state.bookTranslationCache.get(key);
+      if (validate(cached)) return cached;
+      state.bookTranslationCache.delete(key);
+      scheduleReaderTranslationSave();
+    }
     if (state.bookTranslationPromises.has(key)) return state.bookTranslationPromises.get(key);
     const promise = Promise.resolve()
       .then(run)
       .then((value) => {
-        if (value) rememberBookTranslation(key, value);
+        if (!validate(value)) return "";
+        rememberBookTranslation(key, value);
         return value;
       })
       .finally(() => state.bookTranslationPromises.delete(key));
@@ -1802,7 +1845,7 @@
         name: "Google",
         run: async () => {
           const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${target}&dt=t&q=${encodeURIComponent(clean)}`;
-          const response = await fetch(url, { cache: "no-store" });
+          const response = await withTimeout(fetch(url, { cache: "no-store" }), 12000, "Google translation");
           if (!response.ok) throw new Error(`Google ${response.status}`);
           const payload = await response.json();
           return Array.isArray(payload?.[0])
@@ -1814,7 +1857,7 @@
         name: "Lingva",
         run: async () => {
           const url = `https://lingva.ml/api/v1/en/${target}/${encodeURIComponent(clean)}`;
-          const response = await fetch(url, { cache: "no-store" });
+          const response = await withTimeout(fetch(url, { cache: "no-store" }), 12000, "Lingva translation");
           if (!response.ok) throw new Error(`Lingva ${response.status}`);
           const payload = await response.json();
           return normalizeSpaces(payload.translation || "");
@@ -1824,7 +1867,7 @@
         name: "MyMemory",
         run: async () => {
           const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean)}&langpair=en|${target}`;
-          const response = await fetch(url, { cache: "no-store" });
+          const response = await withTimeout(fetch(url, { cache: "no-store" }), 12000, "MyMemory translation");
           if (!response.ok) throw new Error(`MyMemory ${response.status}`);
           const payload = await response.json();
           return normalizeSpaces(payload?.responseData?.translatedText || "");
@@ -1836,7 +1879,8 @@
     for (const translator of translators) {
       try {
         const translated = await translator.run();
-        if (translated) return translated;
+        if (isUsableTranslation(clean, translated, target)) return translated;
+        failures.push(`${translator.name}: unchanged or wrong-language response`);
       } catch (error) {
         failures.push(`${translator.name}: ${error.message}`);
       }
@@ -1847,18 +1891,21 @@
 
   async function ensureBookSourceSentence(english, language = state.language) {
     const key = bookTranslationKey(english, language);
-    return sharedBookTranslation(key, async () => {
-      const translated = await translateFromEn(english, language);
-      return translated || (hasLinguisticContent(english) ? english : "");
-    });
+    const target = LANGUAGES[language]?.translateSl || "ru";
+    return sharedBookTranslation(
+      key,
+      () => translateFromEn(english, language),
+      (value) => isUsableTranslation(english, value, target)
+    );
   }
 
   async function ensureNewsEnglishSentence(sourceText, language = state.language) {
     const key = `en:${bookTranslationKey(sourceText, language)}`;
-    return sharedBookTranslation(key, async () => {
-      const translated = await translateToEn(sourceText, language);
-      return translated || (hasLinguisticContent(sourceText) ? sourceText : "");
-    });
+    return sharedBookTranslation(
+      key,
+      () => translateToEn(sourceText, language),
+      (value) => isUsableTranslation(sourceText, value, "en")
+    );
   }
 
   async function readerSentencePair(
@@ -3407,7 +3454,9 @@
       if (state.language !== language || readerDocumentKey(state.bookLoadedBook) !== loadedKey) return;
       sentences.forEach((sentence) => {
         readerSentencePair(sentence, language, newsMode)
-          .then((pair) => ensureReaderAlignment(pair, language, newsMode))
+          .then((pair) => pair.source && pair.english
+            ? ensureReaderAlignment(pair, language, newsMode)
+            : null)
           .catch((error) => console.warn("Sentence prefetch failed:", error));
       });
     }, 220);
@@ -3443,8 +3492,14 @@
 
     const pair = await readerSentencePair(sentence, languageKey, newsMode);
     if (renderToken !== state.bookRenderToken) return;
-    els.bookSourceSentence.textContent = pair.source;
-    els.bookEnglishSentence.textContent = pair.english;
+    const translationMissing = !pair.source || !pair.english;
+    els.bookSourceSentence.textContent = pair.source || `${language.label} translation unavailable. Select this sentence to retry.`;
+    els.bookEnglishSentence.textContent = pair.english || "English translation unavailable. Select this sentence to retry.";
+    if (translationMissing) {
+      setStatus("Translation unavailable. Check your connection and select the sentence to retry.");
+      scheduleReaderSentencePrefetch();
+      return;
+    }
     ensureReaderAlignment(pair, languageKey, newsMode);
     scheduleReaderSentencePrefetch();
   }
@@ -3658,6 +3713,9 @@
     const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
     const pair = await readerSentencePair(sentence, languageKey, newsMode);
     if (token !== state.playToken || !state.bookPlaying) return;
+    if (!pair.source || !pair.english) {
+      throw new Error("Translation unavailable. Check your connection and press Play to retry.");
+    }
 
     els.bookSourceSentence.textContent = pair.source;
     els.bookEnglishSentence.textContent = pair.english;
