@@ -7,16 +7,18 @@
   const BOOK_DIFFICULTY_KEY = "wordfreak:book-difficulty:v1";
   const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v1";
   const NEWS_FEED_CACHE_KEY = "wordfreak:news-feeds:v1";
-  const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v1";
+  // v2 drops documents that may have been saved from incomplete proxy responses.
+  const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v2";
   const STANDARD_EBOOKS_LIST_URL = "https://standardebooks.org/ebooks";
   const GUTENDEX_BOOKS_URL = "https://gutendex.com/books/";
   const STANDARD_EBOOKS_PER_PAGE = 48;
   const STANDARD_EBOOKS_RANDOM_PAGE_MAX = 24;
-  const BOOK_FETCH_TIMEOUT_MS = 22000;
+  const BOOK_FETCH_TIMEOUT_MS = 14000;
   const BOOK_TRANSLATION_CACHE_LIMIT = 350;
   const READER_DOCUMENT_CACHE_LIMIT = 6;
   const READER_PERSISTENT_DOCUMENT_LIMIT = 12;
   const READER_ALIGNMENT_CACHE_LIMIT = 120;
+  const READER_ALIGNMENT_MAX_TARGET_WORDS = 4;
   const READER_SHELF_PREFETCH_LIMIT = 3;
   const NEWS_FEED_CACHE_LIMIT = 12;
   const NEWS_FEED_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -107,6 +109,13 @@
       build: (url) => url
     },
     {
+      // Gutenberg, VOA Persian, and Radio Farda do not expose CORS headers. This
+      // proxy preserves the source response (unlike reader-mode services) and is
+      // deliberately tried before the slower fallbacks below.
+      name: "CORS.eu",
+      build: (url) => `https://cors.eu.org/${url}`
+    },
+    {
       name: "Jina",
       build: (url) => `https://r.jina.ai/http://${String(url || "").replace(/^https?:\/\//i, "")}`
     },
@@ -146,6 +155,12 @@
     { gutenbergId: 14814, title: "The Tale of Jemima Puddle-Duck", author: "Beatrix Potter", level: "starter", wordCount: 1250, estimatedGrade: 5.2, averageSentenceWords: 14.4, genres: ["childrens", "shorts"] },
     { gutenbergId: 14837, title: "The Tale of Tom Kitten", author: "Beatrix Potter", level: "starter", wordCount: 900, estimatedGrade: 4.7, averageSentenceWords: 13.2, genres: ["childrens", "shorts"] },
     { gutenbergId: 15137, title: "The Tale of Mrs. Tiggy-Winkle", author: "Beatrix Potter", level: "starter", wordCount: 1200, estimatedGrade: 5.0, averageSentenceWords: 14.0, genres: ["childrens", "shorts"], gitenbergSlug: "The-Tale-of-Mrs.-Tiggy-Winkle" },
+    { gutenbergId: 15077, title: "The Tale of Mr. Jeremy Fisher", author: "Beatrix Potter", level: "starter", genres: ["childrens", "shorts"] },
+    { gutenbergId: 14220, title: "The Tale of the Flopsy Bunnies", author: "Beatrix Potter", level: "starter", genres: ["childrens", "shorts"] },
+    { gutenbergId: 45264, title: "The Tale of Two Bad Mice", author: "Beatrix Potter", level: "starter", genres: ["childrens", "shorts"] },
+    { gutenbergId: 14868, title: "The Tailor of Gloucester", author: "Beatrix Potter", level: "starter", genres: ["childrens", "shorts"] },
+    { gutenbergId: 19805, title: "The Tale of Mr. Tod", author: "Beatrix Potter", level: "starter", genres: ["childrens", "shorts"] },
+    { gutenbergId: 15575, title: "The Tale of Samuel Whiskers", author: "Beatrix Potter", level: "starter", genres: ["childrens", "shorts"] },
     { gutenbergId: 902, title: "The Happy Prince, and Other Tales", author: "Oscar Wilde", level: "easy", wordCount: 16245, estimatedGrade: 5.5, averageSentenceWords: 15.6, genres: ["childrens", "fantasy", "shorts"], gitenbergFile: "902-0.txt" },
     { gutenbergId: 11, title: "Alice's Adventures in Wonderland", author: "Lewis Carroll", level: "easy", wordCount: 26518, estimatedGrade: 5.8, averageSentenceWords: 16.3, genres: ["childrens", "fantasy"] },
     { gutenbergId: 55, title: "The Wonderful Wizard of Oz", author: "L. Frank Baum", level: "easy", wordCount: 39661, estimatedGrade: 6, averageSentenceWords: 17.6, genres: ["adventure", "childrens", "fantasy"] },
@@ -154,6 +169,16 @@
     { gutenbergId: 708, title: "The Princess and the Goblin", author: "George MacDonald", level: "easy", wordCount: 53000, estimatedGrade: 6.1, averageSentenceWords: 17.1, genres: ["adventure", "childrens", "fantasy"] },
     { gutenbergId: 236, title: "The Jungle Book", author: "Rudyard Kipling", level: "easy", wordCount: 52000, estimatedGrade: 6.6, averageSentenceWords: 17.4, genres: ["adventure", "childrens", "shorts"] },
     { gutenbergId: 271, title: "Black Beauty", author: "Anna Sewell", level: "easy", wordCount: 59000, estimatedGrade: 5.9, averageSentenceWords: 16.8, genres: ["childrens", "fiction"] },
+    { gutenbergId: 21935, title: "Prince Prigio", author: "Andrew Lang", level: "easy", genres: ["childrens", "fantasy", "shorts"] },
+    { gutenbergId: 52545, title: "The Princess Nobody", author: "Andrew Lang", level: "easy", genres: ["childrens", "fantasy"] },
+    { gutenbergId: 30272, title: "Very Short Stories and Verses for Children", author: "W. K. Clifford", level: "easy", genres: ["childrens", "shorts"] },
+    { gutenbergId: 21292, title: "Brave and True", author: "G. M. Fenn and others", level: "easy", genres: ["childrens", "shorts"] },
+    { gutenbergId: 1430, title: "Beautiful Stories from Shakespeare", author: "E. Nesbit", level: "easy", genres: ["childrens", "drama", "shorts"] },
+    { gutenbergId: 23661, title: "The Book of Dragons", author: "E. Nesbit", level: "easy", genres: ["childrens", "fantasy", "shorts"] },
+    { gutenbergId: 27903, title: "The Magic World", author: "E. Nesbit", level: "easy", genres: ["childrens", "fantasy", "shorts"] },
+    { gutenbergId: 49913, title: "Nine Unlikely Tales", author: "E. Nesbit", level: "easy", genres: ["childrens", "fantasy", "shorts"] },
+    { gutenbergId: 146, title: "A Little Princess", author: "Frances Hodgson Burnett", level: "easy", genres: ["childrens", "fiction"] },
+    { gutenbergId: 479, title: "Little Lord Fauntleroy", author: "Frances Hodgson Burnett", level: "easy", genres: ["childrens", "fiction"] },
     { gutenbergId: 35, title: "The Time Machine", author: "H. G. Wells", level: "steady", wordCount: 32578, estimatedGrade: 7.2, averageSentenceWords: 16.7, genres: ["adventure", "science-fiction"] },
     { gutenbergId: 289, title: "The Wind in the Willows", author: "Kenneth Grahame", level: "steady", wordCount: 58836, estimatedGrade: 7, averageSentenceWords: 18.1, genres: ["childrens", "fantasy"] },
     { gutenbergId: 120, title: "Treasure Island", author: "Robert Louis Stevenson", level: "steady", wordCount: 68628, estimatedGrade: 5.5, averageSentenceWords: 16.1, genres: ["adventure", "childrens"] },
@@ -162,6 +187,22 @@
     { gutenbergId: 1661, title: "The Adventures of Sherlock Holmes", author: "Arthur Conan Doyle", level: "steady", wordCount: 104548, estimatedGrade: 5.5, averageSentenceWords: 14.4, genres: ["mystery", "shorts"] },
     { gutenbergId: 215, title: "The Call of the Wild", author: "Jack London", level: "steady", wordCount: 37000, estimatedGrade: 7.3, averageSentenceWords: 18.4, genres: ["adventure", "fiction"] },
     { gutenbergId: 103, title: "Around the World in Eighty Days", author: "Jules Verne", level: "steady", wordCount: 63000, estimatedGrade: 7.0, averageSentenceWords: 18.0, genres: ["adventure", "travel"], gitenbergSlug: "Around-the-World-in-80-Days" },
+    { gutenbergId: 74, title: "The Adventures of Tom Sawyer", author: "Mark Twain", level: "steady", genres: ["adventure", "childrens", "fiction"] },
+    { gutenbergId: 244, title: "A Study in Scarlet", author: "Arthur Conan Doyle", level: "steady", genres: ["mystery", "fiction"] },
+    { gutenbergId: 2097, title: "The Sign of the Four", author: "Arthur Conan Doyle", level: "steady", genres: ["mystery", "fiction"] },
+    { gutenbergId: 2781, title: "Just So Stories", author: "Rudyard Kipling", level: "steady", genres: ["childrens", "shorts"] },
+    { gutenbergId: 17314, title: "Five Children and It", author: "E. Nesbit", level: "steady", genres: ["adventure", "childrens", "fantasy"] },
+    { gutenbergId: 1874, title: "The Railway Children", author: "E. Nesbit", level: "steady", genres: ["adventure", "childrens", "fiction"] },
+    { gutenbergId: 836, title: "The Phoenix and the Carpet", author: "E. Nesbit", level: "steady", genres: ["adventure", "childrens", "fantasy"] },
+    { gutenbergId: 770, title: "The Story of the Treasure Seekers", author: "E. Nesbit", level: "steady", genres: ["adventure", "childrens", "fiction"] },
+    { gutenbergId: 18857, title: "A Journey to the Centre of the Earth", author: "Jules Verne", level: "steady", genres: ["adventure", "science-fiction"] },
+    { gutenbergId: 139, title: "The Lost World", author: "Arthur Conan Doyle", level: "steady", genres: ["adventure", "science-fiction"] },
+    { gutenbergId: 2852, title: "The Hound of the Baskervilles", author: "Arthur Conan Doyle", level: "steady", genres: ["mystery", "fiction"] },
+    { gutenbergId: 558, title: "The Thirty-Nine Steps", author: "John Buchan", level: "steady", genres: ["adventure", "mystery", "fiction"] },
+    { gutenbergId: 421, title: "Kidnapped", author: "Robert Louis Stevenson", level: "steady", genres: ["adventure", "fiction"] },
+    { gutenbergId: 175, title: "The Phantom of the Opera", author: "Gaston Leroux", level: "steady", genres: ["horror", "mystery", "fiction"] },
+    { gutenbergId: 2591, title: "Grimms' Fairy Tales", author: "Jacob and Wilhelm Grimm", level: "steady", genres: ["childrens", "fantasy", "shorts"] },
+    { gutenbergId: 17157, title: "Gulliver's Travels", author: "Jonathan Swift", level: "steady", genres: ["adventure", "satire", "fiction"] },
     { gutenbergId: 21, title: "Three Hundred Aesop's Fables", author: "Aesop, translated by George Fyler Townsend", level: "stretch", wordCount: 43888, estimatedGrade: 9.4, averageSentenceWords: 24.3, genres: ["childrens", "shorts"], gitenbergDisabled: true },
     { gutenbergId: 84, title: "Frankenstein", author: "Mary Shelley", level: "stretch", wordCount: 75089, estimatedGrade: 9.8, averageSentenceWords: 22.3, genres: ["fiction", "horror", "science-fiction"] },
     { gutenbergId: 1342, title: "Pride and Prejudice", author: "Jane Austen", level: "stretch", wordCount: 126819, estimatedGrade: 8.1, averageSentenceWords: 17.5, genres: ["comedy", "fiction"] },
@@ -169,7 +210,23 @@
     { gutenbergId: 1400, title: "Great Expectations", author: "Charles Dickens", level: "stretch", wordCount: 187000, estimatedGrade: 8.0, averageSentenceWords: 19.7, genres: ["fiction"] },
     { gutenbergId: 1260, title: "Jane Eyre", author: "Charlotte Brontë", level: "stretch", wordCount: 190000, estimatedGrade: 8.2, averageSentenceWords: 20.1, genres: ["fiction"] },
     { gutenbergId: 768, title: "Wuthering Heights", author: "Emily Brontë", level: "stretch", wordCount: 119000, estimatedGrade: 8.4, averageSentenceWords: 20.5, genres: ["fiction", "horror"] },
-    { gutenbergId: 145, title: "Middlemarch", author: "George Eliot", level: "stretch", wordCount: 316000, estimatedGrade: 9.2, averageSentenceWords: 22.0, genres: ["fiction"] }
+    { gutenbergId: 145, title: "Middlemarch", author: "George Eliot", level: "stretch", wordCount: 316000, estimatedGrade: 9.2, averageSentenceWords: 22.0, genres: ["fiction"] },
+    { gutenbergId: 161, title: "Sense and Sensibility", author: "Jane Austen", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 135, title: "Les Misérables", author: "Victor Hugo", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 28054, title: "The Brothers Karamazov", author: "Fyodor Dostoyevsky", level: "stretch", genres: ["fiction", "philosophy"] },
+    { gutenbergId: 110, title: "Tess of the d'Urbervilles", author: "Thomas Hardy", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 541, title: "The Age of Innocence", author: "Edith Wharton", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 583, title: "The Woman in White", author: "Wilkie Collins", level: "stretch", genres: ["mystery", "fiction"] },
+    { gutenbergId: 2610, title: "The Hunchback of Notre-Dame", author: "Victor Hugo", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 1399, title: "Anna Karenina", author: "Leo Tolstoy", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 2600, title: "War and Peace", author: "Leo Tolstoy", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 4300, title: "Ulysses", author: "James Joyce", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 209, title: "The Turn of the Screw", author: "Henry James", level: "stretch", genres: ["horror", "fiction"] },
+    { gutenbergId: 601, title: "The Monk", author: "Matthew Gregory Lewis", level: "stretch", genres: ["horror", "fiction"] },
+    { gutenbergId: 6593, title: "The History of Tom Jones", author: "Henry Fielding", level: "stretch", genres: ["comedy", "fiction"] },
+    { gutenbergId: 2527, title: "The Sorrows of Young Werther", author: "Johann Wolfgang von Goethe", level: "stretch", genres: ["fiction"] },
+    { gutenbergId: 26471, title: "Spoon River Anthology", author: "Edgar Lee Masters", level: "stretch", genres: ["poetry"] },
+    { gutenbergId: 1727, title: "The Odyssey", author: "Homer", level: "stretch", genres: ["adventure", "poetry"] }
   ].map((book) => ({
     ...book,
     id: `gutenberg:${book.gutenbergId}`,
@@ -1201,7 +1258,8 @@
     });
   }
 
-  function invertWordMap(wordMap, targetCount) {
+  function invertWordMap(wordMap, targetCount, options = {}) {
+    const useFallback = Boolean(options.fallback);
     const inverted = Array.from({ length: targetCount }, () => []);
     wordMap.forEach((targets, sourceIndex) => {
       targets.forEach((targetIndex) => {
@@ -1210,8 +1268,8 @@
         }
       });
     });
-    const fallback = proportionalWordMap(targetCount, wordMap.length);
-    return inverted.map((values, index) => (values.length ? values.slice(0, 2) : fallback[index]));
+    const fallback = useFallback ? proportionalWordMap(targetCount, wordMap.length) : [];
+    return inverted.map((values, index) => (values.length ? values.slice(0, 3) : (fallback[index] || [])));
   }
 
   function alignmentSimilarity(left, right) {
@@ -1237,45 +1295,37 @@
     return (2 * matches) / Math.max(1, leftGrams.length + rightGrams.length);
   }
 
-  function wordIndexesForCharSpan(ranges, start, end) {
-    return ranges
-      .map((range, index) => (range.end > start && range.start < end ? index : -1))
-      .filter((index) => index >= 0)
-      .slice(0, 2);
-  }
-
   function locateAlignedPhrase(text, ranges, phrase, expectedIndexes = []) {
     const cleanPhrase = String(phrase || "").trim();
-    if (!cleanPhrase || !ranges.length) return [];
+    const normalizedPhrase = normalizeAlignmentText(cleanPhrase);
+    if (!normalizedPhrase || !ranges.length) return { indexes: [], confidence: 0 };
     const expected = expectedIndexes[0] ?? 0;
-    const exactCandidates = [];
-    const lowerText = String(text || "").toLocaleLowerCase();
-    const lowerPhrase = cleanPhrase.toLocaleLowerCase();
-    let offset = 0;
-    while (lowerPhrase && offset < lowerText.length) {
-      const position = lowerText.indexOf(lowerPhrase, offset);
-      if (position < 0) break;
-      const indexes = wordIndexesForCharSpan(ranges, position, position + cleanPhrase.length);
-      if (indexes.length) exactCandidates.push(indexes);
-      offset = position + Math.max(1, cleanPhrase.length);
-    }
-    if (exactCandidates.length) {
-      return exactCandidates.sort((left, right) => Math.abs(left[0] - expected) - Math.abs(right[0] - expected))[0];
-    }
-
-    let best = { score: 0, indexes: [] };
+    const phraseWordCount = Math.max(1, wordRanges(cleanPhrase).length);
+    let best = { confidence: 0, similarity: 0, indexes: [] };
     for (let start = 0; start < ranges.length; start += 1) {
-      for (let length = 1; length <= 2 && start + length <= ranges.length; length += 1) {
+      for (let length = 1; length <= READER_ALIGNMENT_MAX_TARGET_WORDS && start + length <= ranges.length; length += 1) {
         const endRange = ranges[start + length - 1];
         const candidate = String(text || "").slice(ranges[start].start, endRange.end);
-        const distancePenalty = Math.abs(start - expected) * 0.025;
-        const score = alignmentSimilarity(candidate, cleanPhrase) - distancePenalty;
-        if (score > best.score) {
-          best = { score, indexes: Array.from({ length }, (value, offsetIndex) => start + offsetIndex) };
+        const exact = normalizeAlignmentText(candidate) === normalizedPhrase;
+        const similarity = exact ? 1 : alignmentSimilarity(candidate, cleanPhrase);
+        const distancePenalty = Math.abs(start - expected) * 0.012;
+        const lengthPenalty = Math.abs(length - phraseWordCount) * 0.035;
+        const confidence = similarity - distancePenalty - lengthPenalty;
+        if (confidence > best.confidence) {
+          best = {
+            confidence,
+            similarity,
+            indexes: Array.from({ length }, (value, offsetIndex) => start + offsetIndex)
+          };
         }
       }
     }
-    return best.score >= 0.48 ? best.indexes : [];
+    // Do not pretend an uncertain proportional guess is a word translation.
+    // Very short translated fragments need a higher bar because they repeat often.
+    const minimumConfidence = normalizedPhrase.length < 3 ? 0.88 : 0.68;
+    return best.confidence >= minimumConfidence
+      ? best
+      : { indexes: [], confidence: best.confidence };
   }
 
   async function fetchContextualAlignmentPhrases(text, ranges, sourceLanguage, targetLanguage) {
@@ -1329,10 +1379,11 @@
       sourceLanguage,
       sourceRanges,
       englishRanges,
-      sourceToEnglish: proportionalWordMap(sourceRanges.length, englishRanges.length),
-      englishToSource: proportionalWordMap(englishRanges.length, sourceRanges.length),
+      sourceToEnglish: Array.from({ length: sourceRanges.length }, () => []),
+      englishToSource: Array.from({ length: englishRanges.length }, () => []),
       newsMode,
-      contextual: false
+      contextual: false,
+      alignedWordCount: 0
     };
   }
 
@@ -1347,7 +1398,7 @@
     const phrases = await fetchContextualAlignmentPhrases(fromText, fromRanges, sourceLanguage, targetLanguage);
     const contextualMap = fallback.map((indexes, index) => {
       const located = locateAlignedPhrase(toText, toRanges, phrases[index], indexes);
-      return located.length ? located : indexes;
+      return located.indexes;
     });
     const inverse = invertWordMap(contextualMap, toRanges.length);
     if (alignment.newsMode) {
@@ -1357,7 +1408,8 @@
       alignment.englishToSource = contextualMap;
       alignment.sourceToEnglish = inverse;
     }
-    alignment.contextual = true;
+    alignment.alignedWordCount = contextualMap.reduce((count, indexes) => count + indexes.length, 0);
+    alignment.contextual = alignment.alignedWordCount > 0;
     return alignment;
   }
 
@@ -1408,6 +1460,13 @@
       speakingPane === "english" ? "active" : "translation-active",
       alignment.englishRanges
     );
+    if (mappedIndexes.length) {
+      clearCorrespondingHighlights();
+    } else {
+      applyCorrespondingHighlight([
+        { id: speakingPane === "source" ? "bookEnglishSentence" : "bookSourceSentence" }
+      ]);
+    }
   }
 
   async function ensureMeaning(entry) {
@@ -1798,7 +1857,9 @@
   async function fetchTextWithProxies(url, label, options = {}) {
     const failures = [];
     const cacheMode = options.cache || "no-store";
-    const waves = [PROXY_CANDIDATES.slice(0, 3), PROXY_CANDIDATES.slice(3)];
+    // Keep full-page CORS access ahead of reader-mode and best-effort services.
+    // Reader-mode responses can be fast but may omit later paragraphs.
+    const waves = [PROXY_CANDIDATES.slice(0, 2), PROXY_CANDIDATES.slice(2)];
     for (const wave of waves) {
       const controllers = wave.map(() => new AbortController());
       try {
@@ -2648,16 +2709,19 @@
     if (book?.source === "gutenberg" || book?.gutenbergId) {
       const gutenbergId = normalizeGutenbergId(book);
       if (!gutenbergId) return [];
+      // GITenberg mirrors expose CORS headers, unlike Gutenberg itself. The
+      // title-derived name is tried first because a missing GitHub file fails
+      // quickly; the canonical Gutenberg URLs remain the fallback.
       const derivedGitenbergSlug = String(book?.title || "")
         .normalize("NFKD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/[^A-Za-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
-      const gitenbergSlug = book.gitenbergSlug || derivedGitenbergSlug;
+      const gitenbergSlug = normalizeSpaces(book.gitenbergSlug || derivedGitenbergSlug);
       const gitenbergFile = book.gitenbergFile || `${gutenbergId}.txt`;
       return [...new Set([
         ...(book.guided && !book.gitenbergDisabled && gitenbergSlug
-          ? [`direct:https://cdn.jsdelivr.net/gh/GITenberg/${gitenbergSlug}_${gutenbergId}@master/${gitenbergFile}`]
+          ? [`direct:https://raw.githubusercontent.com/GITenberg/${gitenbergSlug}_${gutenbergId}/master/${gitenbergFile}`]
           : []),
         ...(Array.isArray(book.textUrls) ? book.textUrls : []),
         `https://www.gutenberg.org/cache/epub/${gutenbergId}/pg${gutenbergId}.txt`,
@@ -2965,6 +3029,22 @@
     return finalizeNewsParagraphs(paragraphs);
   }
 
+  function parsePangeaPersianNewsArticleHtml(raw) {
+    const doc = new DOMParser().parseFromString(raw, "text/html");
+    const container = doc.querySelector("#article-content > .wsw, #article-content .wsw, #article-content");
+    if (!container) return { sentences: [], chapters: [] };
+    const seen = new Set();
+    const paragraphs = Array.from(container.querySelectorAll("p"))
+      .filter((node) => !node.closest(".wsw__embed, .media-pholder, figure, figcaption"))
+      .map((node) => cleanBookText(node.textContent || ""))
+      .filter((text) => {
+        if (text.length < 20 || isNewsNoise(text) || seen.has(text)) return false;
+        seen.add(text);
+        return true;
+      });
+    return finalizeNewsParagraphs(paragraphs);
+  }
+
   function parseNewsArticlePlain(raw) {
     let source = String(raw || "");
     const markdownStart = source.indexOf("Markdown Content:");
@@ -2989,8 +3069,16 @@
     return finalizeNewsParagraphs(paragraphs);
   }
 
-  function parseNewsArticleText(raw) {
+  function isPangeaPersianArticle(article) {
+    return state.language === "fa" && ["voa", "radiofarda"].includes(article?.feedSourceId);
+  }
+
+  function parseNewsArticleText(raw, article = null) {
     const looksHtml = /<html|<article|<main|<p[\s>]/i.test(raw);
+    if (looksHtml && isPangeaPersianArticle(article)) {
+      const parsed = parsePangeaPersianNewsArticleHtml(raw);
+      if (parsed.sentences.length) return parsed;
+    }
     return looksHtml ? parseNewsArticleHtml(raw) : parseNewsArticlePlain(raw);
   }
 
@@ -3006,7 +3094,7 @@
     let lastError = null;
     try {
       const { text, proxy } = await fetchTextWithProxies(article.link, "news article", { cache: "default" });
-      const parsed = parseNewsArticleText(text);
+      const parsed = parseNewsArticleText(text, article);
       if (!parsed.sentences.length) throw new Error("no readable article sentences");
       return { ...parsed, sourceUrl: article.link, proxy };
     } catch (error) {
@@ -3166,7 +3254,7 @@
 
   function bookModeKickerText() {
     if (isNewsMode()) return "Live text news";
-    if (state.bookShelfKind === "guided") return "Measured public-domain reads";
+    if (state.bookShelfKind === "guided") return "Curated public-domain levels";
     if (state.bookShelfKind === "gutenberg") return "Project Gutenberg via Gutendex";
     if (state.bookShelfKind === "favorites") return "Saved books";
     return "Standard Ebooks";

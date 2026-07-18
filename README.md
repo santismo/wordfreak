@@ -20,14 +20,14 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Language and frequency-band controls in the settings panel
 - Dense two-column virtual list for mobile scrolling
 - Dual-language book reader with guided difficulty levels, genre filtering, partial title/author search, and favorite shelves
-- Thirty-two measured public-domain selections—eight per level—from very short stories through literary stretch classics
+- Eighty curated public-domain selections across four guided levels, from very short stories through literary stretch classics; a book's estimate is refined after its first full load
 - Full Standard Ebooks and Project Gutenberg catalog browsing, with Gutendex providing Gutenberg metadata and live text formats
 - Automatic English readability estimates for newly opened catalog books; levels combine sentence/word complexity with total length and are not formal CEFR ratings
 - Current text-news reader using Meduza, VOA Persian, Radio Farda, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and optional Google News feeds
 - News headline filtering, source selection, refresh, random article loading, and full article text browsing without favorites
-- Moving word/phrase alignment during book and news playback: the spoken word and its estimated one- or two-word grammatical counterpart are highlighted together in both languages
+- Confidence-gated word/phrase alignment during book and news playback: a spoken word highlights only a high-confidence one-to-four-word counterpart; otherwise the other sentence receives a subtle context cue
 - Optional English TTS skip setting shared by the book and news readers
-- Faster reader startup through parallel fetch fallbacks, in-flight request sharing, persistent document/translation caching, shelf/sentence preloading, and quick news previews while full articles load
+- Faster reader startup through a full-page CORS route ahead of fallback readers, persistent document/translation caching, shelf/sentence preloading, and quick news previews while full articles load
 - Canonical Standard Ebooks subject pages for reliable genre filtering; Google Persian results are restricted to Persian-script headlines
 - System TTS with selectable voices, page volume, speed, and gap controls
 - First-tap speech preparation and a retry when browser speech synthesis stalls before starting
