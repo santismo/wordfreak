@@ -1,9 +1,10 @@
-const CACHE_NAME = "wordfreak-v30";
+const CACHE_NAME = "wordfreak-v31";
+const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v1";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css?v=17",
-  "./app.js?v=30",
+  "./app.js?v=31",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./data/ru-core.json",
@@ -26,7 +27,9 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys
+        .filter((key) => key !== CACHE_NAME && key !== READER_DOCUMENT_CACHE_NAME)
+        .map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
