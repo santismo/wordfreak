@@ -24,6 +24,7 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Current text-news reader using Meduza, VOA Persian, Radio Farda, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and optional Google News feeds
 - News headline filtering, source selection, refresh, random article loading, and full article text browsing without favorites
 - Immediate word-by-word pairing during book and news playback: each spoken word gets a monotonic best-guess counterpart right away, then contextual translation refines it to a one-to-four-word phrase when it finds a stronger match
+- Layout-stable reader highlights use positioned overlays, with bidirectional contextual alignment and English auxiliary grouping for Russian and Farsi
 - Speech and translation skip punctuation-only fragments, including Persian/Arabic punctuation, so a voice never reads a symbol as a word
 - Reader translations reject unchanged or wrong-script provider responses and never cache the original sentence as a successful translation
 - Optional English TTS skip setting shared by the book and news readers
