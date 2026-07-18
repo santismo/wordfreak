@@ -6,16 +6,23 @@
   const BOOK_FAVORITES_KEY = "wordfreak:book-favorites:v1";
   const BOOK_DIFFICULTY_KEY = "wordfreak:book-difficulty:v1";
   const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v1";
+  const NEWS_FEED_CACHE_KEY = "wordfreak:news-feeds:v1";
+  const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v1";
   const STANDARD_EBOOKS_LIST_URL = "https://standardebooks.org/ebooks";
   const GUTENDEX_BOOKS_URL = "https://gutendex.com/books/";
   const STANDARD_EBOOKS_PER_PAGE = 48;
   const STANDARD_EBOOKS_RANDOM_PAGE_MAX = 24;
-  const STANDARD_EBOOKS_SEARCH_SCAN_PAGE_MAX = 24;
-  const STANDARD_EBOOKS_SEARCH_RESULT_LIMIT = 48;
   const BOOK_FETCH_TIMEOUT_MS = 22000;
   const BOOK_TRANSLATION_CACHE_LIMIT = 350;
   const READER_DOCUMENT_CACHE_LIMIT = 6;
+  const READER_PERSISTENT_DOCUMENT_LIMIT = 12;
   const READER_ALIGNMENT_CACHE_LIMIT = 120;
+  const READER_SHELF_PREFETCH_LIMIT = 3;
+  const NEWS_FEED_CACHE_LIMIT = 12;
+  const NEWS_FEED_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  const NEWS_DOCUMENT_CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+  const BOOK_DOCUMENT_CACHE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+  const NEWS_ARTICLE_QUICK_WAIT_MS = 700;
   const BOOK_NEARBY_RADIUS = 3;
   const BOOK_SHELF_KINDS = new Set(["guided", "library", "gutenberg", "favorites"]);
   const BOOK_LEVELS = {
@@ -48,7 +55,8 @@
     ],
     fa: [
       { id: "voa", label: "VOA Persian", feed: "https://ir.voanews.com/api/zkup_l-vomx-tpejiyy", home: "https://ir.voanews.com/" },
-      { id: "google", label: "Google News Persian", feed: "https://news.google.com/rss?hl=fa&gl=IR&ceid=IR:fa", home: "https://news.google.com/?hl=fa&gl=IR&ceid=IR:fa" }
+      { id: "radiofarda", label: "Radio Farda", feed: "https://www.radiofarda.com/api/zrttpol-vomx-tpeoogpi", home: "https://www.radiofarda.com/" },
+      { id: "google", label: "Google News · Persian only", feed: "https://news.google.com/rss?hl=fa&gl=IR&ceid=IR:fa", home: "https://news.google.com/?hl=fa&gl=IR&ceid=IR:fa" }
     ],
     es: [
       { id: "dw", label: "DW Español", feed: "https://rss.dw.com/rdf/rss-sp-all", home: "https://www.dw.com/es/" },
@@ -133,23 +141,40 @@
     { gutenbergId: 14838, title: "The Tale of Peter Rabbit", author: "Beatrix Potter", level: "starter", wordCount: 974, estimatedGrade: 5.3, averageSentenceWords: 13.9, genres: ["childrens", "shorts"] },
     { gutenbergId: 18155, title: "The Story of the Three Little Pigs", author: "L. Leslie Brooke", level: "starter", wordCount: 1035, estimatedGrade: 4.9, averageSentenceWords: 18.5, genres: ["childrens", "shorts"] },
     { gutenbergId: 11757, title: "The Velveteen Rabbit", author: "Margery Williams Bianco", level: "starter", wordCount: 3948, estimatedGrade: 5.4, averageSentenceWords: 16.3, genres: ["childrens", "fantasy", "shorts"] },
-    { gutenbergId: 902, title: "The Happy Prince, and Other Tales", author: "Oscar Wilde", level: "easy", wordCount: 16245, estimatedGrade: 5.5, averageSentenceWords: 15.6, genres: ["childrens", "fantasy", "shorts"] },
+    { gutenbergId: 14872, title: "The Tale of Squirrel Nutkin", author: "Beatrix Potter", level: "starter", wordCount: 1180, estimatedGrade: 5.1, averageSentenceWords: 14.1, genres: ["childrens", "shorts"] },
+    { gutenbergId: 14407, title: "The Tale of Benjamin Bunny", author: "Beatrix Potter", level: "starter", wordCount: 1050, estimatedGrade: 4.8, averageSentenceWords: 13.5, genres: ["childrens", "shorts"] },
+    { gutenbergId: 14814, title: "The Tale of Jemima Puddle-Duck", author: "Beatrix Potter", level: "starter", wordCount: 1250, estimatedGrade: 5.2, averageSentenceWords: 14.4, genres: ["childrens", "shorts"] },
+    { gutenbergId: 14837, title: "The Tale of Tom Kitten", author: "Beatrix Potter", level: "starter", wordCount: 900, estimatedGrade: 4.7, averageSentenceWords: 13.2, genres: ["childrens", "shorts"] },
+    { gutenbergId: 15137, title: "The Tale of Mrs. Tiggy-Winkle", author: "Beatrix Potter", level: "starter", wordCount: 1200, estimatedGrade: 5.0, averageSentenceWords: 14.0, genres: ["childrens", "shorts"], gitenbergSlug: "The-Tale-of-Mrs.-Tiggy-Winkle" },
+    { gutenbergId: 902, title: "The Happy Prince, and Other Tales", author: "Oscar Wilde", level: "easy", wordCount: 16245, estimatedGrade: 5.5, averageSentenceWords: 15.6, genres: ["childrens", "fantasy", "shorts"], gitenbergFile: "902-0.txt" },
     { gutenbergId: 11, title: "Alice's Adventures in Wonderland", author: "Lewis Carroll", level: "easy", wordCount: 26518, estimatedGrade: 5.8, averageSentenceWords: 16.3, genres: ["childrens", "fantasy"] },
     { gutenbergId: 55, title: "The Wonderful Wizard of Oz", author: "L. Frank Baum", level: "easy", wordCount: 39661, estimatedGrade: 6, averageSentenceWords: 17.6, genres: ["adventure", "childrens", "fantasy"] },
+    { gutenbergId: 19994, title: "The Aesop for Children", author: "Aesop, illustrated by Milo Winter", level: "easy", wordCount: 14800, estimatedGrade: 5.7, averageSentenceWords: 15.2, genres: ["childrens", "shorts"], gitenbergSlug: "The-Aesop-for-Children--13-With-pictures-by-Milo-Winter" },
+    { gutenbergId: 16, title: "Peter Pan", author: "J. M. Barrie", level: "easy", wordCount: 47300, estimatedGrade: 5.8, averageSentenceWords: 16.4, genres: ["adventure", "childrens", "fantasy"] },
+    { gutenbergId: 708, title: "The Princess and the Goblin", author: "George MacDonald", level: "easy", wordCount: 53000, estimatedGrade: 6.1, averageSentenceWords: 17.1, genres: ["adventure", "childrens", "fantasy"] },
+    { gutenbergId: 236, title: "The Jungle Book", author: "Rudyard Kipling", level: "easy", wordCount: 52000, estimatedGrade: 6.6, averageSentenceWords: 17.4, genres: ["adventure", "childrens", "shorts"] },
+    { gutenbergId: 271, title: "Black Beauty", author: "Anna Sewell", level: "easy", wordCount: 59000, estimatedGrade: 5.9, averageSentenceWords: 16.8, genres: ["childrens", "fiction"] },
     { gutenbergId: 35, title: "The Time Machine", author: "H. G. Wells", level: "steady", wordCount: 32578, estimatedGrade: 7.2, averageSentenceWords: 16.7, genres: ["adventure", "science-fiction"] },
     { gutenbergId: 289, title: "The Wind in the Willows", author: "Kenneth Grahame", level: "steady", wordCount: 58836, estimatedGrade: 7, averageSentenceWords: 18.1, genres: ["childrens", "fantasy"] },
     { gutenbergId: 120, title: "Treasure Island", author: "Robert Louis Stevenson", level: "steady", wordCount: 68628, estimatedGrade: 5.5, averageSentenceWords: 16.1, genres: ["adventure", "childrens"] },
     { gutenbergId: 174, title: "The Picture of Dorian Gray", author: "Oscar Wilde", level: "steady", wordCount: 79191, estimatedGrade: 4.7, averageSentenceWords: 11.9, genres: ["fiction", "horror", "philosophy"] },
     { gutenbergId: 17396, title: "The Secret Garden", author: "Frances Hodgson Burnett", level: "steady", wordCount: 81378, estimatedGrade: 4.3, averageSentenceWords: 12.9, genres: ["childrens", "fiction"] },
     { gutenbergId: 1661, title: "The Adventures of Sherlock Holmes", author: "Arthur Conan Doyle", level: "steady", wordCount: 104548, estimatedGrade: 5.5, averageSentenceWords: 14.4, genres: ["mystery", "shorts"] },
-    { gutenbergId: 21, title: "Three Hundred Aesop's Fables", author: "Aesop, translated by George Fyler Townsend", level: "stretch", wordCount: 43888, estimatedGrade: 9.4, averageSentenceWords: 24.3, genres: ["childrens", "shorts"] },
+    { gutenbergId: 215, title: "The Call of the Wild", author: "Jack London", level: "steady", wordCount: 37000, estimatedGrade: 7.3, averageSentenceWords: 18.4, genres: ["adventure", "fiction"] },
+    { gutenbergId: 103, title: "Around the World in Eighty Days", author: "Jules Verne", level: "steady", wordCount: 63000, estimatedGrade: 7.0, averageSentenceWords: 18.0, genres: ["adventure", "travel"], gitenbergSlug: "Around-the-World-in-80-Days" },
+    { gutenbergId: 21, title: "Three Hundred Aesop's Fables", author: "Aesop, translated by George Fyler Townsend", level: "stretch", wordCount: 43888, estimatedGrade: 9.4, averageSentenceWords: 24.3, genres: ["childrens", "shorts"], gitenbergDisabled: true },
     { gutenbergId: 84, title: "Frankenstein", author: "Mary Shelley", level: "stretch", wordCount: 75089, estimatedGrade: 9.8, averageSentenceWords: 22.3, genres: ["fiction", "horror", "science-fiction"] },
     { gutenbergId: 1342, title: "Pride and Prejudice", author: "Jane Austen", level: "stretch", wordCount: 126819, estimatedGrade: 8.1, averageSentenceWords: 17.5, genres: ["comedy", "fiction"] },
-    { gutenbergId: 2701, title: "Moby-Dick", author: "Herman Melville", level: "stretch", wordCount: 214004, estimatedGrade: 8.9, averageSentenceWords: 20.7, genres: ["adventure", "fiction"] }
+    { gutenbergId: 2701, title: "Moby-Dick", author: "Herman Melville", level: "stretch", wordCount: 214004, estimatedGrade: 8.9, averageSentenceWords: 20.7, genres: ["adventure", "fiction"], gitenbergSlug: "Moby-Dick--Or-The-Whale" },
+    { gutenbergId: 1400, title: "Great Expectations", author: "Charles Dickens", level: "stretch", wordCount: 187000, estimatedGrade: 8.0, averageSentenceWords: 19.7, genres: ["fiction"] },
+    { gutenbergId: 1260, title: "Jane Eyre", author: "Charlotte Brontë", level: "stretch", wordCount: 190000, estimatedGrade: 8.2, averageSentenceWords: 20.1, genres: ["fiction"] },
+    { gutenbergId: 768, title: "Wuthering Heights", author: "Emily Brontë", level: "stretch", wordCount: 119000, estimatedGrade: 8.4, averageSentenceWords: 20.5, genres: ["fiction", "horror"] },
+    { gutenbergId: 145, title: "Middlemarch", author: "George Eliot", level: "stretch", wordCount: 316000, estimatedGrade: 9.2, averageSentenceWords: 22.0, genres: ["fiction"] }
   ].map((book) => ({
     ...book,
     id: `gutenberg:${book.gutenbergId}`,
     source: "gutenberg",
+    guided: true,
     link: `https://www.gutenberg.org/ebooks/${book.gutenbergId}`
   }));
   const LANGUAGES = {
@@ -359,6 +384,8 @@
     readerSentencePrefetchTimer: 0,
     readerTranslationSaveTimer: 0,
     newsSourceByLanguage: {},
+    newsFeedCache: loadNewsFeedCache(),
+    newsFeedLoadToken: 0,
     newsAllArticles: [],
     newsSearch: "",
     activeHighlights: [],
@@ -494,6 +521,27 @@
       return new Map(Array.isArray(values) ? values.slice(-BOOK_TRANSLATION_CACHE_LIMIT) : []);
     } catch {
       return new Map();
+    }
+  }
+
+  function loadNewsFeedCache() {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(NEWS_FEED_CACHE_KEY) || "{}");
+      return value && typeof value === "object" ? value : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveNewsFeedCache() {
+    try {
+      const entries = Object.entries(state.newsFeedCache)
+        .sort((left, right) => Number(right[1]?.savedAt || 0) - Number(left[1]?.savedAt || 0))
+        .slice(0, NEWS_FEED_CACHE_LIMIT);
+      state.newsFeedCache = Object.fromEntries(entries);
+      window.localStorage.setItem(NEWS_FEED_CACHE_KEY, JSON.stringify(state.newsFeedCache));
+    } catch (error) {
+      console.warn("News feed cache save failed:", error);
     }
   }
 
@@ -1724,23 +1772,19 @@
 
   function standardEbooksPageUrl(page, query = state.bookSearch, genre = state.bookGenre) {
     const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
-    const params = new URLSearchParams({
-      page: String(safePage),
-      "per-page": String(STANDARD_EBOOKS_PER_PAGE)
-    });
+    const params = new URLSearchParams({ "per-page": String(STANDARD_EBOOKS_PER_PAGE) });
+    if (safePage > 1) params.set("page", String(safePage));
     const cleanQuery = normalizeSpaces(query);
-    if (cleanQuery) {
-      params.set("query", cleanQuery);
-    }
-    if (BOOK_GENRES[genre]) {
-      params.append("tags[]", genre);
-    }
-    return `${STANDARD_EBOOKS_LIST_URL}?${params.toString()}`;
+    if (cleanQuery) params.set("query", cleanQuery);
+    const root = BOOK_GENRES[genre]
+      ? `https://standardebooks.org/subjects/${encodeURIComponent(genre)}`
+      : STANDARD_EBOOKS_LIST_URL;
+    return `${root}?${params.toString()}`;
   }
 
-  async function fetchTextCandidate(proxy, url, label, signal) {
+  async function fetchTextCandidate(proxy, url, label, signal, cacheMode = "no-store") {
     const response = await withTimeout(
-      fetch(proxy.build(url), { cache: "no-store", signal }),
+      fetch(proxy.build(url), { cache: cacheMode, signal }),
       BOOK_FETCH_TIMEOUT_MS,
       `${proxy.name} ${label}`
     );
@@ -1751,14 +1795,15 @@
     return { text, proxy: proxy.name };
   }
 
-  async function fetchTextWithProxies(url, label) {
+  async function fetchTextWithProxies(url, label, options = {}) {
     const failures = [];
+    const cacheMode = options.cache || "no-store";
     const waves = [PROXY_CANDIDATES.slice(0, 3), PROXY_CANDIDATES.slice(3)];
     for (const wave of waves) {
       const controllers = wave.map(() => new AbortController());
       try {
         const result = await Promise.any(wave.map((proxy, index) => (
-          fetchTextCandidate(proxy, url, label, controllers[index].signal).catch((error) => {
+          fetchTextCandidate(proxy, url, label, controllers[index].signal, cacheMode).catch((error) => {
             failures.push(`${proxy.name}: ${error.message}`);
             throw error;
           })
@@ -1817,6 +1862,18 @@
     };
   }
 
+  function isPersianGoogleSource(source) {
+    return source?.id === "google" && /[?&]hl=fa(?:&|$)/i.test(source?.feed || "");
+  }
+
+  function newsArticleMatchesSourceLanguage(article, source) {
+    if (!isPersianGoogleSource(source)) return true;
+    const title = String(article?.title || "");
+    const letters = title.match(/\p{L}/gu) || [];
+    const persianLetters = title.match(/[\u0600-\u06ff]/g) || [];
+    return persianLetters.length >= 4 && persianLetters.length / Math.max(1, letters.length) >= 0.45;
+  }
+
   function parseNewsFeed(text, source) {
     const doc = new DOMParser().parseFromString(text, "application/xml");
     if (doc.querySelector("parsererror")) {
@@ -1842,7 +1899,7 @@
         publishedAt: feedChildText(entry, ["pubdate", "published", "updated", "date"]),
         summary: feedChildText(entry, ["description", "summary", "content", "encoded"])
       }, source);
-      if (!article || seen.has(article.id)) return;
+      if (!article || !newsArticleMatchesSourceLanguage(article, source) || seen.has(article.id)) return;
       seen.add(article.id);
       records.push(article);
     });
@@ -1866,7 +1923,7 @@
         summary: item.description || item.content || item.thumbnail || ""
       }, source))
       .filter((article) => {
-        if (!article || seen.has(article.id)) return false;
+        if (!article || !newsArticleMatchesSourceLanguage(article, source) || seen.has(article.id)) return false;
         seen.add(article.id);
         return true;
       })
@@ -1874,10 +1931,38 @@
       .slice(0, NEWS_ARTICLE_LIMIT);
   }
 
+  function parseNewsFeedMarkdown(text, source) {
+    const records = [];
+    const seen = new Set();
+    String(text || "").split(/^###\s+/m).slice(1).forEach((block) => {
+      const heading = block.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)/);
+      if (!heading) return;
+      const lines = block.split(/\n+/).map((line) => normalizeSpaces(line)).filter(Boolean);
+      const publishedAt = lines.find((line) => /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s/i.test(line)) || "";
+      const summary = lines.find((line, index) => (
+        index > 0
+        && !/^\[https?:/i.test(line)
+        && !/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s/i.test(line)
+      )) || "";
+      const article = normalizeNewsRecord({
+        title: heading[1],
+        link: heading[2],
+        author: source.label,
+        sourceLabel: source.label,
+        publishedAt,
+        summary
+      }, source);
+      if (!article || !newsArticleMatchesSourceLanguage(article, source) || seen.has(article.id)) return;
+      seen.add(article.id);
+      records.push(article);
+    });
+    return records.slice(0, NEWS_ARTICLE_LIMIT);
+  }
+
   async function fetchNewsArticles(source) {
     const rssServiceUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.feed)}`;
     const failures = [];
-    try {
+    const viaRssService = async () => {
       const response = await withTimeout(
         fetch(rssServiceUrl, { cache: "no-store" }),
         BOOK_FETCH_TIMEOUT_MS,
@@ -1887,19 +1972,35 @@
       const articles = parseNewsFeedJson(await response.json(), source);
       if (!articles.length) throw new Error("no articles");
       return { articles, proxy: "live RSS" };
-    } catch (error) {
-      failures.push(`RSS service: ${error.message}`);
-    }
-
-    try {
+    };
+    const viaFeedProxy = async () => {
       const { text, proxy } = await fetchTextWithProxies(source.feed, "news feed");
-      const articles = parseNewsFeed(text, source);
+      let articles = [];
+      try {
+        articles = parseNewsFeed(text, source);
+      } catch {
+        articles = parseNewsFeedMarkdown(text, source);
+      }
       if (!articles.length) throw new Error("no articles");
       return { articles, proxy };
-    } catch (error) {
-      failures.push(error.message);
+    };
+    try {
+      return await Promise.any([
+        viaRssService().catch((error) => {
+          failures.push(`RSS service: ${error.message}`);
+          throw error;
+        }),
+        viaFeedProxy().catch((error) => {
+          failures.push(error.message);
+          throw error;
+        })
+      ]);
+    } catch {
+      if (isPersianGoogleSource(source)) {
+        throw new Error("Google returned no Persian-language headlines; try VOA Persian or Radio Farda");
+      }
+      throw new Error(`News feed failed: ${failures.join(" | ")}`);
     }
-    throw new Error(`News feed failed: ${failures.join(" | ")}`);
   }
 
   function newsSearchHaystack(article) {
@@ -1925,14 +2026,37 @@
   async function loadNewsFeed() {
     const source = activeNewsSource();
     if (!source) throw new Error(`No news source for ${activeLanguage().label}`);
+    const loadToken = state.newsFeedLoadToken + 1;
+    state.newsFeedLoadToken = loadToken;
+    const language = state.language;
     state.newsSourceByLanguage[state.language] = source.id;
     state.newsSearch = normalizeSpaces(els.newsSearchInput.value);
-    setStatus(`Updating ${source.label}`);
-    const { articles, proxy } = await fetchNewsArticles(source);
-    state.newsAllArticles = articles;
-    applyNewsFilter();
-    savePrefs();
-    setStatus(`Updated ${articles.length} articles from ${source.label} via ${proxy}`);
+    const cacheKey = `${state.language}:${source.id}:${bookHash(source.feed)}`;
+    const cached = state.newsFeedCache[cacheKey];
+    const cachedArticles = Array.isArray(cached?.articles)
+      ? cached.articles.filter((article) => newsArticleMatchesSourceLanguage(article, source))
+      : [];
+    const cacheFresh = cachedArticles.length && Date.now() - Number(cached.savedAt || 0) < NEWS_FEED_CACHE_MAX_AGE_MS;
+    if (cacheFresh) {
+      state.newsAllArticles = cachedArticles;
+      applyNewsFilter();
+      setStatus(`Showing cached ${source.label} headlines · updating`);
+    } else {
+      setStatus(`Updating ${source.label}`);
+    }
+    try {
+      const { articles, proxy } = await fetchNewsArticles(source);
+      if (loadToken !== state.newsFeedLoadToken || language !== state.language || activeNewsSource()?.id !== source.id) return;
+      state.newsAllArticles = articles;
+      state.newsFeedCache[cacheKey] = { savedAt: Date.now(), articles };
+      saveNewsFeedCache();
+      applyNewsFilter();
+      savePrefs();
+      setStatus(`Updated ${articles.length} articles from ${source.label} via ${proxy}`);
+    } catch (error) {
+      if (!cacheFresh) throw error;
+      setStatus(`Showing cached ${source.label} headlines; refresh unavailable`);
+    }
   }
 
   function formatNewsDate(value) {
@@ -2299,47 +2423,14 @@
     const fromHtml = extractCatalogBooksFromHtml(text);
     const books = fromHtml.length ? fromHtml : extractCatalogBooksFromMarkdown(text);
     if (!books.length) throw new Error("No books found on the shelf page");
-    return { books, proxy, page: safePage };
-  }
-
-  function collectMatchedBooks(target, sourceBooks, query, limit = STANDARD_EBOOKS_SEARCH_RESULT_LIMIT) {
-    const seen = new Set(target.map((book) => book.id));
-    for (const book of dedupeBooks(sourceBooks)) {
-      if (target.length >= limit) break;
-      if (seen.has(book.id) || !bookMatchesSearch(book, query)) continue;
-      seen.add(book.id);
-      target.push(book);
-    }
-    return target;
-  }
-
-  async function scanBookCatalogForSearch(query, genre = state.bookGenre) {
-    const matches = [];
-    const seedBooks = genre
-      ? state.bookBooks
-      : [...favoriteBooks(), ...state.bookBooks, ...FALLBACK_BOOKS].filter((book) => book?.source !== "gutenberg");
-    collectMatchedBooks(matches, seedBooks, query);
-    if (matches.length) {
-      return { books: matches, proxy: "saved books", page: 1 };
-    }
-
-    let lastProxy = "catalog scan";
-    for (let page = 1; page <= STANDARD_EBOOKS_SEARCH_SCAN_PAGE_MAX; page += 1) {
-      setStatus(`Scanning catalog page ${page} for "${normalizeSpaces(query)}"`);
-      try {
-        const { books, proxy } = await fetchBookCatalogPage(page, "", genre);
-        lastProxy = proxy;
-        collectMatchedBooks(matches, books, query);
-        if (matches.length || books.length < STANDARD_EBOOKS_PER_PAGE) {
-          break;
-        }
-      } catch (error) {
-        if (page === 1 && !matches.length) throw error;
-        break;
-      }
-    }
-
-    return { books: matches, proxy: `${lastProxy} local scan`, page: 1 };
+    const htmlDoc = fromHtml.length ? new DOMParser().parseFromString(text, "text/html") : null;
+    const hasNext = htmlDoc
+      ? Boolean(htmlDoc.querySelector('a[rel="next"]'))
+      : new RegExp(`[?&]page=${safePage + 1}(?:&|\\)|\\s|$)`, "i").test(text);
+    const hasPrevious = htmlDoc
+      ? Boolean(htmlDoc.querySelector('a[rel="prev"]')) || safePage > 1
+      : safePage > 1;
+    return { books, proxy, page: safePage, hasNext, hasPrevious };
   }
 
   async function loadBookCatalogPage(page = state.bookPage) {
@@ -2400,29 +2491,16 @@
       let books = [];
       let proxy = "";
       let safePage = Math.max(1, Number.parseInt(page, 10) || 1);
-      try {
-        const result = await fetchBookCatalogPage(safePage, cleanQuery, state.bookGenre);
-        books = cleanQuery
-          ? result.books.filter((book) => bookMatchesSearch(book, cleanQuery))
-          : result.books;
-        proxy = result.proxy;
-        safePage = result.page;
-        if (cleanQuery && !books.length) {
-          throw new Error("No partial matches in keyword results");
-        }
-      } catch (error) {
-        if (!cleanQuery) throw error;
-        const result = await scanBookCatalogForSearch(cleanQuery, state.bookGenre);
-        books = result.books;
-        proxy = result.proxy;
-        safePage = result.page;
-      }
+      const result = await fetchBookCatalogPage(safePage, cleanQuery, state.bookGenre);
+      books = result.books;
+      proxy = result.proxy;
+      safePage = result.page;
       if (!books.length) {
         throw new Error("No matching books found");
       }
       state.bookPage = safePage;
-      state.bookHasPreviousPage = safePage > 1;
-      state.bookHasNextPage = books.length >= STANDARD_EBOOKS_PER_PAGE;
+      state.bookHasPreviousPage = result.hasPrevious;
+      state.bookHasNextPage = result.hasNext;
       state.bookBooks = books;
       els.bookPageInput.value = String(safePage);
       renderBookShelf();
@@ -2430,10 +2508,12 @@
         ? `Found ${books.length} ${state.bookGenre ? `${genreLabel()} ` : ""}books via ${proxy}`
         : `Loaded ${books.length} ${state.bookGenre ? `${genreLabel()} ` : ""}books via ${proxy}`);
     } catch (error) {
-      if (cleanQuery) {
+      if (cleanQuery || state.bookGenre) {
         state.bookBooks = [];
         renderBookShelf();
-        setStatus(`No books found for "${cleanQuery}"`);
+        setStatus(cleanQuery
+          ? `No ${state.bookGenre ? `${genreLabel()} ` : ""}Standard Ebooks found for "${cleanQuery}"`
+          : `${genreLabel()} Standard Ebooks could not be loaded`);
         return;
       }
       state.bookBooks = dedupeBooks(FALLBACK_BOOKS);
@@ -2566,16 +2646,23 @@
 
   async function bookTextCandidates(book) {
     if (book?.source === "gutenberg" || book?.gutenbergId) {
-      if (Array.isArray(book.textUrls) && book.textUrls.length) {
-        return [...new Set(book.textUrls)];
-      }
       const gutenbergId = normalizeGutenbergId(book);
       if (!gutenbergId) return [];
-      const { payload } = await fetchJsonWithProxies(`${GUTENDEX_BOOKS_URL}${gutenbergId}/`, "Project Gutenberg metadata");
-      const textUrls = gutenbergTextUrls(payload.formats);
-      if (!textUrls.length) throw new Error("No readable Project Gutenberg text format found");
-      book.textUrls = textUrls;
-      return textUrls;
+      const derivedGitenbergSlug = String(book?.title || "")
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^A-Za-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const gitenbergSlug = book.gitenbergSlug || derivedGitenbergSlug;
+      const gitenbergFile = book.gitenbergFile || `${gutenbergId}.txt`;
+      return [...new Set([
+        ...(book.guided && !book.gitenbergDisabled && gitenbergSlug
+          ? [`direct:https://cdn.jsdelivr.net/gh/GITenberg/${gitenbergSlug}_${gutenbergId}@master/${gitenbergFile}`]
+          : []),
+        ...(Array.isArray(book.textUrls) ? book.textUrls : []),
+        `https://www.gutenberg.org/cache/epub/${gutenbergId}/pg${gutenbergId}.txt`,
+        `https://www.gutenberg.org/ebooks/${gutenbergId}.txt.utf-8`
+      ])];
     }
     const root = normalizeStandardEbookLink(book?.link || "");
     return [
@@ -2907,22 +2994,39 @@
     return looksHtml ? parseNewsArticleHtml(raw) : parseNewsArticlePlain(raw);
   }
 
+  function newsFeedSummaryDocument(article) {
+    const fallbackText = [article?.title, article?.summary].filter(Boolean).join(". ");
+    const parsed = finalizeNewsParagraphs([fallbackText]);
+    return parsed.sentences.length
+      ? { ...parsed, sourceUrl: article?.link || "", proxy: "feed summary" }
+      : null;
+  }
+
   async function fetchAndParseNewsArticle(article) {
     let lastError = null;
     try {
-      const { text, proxy } = await fetchTextWithProxies(article.link, "news article");
+      const { text, proxy } = await fetchTextWithProxies(article.link, "news article", { cache: "default" });
       const parsed = parseNewsArticleText(text);
       if (!parsed.sentences.length) throw new Error("no readable article sentences");
       return { ...parsed, sourceUrl: article.link, proxy };
     } catch (error) {
       lastError = error;
     }
-    const fallbackText = [article.title, article.summary].filter(Boolean).join(". ");
-    const fallback = finalizeNewsParagraphs([fallbackText]);
-    if (fallback.sentences.length) {
-      return { ...fallback, sourceUrl: article.link, proxy: "feed summary" };
-    }
+    const fallback = newsFeedSummaryDocument(article);
+    if (fallback) return fallback;
     throw lastError || new Error("News article text failed");
+  }
+
+  async function fetchDirectReaderText(url, label) {
+    const response = await withTimeout(
+      fetch(url, { cache: "force-cache" }),
+      10000,
+      label
+    );
+    if (!response.ok) throw new Error(`${response.status}`);
+    const text = await withTimeout(response.text(), 10000, `${label} body`);
+    if (!normalizeSpaces(text)) throw new Error("empty response");
+    return { text, proxy: "GITenberg CDN" };
   }
 
   async function fetchAndParseBookUncached(book) {
@@ -2933,10 +3037,14 @@
     const candidates = await bookTextCandidates(book);
     for (const candidate of candidates) {
       try {
-        const { text, proxy } = await fetchTextWithProxies(candidate, "book text");
+        const direct = String(candidate).startsWith("direct:");
+        const candidateUrl = direct ? String(candidate).slice("direct:".length) : candidate;
+        const { text, proxy } = direct
+          ? await fetchDirectReaderText(candidateUrl, "GITenberg book text")
+          : await fetchTextWithProxies(candidateUrl, "book text", { cache: "force-cache" });
         const parsed = parseBookText(text);
         if (!parsed.sentences.length) throw new Error("no readable sentences");
-        return { ...parsed, sourceUrl: candidate, proxy };
+        return { ...parsed, sourceUrl: candidateUrl, proxy };
       } catch (error) {
         lastError = error;
       }
@@ -2958,6 +3066,49 @@
     }
   }
 
+  function persistentReaderDocumentUrl(key) {
+    const token = `${bookHash(key)}-${String(key || "").length}`;
+    return new URL(`./.reader-cache/${token}.json`, window.location.href).href;
+  }
+
+  async function readPersistentReaderDocument(key) {
+    if (!key || !window.caches) return null;
+    try {
+      const cache = await window.caches.open(READER_DOCUMENT_CACHE_NAME);
+      const response = await cache.match(persistentReaderDocumentUrl(key));
+      if (!response) return null;
+      const payload = await response.json();
+      const maxAge = key.startsWith("news:")
+        ? NEWS_DOCUMENT_CACHE_MAX_AGE_MS
+        : BOOK_DOCUMENT_CACHE_MAX_AGE_MS;
+      if (payload?.key !== key || !payload?.parsed || Date.now() - Number(payload.savedAt || 0) > maxAge) {
+        await cache.delete(persistentReaderDocumentUrl(key));
+        return null;
+      }
+      return payload.parsed;
+    } catch (error) {
+      console.warn("Reader document cache read failed:", error);
+      return null;
+    }
+  }
+
+  async function writePersistentReaderDocument(key, parsed) {
+    if (!key || !parsed || !window.caches || typeof window.Response !== "function") return;
+    try {
+      const cache = await window.caches.open(READER_DOCUMENT_CACHE_NAME);
+      const response = new window.Response(JSON.stringify({ key, savedAt: Date.now(), parsed }), {
+        headers: { "Content-Type": "application/json" }
+      });
+      await cache.put(persistentReaderDocumentUrl(key), response);
+      const requests = await cache.keys();
+      while (requests.length > READER_PERSISTENT_DOCUMENT_LIMIT) {
+        await cache.delete(requests.shift());
+      }
+    } catch (error) {
+      console.warn("Reader document cache write failed:", error);
+    }
+  }
+
   async function fetchAndParseBook(book) {
     const key = readerDocumentKey(book);
     if (key && state.readerDocumentCache.has(key)) {
@@ -2969,32 +3120,47 @@
     if (key && state.readerDocumentPromises.has(key)) {
       return state.readerDocumentPromises.get(key);
     }
-    const promise = fetchAndParseBookUncached(book)
-      .then((parsed) => {
+    const promise = (async () => {
+      const persisted = await readPersistentReaderDocument(key);
+      if (persisted) {
+        rememberReaderDocument(key, persisted);
+        return persisted;
+      }
+      const parsed = await fetchAndParseBookUncached(book);
+      if (parsed) {
         rememberReaderDocument(key, parsed);
-        return parsed;
-      })
+        writePersistentReaderDocument(key, parsed);
+      }
+      return parsed;
+    })()
       .finally(() => state.readerDocumentPromises.delete(key));
     if (key) state.readerDocumentPromises.set(key, promise);
     return promise;
   }
 
   function prefetchBookDocument(book) {
-    if (!book?.link) return;
-    fetchAndParseBook(book).catch((error) => {
+    if (!book?.link) return Promise.resolve();
+    return fetchAndParseBook(book).catch((error) => {
       console.warn(`Reader prefetch failed for ${book.title || "item"}:`, error);
     });
   }
 
   function scheduleShelfReaderPrefetch() {
     window.clearTimeout(state.readerPrefetchTimer);
-    const book = state.bookBooks[0];
     const mode = state.contentMode;
-    const shouldPrefetch = book && (mode === "news" || state.bookShelfKind === "guided");
-    if (!shouldPrefetch) return;
+    const books = (mode === "news" || state.bookShelfKind === "guided")
+      ? state.bookBooks.slice(0, READER_SHELF_PREFETCH_LIMIT)
+      : [];
+    if (!books.length) return;
     state.readerPrefetchTimer = window.setTimeout(() => {
       if (state.contentMode !== mode || state.bookViewMode !== "shelf") return;
-      prefetchBookDocument(book);
+      (async () => {
+        for (const book of books) {
+          if (state.contentMode !== mode || state.bookViewMode !== "shelf") return;
+          await prefetchBookDocument(book);
+          await delayPlain(180);
+        }
+      })();
     }, 250);
   }
 
@@ -3171,7 +3337,24 @@
     els.bookEnglishSentence.textContent = book.title;
     setStatus(`Loading ${book.title}`);
 
-    const parsed = await fetchAndParseBook(book);
+    let parsed = null;
+    let pendingFullDocument = null;
+    if (book.kind === "news") {
+      const preview = newsFeedSummaryDocument(book);
+      const fullDocumentPromise = fetchAndParseBook(book);
+      if (preview) {
+        const quickResult = await Promise.race([
+          fullDocumentPromise.then((document) => ({ document, pending: null })),
+          delayPlain(NEWS_ARTICLE_QUICK_WAIT_MS).then(() => ({ document: preview, pending: fullDocumentPromise }))
+        ]);
+        parsed = quickResult.document;
+        pendingFullDocument = quickResult.pending;
+      } else {
+        parsed = await fullDocumentPromise;
+      }
+    } else {
+      parsed = await fetchAndParseBook(book);
+    }
     state.bookSentences = parsed.sentences;
     state.bookChapters = parsed.chapters;
     rememberMeasuredBookDifficulty(book, parsed.sentences);
@@ -3183,7 +3366,26 @@
       ? randomBookSentenceIndex()
       : clamp(options.index ?? saved?.index ?? 0, 0, state.bookSentences.length - 1);
     setBookIndex(index, { save: true });
-    setStatus(`Loaded ${book.title} (${state.bookSentences.length.toLocaleString()} sentences via ${parsed.proxy})`);
+    setStatus(pendingFullDocument
+      ? `Opened ${book.title} from the feed · loading full article`
+      : `Loaded ${book.title} (${state.bookSentences.length.toLocaleString()} sentences via ${parsed.proxy})`);
+    if (pendingFullDocument) {
+      const loadedKey = readerDocumentKey(book);
+      pendingFullDocument.then((fullDocument) => {
+        if (
+          readerDocumentKey(state.bookLoadedBook) !== loadedKey
+          || state.bookPlaying
+          || !fullDocument?.sentences?.length
+          || fullDocument.proxy === "feed summary"
+        ) return;
+        const currentIndex = clamp(state.bookCurrentIndex, 0, fullDocument.sentences.length - 1);
+        state.bookSentences = fullDocument.sentences;
+        state.bookChapters = fullDocument.chapters;
+        renderBookReaderShell();
+        setBookIndex(currentIndex, { save: true });
+        setStatus(`Full article ready (${fullDocument.sentences.length.toLocaleString()} sentences via ${fullDocument.proxy})`);
+      }).catch((error) => console.warn("Full article background load failed:", error));
+    }
   }
 
   async function loadRandomNewsArticle() {
