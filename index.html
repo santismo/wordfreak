@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
   <main class="app-shell">
@@ -72,6 +72,13 @@
           <option value="16000">16k</option>
           <option value="20000" selected>20k</option>
           <option value="all">All</option>
+        </select>
+      </label>
+      <label class="desktop-piper-setting">
+        Speech engine
+        <select id="engineSelect">
+          <option value="system" selected>System voices</option>
+          <option value="piper">Piper where available</option>
         </select>
       </label>
       <label>
@@ -331,6 +338,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=36" defer></script>
+  <script src="app.js?v=41" defer></script>
 </body>
 </html>
