@@ -1,6 +1,6 @@
 # Wordfreak
 
-Wordfreak is a mobile-first vocabulary player for GitHub Pages. It loads frequency-ranked Russian, Farsi, Spanish, French, Hindi, Japanese, or Korean decks, shows the focused source word beside its English meaning, and autoplays source-language text-to-speech followed by English text-to-speech.
+Wordfreak is a mobile-first vocabulary player for GitHub Pages. It pairs frequency-ranked Russian, Farsi, Spanish, French, Hindi, Japanese, and Korean decks with a curated English Vernacular mode for rare, expressive words. The focused word appears beside its meaning, and autoplay reads the word followed by its English definition.
 https://santismo.github.io/wordfreak/
 
 Offline vocabulary edition for SPCK and airplane-mode use:
@@ -9,6 +9,8 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 
 ## Features
 
+- English Vernacular mode with 3,500 rare, expressive, and precise words, definitions, available usage examples, and spoken study cues
+- Four English collection depths—Core, Expanded, Deep cuts, and Complete—ordered editorially rather than by raw frequency
 - Russian National Corpus-based core deck, about 20k unique words
 - Farsi deck from a Persian Wikipedia frequency corpus, 20k words
 - Spanish deck from cleaned subtitle-frequency forms, Wiktionary-derived glosses, and machine-translation fallback, 20k words
@@ -17,7 +19,7 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - English glosses from dictionary data, manual high-frequency patches, and machine-translation cache files
 - Live browser translation fallback for missing glosses
 - Ordered and shuffle playback
-- Language and frequency-band controls in the settings panel
+- Language controls with frequency bands for study languages and collection-depth controls for English
 - Dense two-column virtual list for mobile scrolling
 - Dual-language book reader with guided difficulty levels, genre filtering, partial title/author search, and favorite shelves
 - Eighty fast curated Project Gutenberg selections across four guided levels, plus a searchable, paginated Standard Ebooks public-domain library
@@ -46,6 +48,7 @@ python3 scripts/build_ru_data.py
 python3 scripts/build_fa_data.py
 python3 scripts/build_es_data.py
 python3 scripts/build_frequency_data.py all
+python3 scripts/build_en_vernacular.py
 python3 -m http.server 8000
 ```
 
@@ -57,7 +60,7 @@ Open [`desktop.html`](desktop.html) for the wider desktop layout. Its settings i
 
 ## Data
 
-The generated data files are `data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, and `data/ko-core.json`.
+The generated data files are `data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, `data/ko-core.json`, and `data/en-vernacular.json`.
 
 Sources:
 
@@ -67,6 +70,8 @@ Sources:
 - Spanish frequency order and Wiktionary-derived glosses: Doozan Spanish data
 - French, Japanese, and Korean frequency order: Top OpenSubtitles cleaned word frequency lists
 - Hindi frequency order: FrequencyWords Hindi OpenSubtitles list
+- English Vernacular definitions and examples: Princeton WordNet 3.0
+- English rarity guardrails: wordfreq; the final order is curated and is not presented as a frequency ranking
 - Manual patch list: small Wordfreak-maintained high-frequency fixes
 - Machine translation cache files for remaining English glosses
 

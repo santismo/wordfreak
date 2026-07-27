@@ -68,11 +68,27 @@ Some English glosses are generated through the Google Translate web endpoint and
 
 Treat these glosses as convenience study aids, not authoritative dictionary entries.
 
+## English Vernacular Collection
+
+Definitions and examples in `data/en-vernacular.json` are derived from Princeton WordNet 3.0:
+
+https://wordnet.princeton.edu/
+
+WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved. WordNet 3.0 permits use, copying, modification, and distribution provided its copyright notice and license statements appear in copies. The software and database are provided “as is,” without express or implied warranties or representations, including merchantability, fitness for a particular purpose, and non-infringement. Princeton University’s name may not be used to advertise or publicize a distribution. Title to the WordNet copyright remains with Princeton University and must be preserved. The full license is available at:
+
+https://wordnet.princeton.edu/license-and-commercial-use
+
+The builder uses wordfreq only as a rarity guardrail; Wordfreak's displayed collection order is editorial and is not a frequency ranking:
+
+https://github.com/rspeer/wordfreq
+
+wordfreq software is Apache-2.0 licensed, and its included frequency data is distributed under Creative Commons Attribution-ShareAlike 4.0. Credit: Robyn Speer, *wordfreq* v3.0 (2022), DOI 10.5281/zenodo.7199437. wordfreq also credits the SUBTLEX authors and identifies SUBTLEX as freely available data. The Wordfreak manual seed list supplies the collection's leading editorial examples. Preserve this notice when redistributing the generated English deck.
+
 Book and news sentence translations and moving word/phrase alignments are also generated live through public machine-translation endpoints and cached in the browser. Because languages do not map word-for-word, counterpart highlights are contextual study estimates and can occasionally be approximate or group two words together.
 
 ## Generated Deck
 
-`data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, and `data/ko-core.json` combine and adapt the sources above. Treat the generated data as CC-BY-SA-compatible material and preserve this notice when sharing modified versions.
+`data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, and `data/ko-core.json` combine and adapt the sources above. Treat those generated decks as CC-BY-SA-compatible material and preserve this notice when sharing modified versions. The English deck additionally contains WordNet-derived text and is subject to the English Vernacular Collection notice above.
 
 ## TTS
 

@@ -1,12 +1,12 @@
-const CACHE_NAME = "wordfreak-v44";
+const CACHE_NAME = "wordfreak-v45";
 const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v3";
 const ASSETS = [
   "./",
   "./index.html",
   "./desktop.html",
   "./desktop.css?v=1",
-  "./styles.css?v=23",
-  "./app.js?v=44",
+  "./styles.css?v=24",
+  "./app.js?v=45",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./data/ru-core.json",
@@ -15,7 +15,8 @@ const ASSETS = [
   "./data/fr-core.json",
   "./data/hi-core.json",
   "./data/ja-core.json",
-  "./data/ko-core.json"
+  "./data/ko-core.json",
+  "./data/en-vernacular.json"
 ];
 
 self.addEventListener("install", (event) => {

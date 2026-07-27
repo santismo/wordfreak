@@ -249,6 +249,16 @@
     guided: true,
     link: `https://www.gutenberg.org/ebooks/${book.gutenbergId}`
   }));
+  const STANDARD_BANDS = [
+    { value: "500", label: "500" },
+    { value: "1500", label: "1.5k" },
+    { value: "3000", label: "3k" },
+    { value: "5000", label: "5k" },
+    { value: "10000", label: "10k" },
+    { value: "16000", label: "16k" },
+    { value: "20000", label: "20k" },
+    { value: "all", label: "All" }
+  ];
   const LANGUAGES = {
     ru: {
       label: "Russian",
@@ -312,12 +322,35 @@
       speechLang: "ko-KR",
       translateSl: "ko",
       dir: "ltr"
+    },
+    en: {
+      label: "English Vernacular",
+      shortLabel: "EN",
+      sourceHead: "Rare word",
+      meaningHead: "Definition",
+      dataUrl: "data/en-vernacular.json",
+      speechLang: "en-US",
+      translateSl: "en",
+      dir: "ltr",
+      mode: "vernacular",
+      readerEnabled: false,
+      bandLabel: "Collection",
+      defaultBand: "all",
+      datasetNoun: "curated words",
+      listLabel: "English rare-word collection",
+      bands: [
+        { value: "500", label: "Core · 500" },
+        { value: "1500", label: "Expanded · 1.5k" },
+        { value: "3000", label: "Deep cuts · 3k" },
+        { value: "all", label: "Complete · 3.5k" }
+      ]
     }
   };
 
   const els = {
     datasetMeta: document.getElementById("datasetMeta"),
     languageSelect: document.getElementById("languageSelect"),
+    bandLabelText: document.getElementById("bandLabelText"),
     bandSelect: document.getElementById("bandSelect"),
     bookToggle: document.getElementById("bookToggle"),
     newsToggle: document.getElementById("newsToggle"),
@@ -328,6 +361,7 @@
     ruWord: document.getElementById("ruWord"),
     meaningState: document.getElementById("meaningState"),
     enWord: document.getElementById("enWord"),
+    entryExample: document.getElementById("entryExample"),
     prevBtn: document.getElementById("prevBtn"),
     playBtn: document.getElementById("playBtn"),
     nextBtn: document.getElementById("nextBtn"),
@@ -335,9 +369,11 @@
     engineSelect: document.getElementById("engineSelect"),
     sourceVoiceLabel: document.getElementById("sourceVoiceLabel"),
     sourceVoiceSelect: document.getElementById("sourceVoiceSelect"),
+    enVoiceLabel: document.getElementById("enVoiceLabel"),
     enVoiceSelect: document.getElementById("enVoiceSelect"),
     enLangSelect: document.getElementById("enLangSelect"),
     sourceRateLabel: document.getElementById("sourceRateLabel"),
+    enRateLabel: document.getElementById("enRateLabel"),
     ruRate: document.getElementById("ruRate"),
     ruRateValue: document.getElementById("ruRateValue"),
     enRate: document.getElementById("enRate"),
@@ -395,6 +431,7 @@
     bookNearbyList: document.getElementById("bookNearbyList"),
     bookShelf: document.getElementById("bookShelf"),
     sourceHead: document.getElementById("sourceHead"),
+    meaningHead: document.getElementById("meaningHead"),
     wordList: document.getElementById("wordList"),
     listSpacer: document.getElementById("listSpacer"),
     virtualRows: document.getElementById("virtualRows"),
@@ -417,6 +454,7 @@
     ttsEngine: "system",
     shuffle: false,
     band: "20000",
+    bandByLanguage: {},
     voices: [],
     voicePrefs: {
       ru: "",
@@ -484,7 +522,17 @@
       if (LANGUAGES[prefs.language]) {
         state.language = prefs.language;
       }
-      state.band = String(prefs.band || state.band);
+      state.bandByLanguage = prefs.bandByLanguage && typeof prefs.bandByLanguage === "object"
+        ? { ...prefs.bandByLanguage }
+        : {};
+      if (!state.bandByLanguage[state.language] && prefs.band) {
+        state.bandByLanguage[state.language] = String(prefs.band);
+      }
+      state.band = String(
+        state.bandByLanguage[state.language]
+        || activeLanguage().defaultBand
+        || state.band
+      );
       state.shuffle = Boolean(prefs.shuffle);
       state.currentPos = Number.isFinite(prefs.currentPos) ? prefs.currentPos : 0;
       state.bookShelfKind = BOOK_SHELF_KINDS.has(prefs.bookShelfKind) ? prefs.bookShelfKind : state.bookShelfKind;
@@ -514,9 +562,11 @@
   }
 
   function savePrefs() {
+    state.bandByLanguage[state.language] = state.band;
     const prefs = {
       language: state.language,
       band: state.band,
+      bandByLanguage: state.bandByLanguage,
       shuffle: state.shuffle,
       currentPos: state.currentPos,
       bookShelfKind: state.bookShelfKind,
@@ -547,8 +597,11 @@
   }
 
   function updateSettingLabels() {
-    els.sourceRateLabel.textContent = `${activeLanguage().shortLabel} speed`;
-    els.sourceVoiceLabel.textContent = `${activeLanguage().shortLabel} voice`;
+    const vernacular = activeLanguage().mode === "vernacular";
+    els.sourceRateLabel.textContent = vernacular ? "Word speed" : `${activeLanguage().shortLabel} speed`;
+    els.sourceVoiceLabel.textContent = vernacular ? "English voice" : `${activeLanguage().shortLabel} voice`;
+    els.enRateLabel.textContent = vernacular ? "Definition speed" : "EN speed";
+    els.enVoiceLabel.textContent = vernacular ? "Definition voice · same" : "EN voice";
     els.ruRateValue.textContent = `${Number(els.ruRate.value).toFixed(2)}x`;
     els.enRateValue.textContent = `${Number(els.enRate.value).toFixed(2)}x`;
     els.pageVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
@@ -693,6 +746,70 @@
     return LANGUAGES[state.language] || LANGUAGES.ru;
   }
 
+  function readerEnabled() {
+    return activeLanguage().readerEnabled !== false;
+  }
+
+  function populateBandSelect() {
+    const language = activeLanguage();
+    const bands = language.bands || STANDARD_BANDS;
+    const validValues = new Set(bands.map((band) => band.value));
+    if (!validValues.has(state.band)) {
+      state.band = language.defaultBand || "20000";
+    }
+    els.bandSelect.replaceChildren();
+    bands.forEach((band) => {
+      const option = document.createElement("option");
+      option.value = band.value;
+      option.textContent = band.label;
+      els.bandSelect.appendChild(option);
+    });
+    els.bandSelect.value = state.band;
+    els.bandLabelText.textContent = language.bandLabel || "Band";
+    els.bandSelect.setAttribute(
+      "aria-label",
+      language.mode === "vernacular" ? "Vernacular collection depth" : "Word band"
+    );
+  }
+
+  function syncReaderLanguageSelects() {
+    if (!readerEnabled()) return;
+    els.bookLanguageSelect.value = state.language;
+    els.newsLanguageSelect.value = state.language;
+  }
+
+  function updateContentModeAvailability() {
+    const available = readerEnabled();
+    const explanation = available
+      ? ""
+      : "Books and news are bilingual modes; choose a study language to use them.";
+    [els.bookToggle, els.newsToggle].forEach((button) => {
+      button.disabled = !available;
+      button.title = available ? button.getAttribute("aria-label") : explanation;
+    });
+    if (!available && state.bookMode) {
+      setBookMode(false);
+    }
+  }
+
+  function selectLanguage(languageKey) {
+    state.bandByLanguage[state.language] = state.band;
+    state.language = LANGUAGES[languageKey] ? languageKey : "ru";
+    state.band = String(
+      state.bandByLanguage[state.language]
+      || activeLanguage().defaultBand
+      || "20000"
+    );
+    state.currentPos = 0;
+    state.playDirection = 1;
+    els.languageSelect.value = state.language;
+    populateBandSelect();
+    syncReaderLanguageSelects();
+    updateContentModeAvailability();
+    updateSettingLabels();
+    updateVoiceSelectors();
+  }
+
   function isNewsMode() {
     return state.contentMode === "news";
   }
@@ -791,6 +908,7 @@
   function updateVoiceSelectors() {
     populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto default");
     populateVoiceSelect(els.enVoiceSelect, state.enLang || "en", "Auto default");
+    els.enVoiceSelect.disabled = activeLanguage().mode === "vernacular";
   }
 
   function normalizeCacheWord(value, language = state.language) {
@@ -934,7 +1052,7 @@
   }
 
   function makeSpokenEnglish(value, entry = null) {
-    const clean = stripForSpeech(value);
+    const clean = stripForSpeech(entry?.sayEn || value);
     const firstSense = clean.split(/[;,]/)[0].trim();
     const words = firstSense.match(/[A-Za-z]+(?:[-'][A-Za-z]+)?|\d+/g) || [];
     return words.length ? words.join(" ") : firstSense || clean;
@@ -985,13 +1103,17 @@
       els.ruWord.textContent = "";
       els.ruWord.style.fontSize = "";
       els.enWord.textContent = "";
+      els.entryExample.hidden = true;
+      els.entryExample.textContent = "";
       resetEnglishFocusWord();
       els.progressText.textContent = "0 / 0";
       return;
     }
 
     const language = activeLanguage();
-    els.rankLabel.textContent = `#${entry.rank}`;
+    els.rankLabel.textContent = language.mode === "vernacular"
+      ? `${entry.rarity || "Vernacular"} · ${entry.tier || `#${entry.rank}`}`
+      : `#${entry.rank}`;
     els.posLabel.textContent = entry.posLabel || entry.pos?.join(", ") || "";
     const sourceText = entry.display || entry.word;
     const meaning = entry.en || cachedMeaning(entry);
@@ -1003,7 +1125,12 @@
     prepareEnglishFocusWord(enText);
     els.enWord.textContent = enText;
     els.enWord.classList.toggle("missing", !meaning);
-    els.meaningState.textContent = meaning ? "English" : "English pending";
+    els.meaningState.textContent = meaning
+      ? (language.meaningHead || "English")
+      : `${language.meaningHead || "English"} pending`;
+    const example = language.mode === "vernacular" ? String(entry.example || "") : "";
+    els.entryExample.textContent = example ? `“${example}”` : "";
+    els.entryExample.hidden = !example;
     els.progressText.textContent = `${state.currentPos + 1} / ${state.order.length}`;
     fitRussianFocusWord({ immediate: true });
     fitEnglishFocusWord({ immediate: true });
@@ -1189,10 +1316,11 @@
       const en = entry.en || cachedMeaning(entry) || "pending";
       const missing = entry.en || cachedMeaning(entry) ? "" : " missing";
       const current = pos === state.currentPos ? " current" : "";
+      const rankText = String(entry.rank);
       rows.push(`
         <button class="word-row${current}" type="button" data-pos="${pos}" style="top:${pos * state.rowHeight}px">
           <span class="word-cell">
-            <span class="rank-chip">${entry.rank}</span>
+            <span class="rank-chip">${escapeHtml(rankText)}</span>
             <span class="ru-text" lang="${langCode}" dir="${language.dir}">${escapeHtml(entry.display || entry.word)}</span>
           </span>
           <span class="word-cell">
@@ -3669,6 +3797,10 @@
   }
 
   function setBookMode(enabled, contentMode = state.contentMode) {
+    if (enabled && !readerEnabled()) {
+      setStatus("Choose a study language to use books or news");
+      return;
+    }
     const nextMode = contentMode === "news" ? "news" : "books";
     const modeChanged = nextMode !== state.contentMode;
     state.contentMode = nextMode;
@@ -3809,7 +3941,10 @@
     const source = entry.display || entry.word;
     const meaningPromise = ensureMeaning(entry);
 
-    setStatus(`#${entry.rank} ${language.label}`);
+    const entryStatus = language.mode === "vernacular"
+      ? `${entry.rarity || "Vernacular"} · ${entry.tier || entry.rank}`
+      : `#${entry.rank} ${language.label}`;
+    setStatus(entryStatus);
     await speakText(source, language.speechLang, Number(els.ruRate.value), token);
     await delay(Number(els.gapMs.value), token);
     const en = await meaningPromise;
@@ -3817,7 +3952,7 @@
 
     const englishSpeech = makeSpokenEnglish(en, entry);
     if (englishSpeech && token === state.playToken) {
-      setStatus(`#${entry.rank} English`);
+      setStatus(language.mode === "vernacular" ? "Definition" : `#${entry.rank} English`);
       await speakText(englishSpeech, "en-US", Number(els.enRate.value), token);
       await delay(Number(els.gapMs.value), token);
     }
@@ -4258,9 +4393,10 @@
     const payload = await response.json();
     state.entries = payload.entries || [];
     state.meta = payload.meta || {};
-    els.datasetMeta.textContent = `${language.label} ${state.entries.length.toLocaleString()} words`;
+    els.datasetMeta.textContent = `${language.label} ${state.entries.length.toLocaleString()} ${language.datasetNoun || "words"}`;
     els.sourceHead.textContent = language.sourceHead;
-    els.wordList.setAttribute("aria-label", `${language.label} frequency list`);
+    els.meaningHead.textContent = language.meaningHead || "English";
+    els.wordList.setAttribute("aria-label", language.listLabel || `${language.label} frequency list`);
     buildOrder();
     updateSpacer();
     updateFocus();
@@ -4317,6 +4453,7 @@
     els.bandSelect.addEventListener("change", () => {
       const entry = currentEntry();
       state.band = els.bandSelect.value;
+      state.bandByLanguage[state.language] = state.band;
       buildOrder(entry?.word || "");
       updateFocus();
       renderVisibleRows();
@@ -4326,13 +4463,7 @@
 
     els.languageSelect.addEventListener("change", async () => {
       stopSpeech();
-      state.language = LANGUAGES[els.languageSelect.value] ? els.languageSelect.value : "ru";
-      state.currentPos = 0;
-      state.playDirection = 1;
-      els.bookLanguageSelect.value = state.language;
-      els.newsLanguageSelect.value = state.language;
-      updateSettingLabels();
-      updateVoiceSelectors();
+      selectLanguage(els.languageSelect.value);
       savePrefs();
       try {
         await loadData();
@@ -4421,16 +4552,10 @@
 
     els.newsLanguageSelect.addEventListener("change", async () => {
       stopSpeech();
-      state.language = LANGUAGES[els.newsLanguageSelect.value] ? els.newsLanguageSelect.value : "ru";
-      els.languageSelect.value = state.language;
-      els.bookLanguageSelect.value = state.language;
-      state.currentPos = 0;
-      state.playDirection = 1;
+      selectLanguage(els.newsLanguageSelect.value);
       state.newsSearch = "";
       els.newsSearchInput.value = "";
       populateNewsSourceSelect();
-      updateSettingLabels();
-      updateVoiceSelectors();
       savePrefs();
       try {
         await loadData();
@@ -4587,12 +4712,7 @@
 
     els.bookLanguageSelect.addEventListener("change", async () => {
       stopSpeech();
-      state.language = LANGUAGES[els.bookLanguageSelect.value] ? els.bookLanguageSelect.value : "ru";
-      els.languageSelect.value = state.language;
-      state.currentPos = 0;
-      state.playDirection = 1;
-      updateSettingLabels();
-      updateVoiceSelectors();
+      selectLanguage(els.bookLanguageSelect.value);
       savePrefs();
       try {
         await loadData();
@@ -4747,13 +4867,15 @@
   async function init() {
     loadPrefs();
     els.languageSelect.value = state.language;
-    els.bookLanguageSelect.value = state.language;
-    els.newsLanguageSelect.value = state.language;
-    populateNewsSourceSelect();
+    populateBandSelect();
+    syncReaderLanguageSelects();
+    updateContentModeAvailability();
+    if (readerEnabled()) {
+      populateNewsSourceSelect();
+    }
     els.bookShelfViewSelect.value = state.bookShelfKind;
     els.bookGenreSelect.value = state.bookGenre;
     els.bookLevelSelect.value = state.bookLevel;
-    els.bandSelect.value = state.band;
     els.enLangSelect.value = state.enLang;
     if (els.engineSelect) {
       els.engineSelect.value = state.ttsEngine;

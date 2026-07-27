@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=23">
+  <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
   <main class="app-shell">
@@ -38,6 +38,7 @@
       <article class="focus-pane focus-en">
         <div id="meaningState" class="focus-kicker">English</div>
         <h2 id="enWord">...</h2>
+        <p id="entryExample" class="entry-example" hidden></p>
       </article>
     </section>
 
@@ -59,10 +60,11 @@
           <option value="hi">Hindi</option>
           <option value="ja">Japanese</option>
           <option value="ko">Korean</option>
+          <option value="en">English · Vernacular</option>
         </select>
       </label>
       <label>
-        Band
+        <span id="bandLabelText">Band</span>
         <select id="bandSelect" aria-label="Word band">
           <option value="500">500</option>
           <option value="1500">1.5k</option>
@@ -88,7 +90,7 @@
         </select>
       </label>
       <label>
-        EN voice
+        <span id="enVoiceLabel">EN voice</span>
         <select id="enVoiceSelect">
           <option value="">Auto</option>
         </select>
@@ -116,7 +118,7 @@
       </label>
       <label>
         <span class="setting-title">
-          EN speed
+          <span id="enRateLabel">EN speed</span>
           <output id="enRateValue">0.95x</output>
         </span>
         <input id="enRate" type="range" min="0.65" max="1.35" step="0.05" value="0.95">
@@ -321,7 +323,7 @@
     <section class="list-shell">
       <div class="list-head" aria-hidden="true">
         <span id="sourceHead">Russian</span>
-        <span>English</span>
+        <span id="meaningHead">English</span>
       </div>
       <div id="wordList" class="word-list" tabindex="0" aria-label="Frequency list">
         <div id="listSpacer" class="list-spacer">
@@ -335,6 +337,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=44" defer></script>
+  <script src="app.js?v=45" defer></script>
 </body>
 </html>
