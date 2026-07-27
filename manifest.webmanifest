@@ -1,7 +1,7 @@
 {
   "name": "Wordfreak",
   "short_name": "Wordfreak",
-  "description": "Mobile vocabulary, leveled bilingual book, and current-news reader with word-aligned TTS.",
+  "description": "Rare English vernacular, multilingual vocabulary, and bilingual reading with word-aligned TTS.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0b0d0f",

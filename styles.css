@@ -227,6 +227,22 @@ select {
   color: var(--soft);
 }
 
+.entry-example {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: clamp(0.78rem, 2.4vw, 0.96rem);
+  font-style: italic;
+  line-height: 1.35;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.entry-example[hidden] {
+  display: none;
+}
+
 .transport {
   border-radius: 8px;
   padding: 8px;
