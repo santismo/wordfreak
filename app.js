@@ -1860,8 +1860,7 @@
     speakingPane,
     charIndex,
     spokenText = "",
-    forcedWordIndex = null,
-    wordOffset = 0
+    forcedWordIndex = null
   ) {
     if (!alignment) return;
     const speakingRanges = speakingPane === "source" ? alignment.sourceRanges : alignment.englishRanges;
@@ -1870,7 +1869,7 @@
     const localWordIndex = Math.max(0, activeWordIndexForChar(spokenText || renderedText, charIndex, boundaryRanges));
     const activeIndex = Number.isInteger(forcedWordIndex)
       ? clamp(forcedWordIndex, 0, Math.max(0, speakingRanges.length - 1))
-      : clamp(wordOffset + localWordIndex, 0, Math.max(0, speakingRanges.length - 1));
+      : clamp(localWordIndex, 0, Math.max(0, speakingRanges.length - 1));
     const mappedIndexes = speakingPane === "source"
       ? alignment.sourceToEnglish[activeIndex] || []
       : alignment.englishToSource[activeIndex] || [];
@@ -4013,75 +4012,23 @@
     await speakWithSystemVoice(text, lang, rate, token, options);
   }
 
-  function readerChunkWordLimit(wordsPerMinute) {
+  function readerSystemRateFromWpm(wordsPerMinute) {
     const wpm = clamp(wordsPerMinute, 10, 200);
-    if (wpm <= 45) return 1;
-    if (wpm <= 75) return 2;
-    if (wpm <= 120) return clamp(Math.round(3 + ((wpm - 76) / 44)), 3, 4);
-    return clamp(Math.round(5 + (((wpm - 121) / 79) * 3)), 5, 8);
-  }
-
-  function readerSpeechChunks(spokenText, lang, wordsPerMinute) {
-    const ranges = wordRanges(spokenText, lang);
-    if (!ranges.length) return [];
-    const wordLimit = readerChunkWordLimit(wordsPerMinute);
-    const hardPause = /[.!?…؟。！？।॥]/u;
-    const softPause = /[,;:،؛]/u;
-    const chunks = [];
-    let start = 0;
-
-    while (start < ranges.length) {
-      const limitEnd = Math.min(ranges.length - 1, start + wordLimit - 1);
-      let end = start;
-      let breakKind = "";
-      for (let index = start; index <= limitEnd; index += 1) {
-        end = index;
-        const nextWordStart = ranges[index + 1]?.start ?? spokenText.length;
-        const separator = spokenText.slice(ranges[index].end, nextWordStart);
-        const wordCount = index - start + 1;
-        if (hardPause.test(separator)) {
-          breakKind = "hard";
-          break;
-        }
-        if (wordCount >= 2 && softPause.test(separator)) {
-          breakKind = "soft";
-          break;
-        }
-      }
-
-      const remaining = ranges.length - end - 1;
-      const chunkWordCount = end - start + 1;
-      if (breakKind !== "hard" && remaining === 1 && wordLimit > 1) {
-        // Avoid turning an ordinary final word into the one-word utterance this
-        // chunking path is designed to eliminate.
-        if (chunkWordCount > 2) end -= 1;
-        else end += 1;
-      }
-
-      const textStart = start === 0 ? 0 : ranges[start].start;
-      const textEnd = ranges[end + 1]?.start ?? spokenText.length;
-      const chunkText = spokenText.slice(textStart, textEnd).trim();
-      if (chunkText) {
-        chunks.push({
-          text: chunkText,
-          wordOffset: start,
-          wordCount: end - start + 1
-        });
-      }
-      start = end + 1;
-    }
-    return chunks;
+    // Keep each sentence continuous and approximate the WPM control with the
+    // voice's native rate. This natural range avoids the long artificial gaps
+    // created by splitting a sentence into several short utterances.
+    if (wpm <= 120) return 0.55 + (((wpm - 10) / 110) * 0.45);
+    return 1 + (((wpm - 120) / 80) * 0.45);
   }
 
   async function speakTextWithWordPacing(text, lang, wordsPerMinute, token, options = {}) {
     const spokenText = stripForSpeech(text);
     const ranges = wordRanges(spokenText, lang);
     if (token !== state.playToken || !ranges.length) return;
-    const intervalMs = 60000 / clamp(wordsPerMinute, 10, 200);
 
     // Keep the optional desktop engine's established word-at-a-time behavior.
-    // Phrase chunking here is specifically for the browser system voices.
     if (isDesktopPiperEnabled() && piperVoiceIdForLang(lang)) {
+      const intervalMs = 60000 / clamp(wordsPerMinute, 10, 200);
       for (let index = 0; index < ranges.length; index += 1) {
         if (token !== state.playToken) return;
         const started = window.performance?.now?.() ?? Date.now();
@@ -4096,19 +4043,9 @@
       return;
     }
 
-    const chunks = readerSpeechChunks(spokenText, lang, wordsPerMinute);
-    for (const chunk of chunks) {
-      if (token !== state.playToken) return;
-      const started = window.performance?.now?.() ?? Date.now();
-      await speakText(chunk.text, lang, 1, token, {
-        ...options,
-        readerWordOffset: chunk.wordOffset
-      });
-      if (token !== state.playToken) return;
-      const finished = window.performance?.now?.() ?? Date.now();
-      const targetDuration = intervalMs * chunk.wordCount;
-      await delay(Math.max(0, targetDuration - (finished - started)), token);
-    }
+    // A single utterance lets iOS preserve the selected voice's sentence-level
+    // prosody while boundary events continue to drive word highlighting.
+    await speakText(spokenText, lang, readerSystemRateFromWpm(wordsPerMinute), token, options);
   }
 
   async function prepareSpeechEngine() {
@@ -4197,8 +4134,7 @@
             options.speakingPane,
             charIndex,
             spokenText,
-            Number.isInteger(options.readerWordIndex) ? options.readerWordIndex : null,
-            Number.isInteger(options.readerWordOffset) ? options.readerWordOffset : 0
+            Number.isInteger(options.readerWordIndex) ? options.readerWordIndex : null
           );
           return;
         }

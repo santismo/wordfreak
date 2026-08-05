@@ -30,7 +30,7 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Speech and translation skip punctuation-only fragments, including Persian/Arabic punctuation, so a voice never reads a symbol as a word
 - Reader translations reject unchanged or wrong-script provider responses and never cache the original sentence as a successful translation
 - Optional English TTS skip setting shared by the book and news readers
-- Book and news pacing from 10–200 WPM keeps each word at a natural voice rate and changes the pause between words
+- Book and news speed from 10–200 WPM maps to an approximate continuous voice rate, keeping each sentence in one uninterrupted utterance for natural prosody
 - News cards omit redundant source labels after the feed is selected, and reader text decodes HTML entities and removes stray Arabic/Persian combining marks
 - Faster reader startup through a full-page CORS route ahead of fallback readers, persistent document/translation caching, shelf/sentence preloading, and quick news previews while full articles load
 - Canonical Standard Ebooks subject pages for reliable genre filtering; Google Persian results are restricted to Persian-script headlines
