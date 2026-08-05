@@ -30,13 +30,13 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Layout-stable reader highlights use positioned overlays, with bidirectional contextual alignment and English auxiliary grouping for Russian and Farsi
 - Speech and translation skip punctuation-only fragments, including Persian/Arabic punctuation, so a voice never reads a symbol as a word
 - Reader translations reject unchanged or wrong-script provider responses and never cache the original sentence as a successful translation
-- Optional English TTS skip setting shared by the book and news readers
+- Three ordered speech tracks with a visible English/definition skip, available in vocabulary, book, and news playback
 - Book and news speed from 10–200 WPM maps to an approximate continuous voice rate, keeping each sentence in one uninterrupted utterance for natural prosody
 - News cards omit redundant source labels after the feed is selected, and reader text decodes HTML entities and removes stray Arabic/Persian combining marks
 - Faster reader startup through a full-page CORS route ahead of fallback readers, persistent document/translation caching, shelf/sentence preloading, and quick news previews while full articles load
 - Canonical Standard Ebooks subject pages for reliable genre filtering; Google Persian results are restricted to Persian-script headlines
-- System TTS with selectable voices, page volume, speed, and gap controls
-- Opt-in Piper TTS for the Russian, Farsi, Spanish, French, and English study-language side in normal browsers, the iPhone Home Screen app, and the desktop view
+- Per-track System/iPhone or Piper selection, with remembered system voices, page volume, speed, and gap controls
+- Opt-in Piper TTS for Russian, Farsi, Spanish, French, and English in normal browsers, the iPhone Home Screen app, and the desktop view
 - Dedicated GitHub Pages desktop view with a wider reading layout and the same speech-engine controls as mobile
 - First-tap speech preparation and a retry when browser speech synthesis stalls before starting
 - Prev during playback switches into reverse through the current selected or shuffled order
@@ -60,11 +60,11 @@ Open `http://localhost:8000`.
 
 ## Optional Piper voices
 
-System voices remain the default. Choosing Piper makes the first Play lazily download the selected study-language voice and speech runtime: about 89 MB for Russian, Farsi, or English, and about 55 MB for Spanish or French. The model files persist in that browser's private storage so later sessions do not repeat the model download; use **Clear downloaded Piper voices** in Settings to remove them. Hindi, Japanese, and Korean continue to use system voices.
+System voices remain the default. Each of the three ordered speech tracks can use an installed System/iPhone voice or Piper, and optional tracks can be turned Off. Choosing Piper makes the first Play lazily download that track's voice and speech runtime: about 89 MB for Russian, Farsi, or English, and about 55 MB for Spanish or French. The model files persist in that browser's private storage so later sessions do not repeat the model download; use **Clear downloaded Piper voices** in Settings to remove them. Hindi, Japanese, and Korean continue to use system voices.
 
-Piper reads only the study-language side. English translations and definitions still use the selected iPhone or browser system voice. Reader sentences are synthesized whole for fluid prosody; source text longer than 320 characters falls back to the system voice. Synthesis runs in one disposable worker with one active voice, a 6 MB in-memory audio cache, and cleanup on Stop, language/engine changes, page exit, timeout, or 90 seconds idle.
+Wordfreak allows at most two Piper tracks at once; a third track can still use a System/iPhone voice. This limit keeps model memory bounded while permitting combinations such as Russian Piper, English Piper, and Farsi on an iPhone voice. Reader sentences are synthesized whole for fluid prosody; text longer than 320 characters falls back to the system voice. Each active Piper voice runs in its own disposable worker, while all voices share a 6 MB in-memory audio cache. Workers are released on Stop, language/engine changes, page exit, timeout, or 90 seconds idle.
 
-Piper needs an internet connection on first use, WebAssembly, a secure page, and persistent Origin Private File System storage. GitHub Pages supplies the secure page; browser storage can still be evicted by the operating system. A Piper failure immediately falls back to the system voice and pauses further Piper attempts for five minutes, avoiding repeated expensive model starts on a constrained phone.
+Piper needs an internet connection on first use, WebAssembly, a secure page, and persistent Origin Private File System storage. GitHub Pages supplies the secure page; browser storage can still be evicted by the operating system. A failed Piper voice immediately falls back to the matching system voice and pauses retries for that model, avoiding repeated expensive starts on a constrained phone.
 
 ## Desktop GitHub Pages view
 

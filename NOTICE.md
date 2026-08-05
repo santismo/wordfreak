@@ -110,7 +110,7 @@ https://huggingface.co/diffusionstudio/piper-voices
 
 Voice model cards and their upstream training-dataset notices are part of that collection and can carry terms distinct from Wordfreak's code license. Preserve the applicable model and dataset notices when redistributing a model; Wordfreak does not bundle those model files.
 
-Downloaded voice files persist in the browser's Origin Private File System under the package's `piper` directory. The Settings control labeled **Clear downloaded Piper voices** removes that voice-storage directory, including all downloaded language models. Runtime sessions stay in a disposable module worker and are not retained across Stop, language/engine changes, page exit, timeout, or idle cleanup.
+Downloaded voice files persist in the browser's Origin Private File System under the package's `piper` directory. The Settings control labeled **Clear downloaded Piper voices** removes that voice-storage directory, including all downloaded language models. Wordfreak permits no more than two active Piper voices. Their runtime sessions stay in disposable module workers and are not retained across Stop, language/engine changes, page exit, timeout, or idle cleanup.
 
 ## Live News
 
