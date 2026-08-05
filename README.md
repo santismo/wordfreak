@@ -23,6 +23,7 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Dense two-column virtual list for mobile scrolling
 - Dual-language book reader with guided difficulty levels, genre filtering, partial title/author search, and favorite shelves
 - Eighty fast curated Project Gutenberg selections across four guided levels, plus a searchable, paginated Standard Ebooks public-domain library
+- Official-handbooks shelf with the current Air Force Handbook 1, *Airman* (15 February 2025), bundled for reliable sentence navigation and linked to its official USAF PDF
 - Current text-news reader using Meduza, VOA Persian, Radio Farda, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and optional Google News feeds
 - News headline filtering, source selection, refresh, random article loading, and full article text browsing without favorites
 - Immediate word-by-word pairing during book and news playback: each spoken word gets a monotonic best-guess counterpart right away, then contextual translation refines it to a one-to-four-word phrase when it finds a stronger match
@@ -35,7 +36,8 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Faster reader startup through a full-page CORS route ahead of fallback readers, persistent document/translation caching, shelf/sentence preloading, and quick news previews while full articles load
 - Canonical Standard Ebooks subject pages for reliable genre filtering; Google Persian results are restricted to Persian-script headlines
 - System TTS with selectable voices, page volume, speed, and gap controls
-- Dedicated GitHub Pages desktop view with a wider reading layout, language-matched system voices, and optional browser-Piper TTS where a matching model exists
+- Opt-in Piper TTS for the Russian, Farsi, Spanish, French, and English study-language side in normal browsers, the iPhone Home Screen app, and the desktop view
+- Dedicated GitHub Pages desktop view with a wider reading layout and the same speech-engine controls as mobile
 - First-tap speech preparation and a retry when browser speech synthesis stalls before starting
 - Prev during playback switches into reverse through the current selected or shuffled order
 - Concise English speech cues while still displaying full definitions
@@ -49,18 +51,28 @@ python3 scripts/build_fa_data.py
 python3 scripts/build_es_data.py
 python3 scripts/build_frequency_data.py all
 python3 scripts/build_en_vernacular.py
+# Optional: rebuild the bundled handbook from the pinned official PDF.
+python3 scripts/build_afh1_data.py /path/to/afh1.pdf
 python3 -m http.server 8000
 ```
 
 Open `http://localhost:8000`.
 
+## Optional Piper voices
+
+System voices remain the default. Choosing Piper makes the first Play lazily download the selected study-language voice and speech runtime: about 89 MB for Russian, Farsi, or English, and about 55 MB for Spanish or French. The model files persist in that browser's private storage so later sessions do not repeat the model download; use **Clear downloaded Piper voices** in Settings to remove them. Hindi, Japanese, and Korean continue to use system voices.
+
+Piper reads only the study-language side. English translations and definitions still use the selected iPhone or browser system voice. Reader sentences are synthesized whole for fluid prosody; source text longer than 320 characters falls back to the system voice. Synthesis runs in one disposable worker with one active voice, a 6 MB in-memory audio cache, and cleanup on Stop, language/engine changes, page exit, timeout, or 90 seconds idle.
+
+Piper needs an internet connection on first use, WebAssembly, a secure page, and persistent Origin Private File System storage. GitHub Pages supplies the secure page; browser storage can still be evicted by the operating system. A Piper failure immediately falls back to the system voice and pauses further Piper attempts for five minutes, avoiding repeated expensive model starts on a constrained phone.
+
 ## Desktop GitHub Pages view
 
-Open [`desktop.html`](desktop.html) for the wider desktop layout. Its settings include an optional Piper browser engine for Russian, Farsi, Spanish, French, Hindi, and English; the matching model is downloaded only after selecting it. Japanese and Korean, plus the normal mobile page, use their matching system voices.
+Open [`desktop.html`](desktop.html) for the wider desktop layout. It uses the same system/Piper engine setting and resource safeguards as the normal browser and Home Screen page.
 
 ## Data
 
-The generated data files are `data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, `data/ko-core.json`, and `data/en-vernacular.json`.
+The generated data files are `data/ru-core.json`, `data/fa-core.json`, `data/es-core.json`, `data/fr-core.json`, `data/hi-core.json`, `data/ja-core.json`, `data/ko-core.json`, `data/en-vernacular.json`, and `data/books/afh1-airman-2025.json`.
 
 Sources:
 
@@ -72,6 +84,7 @@ Sources:
 - Hindi frequency order: FrequencyWords Hindi OpenSubtitles list
 - English Vernacular definitions and examples: Princeton WordNet 3.0
 - English rarity guardrails: wordfreq; the final order is curated and is not presented as a frequency ranking
+- Air Force Handbook 1 reader text: official U.S. Air Force e-Publishing PDF dated 15 February 2025
 - Manual patch list: small Wordfreak-maintained high-frequency fixes
 - Machine translation cache files for remaining English glosses
 

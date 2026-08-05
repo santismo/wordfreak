@@ -92,7 +92,25 @@ Book and news sentence translations and moving word/phrase alignments are also g
 
 ## TTS
 
-The app uses the browser Web Speech API.
+System speech uses the browser Web Speech API and remains the default. Optional Piper speech lazily imports `@mintplex-labs/piper-tts-web` 1.0.4, which uses ONNX Runtime Web and Piper's WebAssembly phonemization/synthesis support:
+
+- https://github.com/Mintplex-Labs/piper-tts-web
+- https://github.com/microsoft/onnxruntime
+- https://github.com/rhasspy/piper
+
+The Piper web package and ONNX Runtime are MIT licensed. The optional voice models are fetched from the diffusionstudio Piper voice collection only after the user selects Piper and presses Play:
+
+- Russian: `ru_RU-irina-medium`
+- Farsi: `fa_IR-gyro-medium`
+- Spanish: `es_ES-carlfm-x_low`
+- French: `fr_FR-siwis-low`
+- English: `en_US-lessac-low`
+
+https://huggingface.co/diffusionstudio/piper-voices
+
+Voice model cards and their upstream training-dataset notices are part of that collection and can carry terms distinct from Wordfreak's code license. Preserve the applicable model and dataset notices when redistributing a model; Wordfreak does not bundle those model files.
+
+Downloaded voice files persist in the browser's Origin Private File System under the package's `piper` directory. The Settings control labeled **Clear downloaded Piper voices** removes that voice-storage directory, including all downloaded language models. Runtime sessions stay in a disposable module worker and are not retained across Stop, language/engine changes, page exit, timeout, or idle cleanup.
 
 ## Live News
 
@@ -106,3 +124,17 @@ Sources:
 
 - https://standardebooks.org/about
 - https://www.gutenberg.org/policy/permission.html
+
+## Air Force Handbook 1
+
+`data/books/afh1-airman-2025.json` is a speech-friendly text adaptation of *Air Force Handbook 1 — Airman*, dated 15 February 2025, published by the United States Air Force:
+
+https://static.e-publishing.af.mil/production/1/af_a1/publication/afh1/afh1.pdf
+
+The builder pins the 625-page source PDF by SHA-256 (`9f60b97f32240c8db0f19b37c287df7b933ecdcbf39f68133805182c0a48ef59`). It removes repeated page headers, visual promotion-testing matrices, deletion placeholders, and material that does not safely linearize for speech. Attachment 8's song lyrics and all seals, emblems, illustrations, and other artwork are not bundled; consult the linked official PDF for the complete publication.
+
+The publication states that it has no releasability restrictions. Under 17 U.S.C. § 105, copyright protection is generally unavailable for works of the United States Government, although third-party material within a government publication can have separate rights:
+
+https://www.copyright.gov/title17/92chap1.html#105
+
+Wordfreak is an unofficial study reader. Its inclusion of this publication does not imply endorsement by the U.S. Department of Defense or U.S. Air Force.

@@ -14,9 +14,21 @@
   // v3 drops documents saved before reader text decoded entities and normalized diacritics.
   const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v3";
   const STANDARD_EBOOKS_LIST_URL = "https://standardebooks.org/ebooks";
+  const USAF_HANDBOOK_ID = "usaf:afh1:2025-02-15";
+  const USAF_HANDBOOK_SCHEMA_VERSION = 1;
+  const USAF_HANDBOOK_DATA_VERSION = 1;
+  const USAF_HANDBOOK_EDITION_DATE = "15 February 2025";
+  const USAF_HANDBOOK_SOURCE_URL = "https://static.e-publishing.af.mil/production/1/af_a1/publication/afh1/afh1.pdf";
+  const USAF_HANDBOOK_SOURCE_SHA256 = "9f60b97f32240c8db0f19b37c287df7b933ecdcbf39f68133805182c0a48ef59";
+  const USAF_HANDBOOK_SOURCE_PAGE_COUNT = 625;
+  const USAF_HANDBOOK_SECTION_COUNT = 33;
+  const USAF_HANDBOOK_WORD_COUNT = 274706;
+  const USAF_HANDBOOK_READER_UNIT_COUNT = 14411;
+  const USAF_HANDBOOK_DATA_URL = "./data/books/afh1-airman-2025.json";
   const STANDARD_EBOOKS_PER_PAGE = 48;
   const STANDARD_EBOOKS_RANDOM_PAGE_MAX = 24;
   const BOOK_FETCH_TIMEOUT_MS = 14000;
+  const BUNDLED_BOOK_FETCH_TIMEOUT_MS = 30000;
   const BOOK_TRANSLATION_CACHE_LIMIT = 350;
   const READER_DOCUMENT_CACHE_LIMIT = 6;
   const READER_PERSISTENT_DOCUMENT_LIMIT = 12;
@@ -29,21 +41,27 @@
   const BOOK_DOCUMENT_CACHE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
   const NEWS_ARTICLE_QUICK_WAIT_MS = 700;
   const BOOK_NEARBY_RADIUS = 3;
-  const PIPER_ESM_URL = "https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.4/+esm";
-  const PIPER_ESM_FALLBACK_URL = "https://esm.sh/@mintplex-labs/piper-tts-web@1.0.4";
+  const PIPER_WORKER_URL = "./piper-worker.js?v=1";
   const PIPER_RU_VOICE_ID = "ru_RU-irina-medium";
   const PIPER_FA_VOICE_ID = "fa_IR-gyro-medium";
   const PIPER_ES_VOICE_ID = "es_ES-carlfm-x_low";
   const PIPER_FR_VOICE_ID = "fr_FR-siwis-low";
-  const PIPER_HI_VOICE_ID = "hi_IN-pratham-medium";
   const PIPER_EN_VOICE_ID = "en_US-lessac-low";
-  const PIPER_CACHE_LIMIT = 24;
-  const PIPER_IMPORT_TIMEOUT_MS = 20000;
-  const PIPER_DOWNLOAD_TIMEOUT_MS = 90000;
+  const PIPER_FIRST_USE_MEGABYTES = { ru: 89, fa: 89, es: 55, fr: 55, en: 89 };
+  const PIPER_MAX_TEXT_CHARS = 320;
+  const PIPER_CACHE_TEXT_MAX_CHARS = 120;
+  const PIPER_AUDIO_CACHE_MAX_ITEMS = 12;
+  const PIPER_AUDIO_CACHE_MAX_BYTES = 6 * 1024 * 1024;
+  const PIPER_FIRST_REQUEST_TIMEOUT_MS = 180000;
   const PIPER_PREDICT_TIMEOUT_MS = 45000;
+  const PIPER_CLEAR_TIMEOUT_MS = 30000;
+  const PIPER_IDLE_TIMEOUT_MS = 90000;
+  const PIPER_FAILURE_LIMIT = 1;
+  const PIPER_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
+  const PIPER_SILENCE_DATA_URL = "data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA";
   const VOICE_LOAD_TIMEOUT_MS = 3600;
   const VOICE_LOAD_POLL_MS = 120;
-  const BOOK_SHELF_KINDS = new Set(["guided", "library", "favorites"]);
+  const BOOK_SHELF_KINDS = new Set(["guided", "official", "library", "favorites"]);
   const BOOK_LEVELS = {
     starter: {
       label: "Level 1 · Starter",
@@ -251,6 +269,21 @@
     guided: true,
     link: `https://www.gutenberg.org/ebooks/${book.gutenbergId}`
   }));
+  const OFFICIAL_BOOKS = [{
+    id: USAF_HANDBOOK_ID,
+    source: "usaf",
+    title: "Air Force Handbook 1 — Airman",
+    author: "United States Air Force",
+    dataVersion: USAF_HANDBOOK_DATA_VERSION,
+    editionDate: USAF_HANDBOOK_EDITION_DATE,
+    link: USAF_HANDBOOK_SOURCE_URL,
+    dataUrl: USAF_HANDBOOK_DATA_URL,
+    level: "stretch",
+    wordCount: USAF_HANDBOOK_WORD_COUNT,
+    genres: ["nonfiction"],
+    subjects: ["AFH1", "AFH 1", "United States Air Force", "Airmen", "military profession", "readiness", "leadership", "warfighting", "doctrine"],
+    summary: "Official U.S. Air Force handbook covering the profession of arms, Air Force history and heritage, standards, readiness, leadership, warfighting, doctrine, and enlisted promotion study material."
+  }];
   const STANDARD_BANDS = [
     { value: "500", label: "500" },
     { value: "1500", label: "1.5k" },
@@ -369,6 +402,8 @@
     nextBtn: document.getElementById("nextBtn"),
     shuffleBtn: document.getElementById("shuffleBtn"),
     engineSelect: document.getElementById("engineSelect"),
+    piperEngineHint: document.getElementById("piperEngineHint"),
+    piperClearBtn: document.getElementById("piperClearBtn"),
     sourceVoiceLabel: document.getElementById("sourceVoiceLabel"),
     sourceVoiceSelect: document.getElementById("sourceVoiceSelect"),
     enVoiceLabel: document.getElementById("enVoiceLabel"),
@@ -422,6 +457,7 @@
     bookReaderMeta: document.getElementById("bookReaderMeta"),
     bookReaderTitle: document.getElementById("bookReaderTitle"),
     bookSourceLink: document.getElementById("bookSourceLink"),
+    bookSourceNotice: document.getElementById("bookSourceNotice"),
     bookChapterLabel: document.getElementById("bookChapterLabel"),
     bookChapterSelect: document.getElementById("bookChapterSelect"),
     bookProgressValue: document.getElementById("bookProgressValue"),
@@ -503,12 +539,22 @@
     newsFeedLoadToken: 0,
     newsAllArticles: [],
     newsSearch: "",
-    activeAudio: null,
-    activeAudioUrl: "",
-    piperModules: new Map(),
+    piperWorker: null,
+    piperWorkerVoiceId: "",
+    piperWorkerReady: false,
+    piperRequestId: 0,
+    piperRequests: new Map(),
+    piperAudio: null,
+    piperAudioUnlocked: false,
+    piperAudioUrl: "",
+    piperPlaybackCancel: null,
     piperAudioCache: new Map(),
+    piperAudioCacheBytes: 0,
     piperAudioPending: new Map(),
     piperHighlightTimer: 0,
+    piperIdleTimer: 0,
+    piperFailureCount: 0,
+    piperCircuitOpenUntil: 0,
     activeHighlights: [],
     activeCorrespondingHighlights: [],
     scrollTimer: 0,
@@ -549,9 +595,8 @@
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
       state.enLang = typeof prefs.enLang === "string" ? prefs.enLang : state.enLang;
-      if (isDesktopPiperAvailable()) {
-        state.ttsEngine = prefs.desktopTtsEngine === "piper" ? "piper" : "system";
-      }
+      const savedEngine = prefs.ttsEngine || prefs.desktopTtsEngine;
+      state.ttsEngine = savedEngine === "piper" && piperRuntimeAvailable() ? "piper" : "system";
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
       els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
@@ -582,6 +627,9 @@
       bookEnWpm: els.bookEnRate.value,
       voicePrefs: state.voicePrefs,
       enLang: state.enLang,
+      ttsEngine: state.ttsEngine,
+      // Keep the old key for users moving between an older desktop build and
+      // this shared browser/Home Screen setting.
       desktopTtsEngine: state.ttsEngine,
       ruRate: els.ruRate.value,
       enRate: els.enRate.value,
@@ -602,10 +650,15 @@
 
   function updateSettingLabels() {
     const vernacular = activeLanguage().mode === "vernacular";
+    const piper = isPiperEnabled();
     els.sourceRateLabel.textContent = vernacular ? "Word speed" : `${activeLanguage().shortLabel} speed`;
-    els.sourceVoiceLabel.textContent = vernacular ? "English voice" : `${activeLanguage().shortLabel} voice`;
+    els.sourceVoiceLabel.textContent = piper
+      ? `${activeLanguage().shortLabel} Piper voice`
+      : (vernacular ? "English voice" : `${activeLanguage().shortLabel} voice`);
     els.enRateLabel.textContent = vernacular ? "Definition speed" : "EN speed";
-    els.enVoiceLabel.textContent = vernacular ? "Definition voice · same" : "EN voice";
+    els.enVoiceLabel.textContent = vernacular
+      ? (piper ? "Definition system voice" : "Definition voice · same")
+      : "EN system voice";
     els.ruRateValue.textContent = `${Number(els.ruRate.value).toFixed(2)}x`;
     els.enRateValue.textContent = `${Number(els.enRate.value).toFixed(2)}x`;
     els.pageVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
@@ -797,6 +850,7 @@
   }
 
   function selectLanguage(languageKey) {
+    clearPiperAudioCache();
     state.bandByLanguage[state.language] = state.band;
     state.language = LANGUAGES[languageKey] ? languageKey : "ru";
     state.band = String(
@@ -812,6 +866,7 @@
     updateContentModeAvailability();
     updateSettingLabels();
     updateVoiceSelectors();
+    syncPiperControls();
   }
 
   function isNewsMode() {
@@ -938,7 +993,8 @@
   function updateVoiceSelectors() {
     populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto · best match");
     populateVoiceSelect(els.enVoiceSelect, state.enLang || "en-US", "Auto · best match");
-    els.enVoiceSelect.disabled = activeLanguage().mode === "vernacular";
+    els.sourceVoiceSelect.disabled = isPiperEnabled();
+    els.enVoiceSelect.disabled = activeLanguage().mode === "vernacular" && !isPiperEnabled();
   }
 
   function normalizeCacheWord(value, language = state.language) {
@@ -1047,12 +1103,52 @@
     return clamp(els.pageVolume.value, 0, 1);
   }
 
-  function isDesktopPiperAvailable() {
-    return document.body.classList.contains("desktop-edition") && Boolean(els.engineSelect);
+  function piperRuntimeAvailable() {
+    return Boolean(
+      els.engineSelect
+      && window.isSecureContext !== false
+      && typeof Worker !== "undefined"
+      && typeof WebAssembly !== "undefined"
+      && typeof Audio !== "undefined"
+      && window.URL?.createObjectURL
+      && navigator.storage?.getDirectory
+    );
   }
 
-  function isDesktopPiperEnabled() {
-    return isDesktopPiperAvailable() && state.ttsEngine === "piper";
+  function isPiperAvailable() {
+    return piperRuntimeAvailable() && Boolean(piperVoiceIdForLang(activeLanguage().speechLang));
+  }
+
+  function isPiperEnabled() {
+    return isPiperAvailable() && state.ttsEngine === "piper";
+  }
+
+  function piperLanguageKey(lang = activeLanguage().speechLang) {
+    return String(lang || "").toLowerCase().split(/[-_]/)[0];
+  }
+
+  function syncPiperControls() {
+    if (!els.engineSelect) return;
+    const option = els.engineSelect.querySelector('option[value="piper"]');
+    const supportedVoice = piperVoiceIdForLang(activeLanguage().speechLang);
+    const runtimeAvailable = piperRuntimeAvailable();
+    const available = Boolean(supportedVoice && runtimeAvailable);
+    if (option) option.disabled = !available;
+    els.engineSelect.value = state.ttsEngine;
+    if (els.piperClearBtn) {
+      els.piperClearBtn.hidden = !runtimeAvailable;
+    }
+    if (!els.piperEngineHint) return;
+    if (!runtimeAvailable) {
+      els.piperEngineHint.textContent = "Piper needs WebAssembly and persistent browser storage on this device.";
+    } else if (!supportedVoice) {
+      els.piperEngineHint.textContent = "Piper is not available for this study language; system voices will be used.";
+    } else if (state.ttsEngine === "piper") {
+      const megabytes = PIPER_FIRST_USE_MEGABYTES[piperLanguageKey()] || 90;
+      els.piperEngineHint.textContent = `First Play downloads about ${megabytes} MB. The voice stays in this browser until you clear it; Piper reads only the study-language side.`;
+    } else {
+      els.piperEngineHint.textContent = "System voices use the voices installed on this device. Piper is an optional study-language download.";
+    }
   }
 
   function syncBookAudioControlsFromSettings() {
@@ -2026,6 +2122,7 @@
   }
 
   function bookSourceLabel(book) {
+    if (book?.source === "usaf") return "Official USAF";
     return book?.source === "gutenberg" ? "Project Gutenberg" : "Standard Ebooks";
   }
 
@@ -2133,6 +2230,11 @@
       && bookMatchesGenre(book)
       && bookMatchesLevel(book)
     ));
+  }
+
+  function visibleOfficialBooks() {
+    const cleanQuery = normalizeSpaces(state.bookSearch);
+    return dedupeBooks(OFFICIAL_BOOKS).filter((book) => bookMatchesSearch(book, cleanQuery));
   }
 
   function bookHash(text) {
@@ -2667,6 +2769,39 @@
 
   function normalizeBookRecord(rawBook) {
     if (!rawBook || typeof rawBook !== "object") return null;
+    if (rawBook.source === "usaf") {
+      const id = normalizeSpaces(rawBook.id);
+      const link = normalizeSpaces(rawBook.link);
+      const dataUrl = normalizeSpaces(rawBook.dataUrl);
+      const editionDate = normalizeSpaces(rawBook.editionDate);
+      if (
+        id !== USAF_HANDBOOK_ID
+        || link !== USAF_HANDBOOK_SOURCE_URL
+        || dataUrl !== USAF_HANDBOOK_DATA_URL
+        || Number(rawBook.dataVersion) !== USAF_HANDBOOK_DATA_VERSION
+        || editionDate !== USAF_HANDBOOK_EDITION_DATE
+      ) return null;
+      const cachedDifficulty = bookDifficultyCache[id] || {};
+      return {
+        ...rawBook,
+        id,
+        source: "usaf",
+        link,
+        dataUrl,
+        dataVersion: USAF_HANDBOOK_DATA_VERSION,
+        editionDate,
+        title: cleanBookTitle(rawBook.title) || "Air Force Handbook 1 — Airman",
+        author: normalizeSpaces(rawBook.author) || "United States Air Force",
+        level: BOOK_LEVELS[rawBook.level] ? rawBook.level : (BOOK_LEVELS[cachedDifficulty.level] ? cachedDifficulty.level : ""),
+        wordCount: Math.max(0, Number(rawBook.wordCount) || Number(cachedDifficulty.wordCount) || 0),
+        estimatedGrade: optionalBookNumber(rawBook.estimatedGrade) ?? optionalBookNumber(cachedDifficulty.estimatedGrade),
+        averageSentenceWords: optionalBookNumber(rawBook.averageSentenceWords) ?? optionalBookNumber(cachedDifficulty.averageSentenceWords),
+        genres: cleanBookStringList(rawBook.genres).filter((genre) => BOOK_GENRES[genre]),
+        subjects: cleanBookStringList(rawBook.subjects),
+        bookshelves: cleanBookStringList(rawBook.bookshelves),
+        summary: normalizeSpaces(rawBook.summary)
+      };
+    }
     const gutenbergId = normalizeGutenbergId(rawBook);
     if (rawBook.source === "gutenberg" || gutenbergId) {
       if (!gutenbergId) return null;
@@ -2807,6 +2942,14 @@
       setStatus(`${state.bookBooks.length} guided books${filters.length ? ` · ${filters.join(" · ")}` : ""}`);
       return;
     }
+    if (state.bookShelfKind === "official") {
+      state.bookBooks = visibleOfficialBooks();
+      state.bookPage = 1;
+      els.bookPageInput.value = "1";
+      renderBookShelf();
+      setStatus(`${state.bookBooks.length} official handbook${state.bookBooks.length === 1 ? "" : "s"}${cleanQuery ? ` · “${cleanQuery}”` : ""}`);
+      return;
+    }
     if (state.bookShelfKind === "favorites") {
       state.bookBooks = visibleFavoriteBooks();
       els.bookPageInput.value = "1";
@@ -2876,7 +3019,7 @@
     els.bookPageInput.disabled = !paged;
     els.bookPrevPageBtn.disabled = !paged || !state.bookHasPreviousPage;
     els.bookNextPageBtn.disabled = !paged || !state.bookHasNextPage;
-    els.bookGenreSelect.disabled = state.bookShelfKind === "favorites";
+    els.bookGenreSelect.disabled = state.bookShelfKind === "favorites" || state.bookShelfKind === "official";
     els.bookLevelSelect.disabled = !levelsAvailable;
   }
 
@@ -2898,6 +3041,11 @@
       return cleanQuery
         ? `${levelText}${genreText}Guided "${cleanQuery}"`
         : `${levelText}${genreText}Guided levels`;
+    }
+    if (state.bookShelfKind === "official") {
+      return cleanQuery
+        ? `Official handbooks "${cleanQuery}"`
+        : "Official handbooks";
     }
     const genreText = state.bookGenre ? `${genreLabel()} ` : "";
     const sourceText = "Fast public-domain library";
@@ -2941,7 +3089,9 @@
         ? (cleanQuery ? "No matching favorite books found." : "Favorite books will appear here.")
         : state.bookShelfKind === "guided"
           ? "No guided books match these filters. Try another level or genre."
-          : (cleanQuery ? "No matching books found." : "Load the public-domain library to begin.");
+          : state.bookShelfKind === "official"
+            ? "No official handbooks match this search."
+            : (cleanQuery ? "No matching books found." : "Load the public-domain library to begin.");
       els.bookShelf.innerHTML = `<div class="book-empty">${emptyText}</div>`;
       scheduleShelfReaderPrefetch();
       return;
@@ -3397,9 +3547,98 @@
     return { text, proxy: "GITenberg CDN" };
   }
 
+  function parseBundledBook(payload, book) {
+    if (!payload || typeof payload !== "object") throw new Error("invalid bundled handbook data");
+    const publication = payload.publication;
+    if (!publication || typeof publication !== "object") {
+      throw new Error("bundled handbook publication metadata is missing");
+    }
+    if (
+      Number(payload.schemaVersion) !== USAF_HANDBOOK_SCHEMA_VERSION
+      || Number(publication.sourcePageCount) !== USAF_HANDBOOK_SOURCE_PAGE_COUNT
+      || normalizeSpaces(publication.sourcePdfSha256) !== USAF_HANDBOOK_SOURCE_SHA256
+      || Number(publication.sectionCount) !== USAF_HANDBOOK_SECTION_COUNT
+      || Number(publication.wordCount) !== USAF_HANDBOOK_WORD_COUNT
+      || Number(publication.readerUnitCount) !== USAF_HANDBOOK_READER_UNIT_COUNT
+      || Number(publication.dataVersion) !== book.dataVersion
+      || normalizeSpaces(publication.id) !== book.id
+      || normalizeSpaces(publication.editionDate) !== book.editionDate
+      || normalizeSpaces(publication.sourceUrl) !== book.link
+    ) throw new Error("bundled handbook metadata mismatch");
+    if (!Array.isArray(payload.chapters) || payload.chapters.length !== USAF_HANDBOOK_SECTION_COUNT) {
+      throw new Error("bundled handbook section count is invalid");
+    }
+
+    const sentences = [];
+    const chapters = [];
+    let paragraphIndex = 0;
+    payload.chapters.forEach((rawChapter) => {
+      if (!rawChapter || !Array.isArray(rawChapter.paragraphs)) {
+        throw new Error("bundled handbook chapter is invalid");
+      }
+      const start = sentences.length;
+      rawChapter.paragraphs.forEach((rawParagraph) => {
+        if (!Array.isArray(rawParagraph)) {
+          throw new Error("bundled handbook paragraph is not sentence-tokenized");
+        }
+        const paragraphStart = sentences.length;
+        rawParagraph.forEach((rawSentence) => {
+          if (typeof rawSentence !== "string") {
+            throw new Error("bundled handbook sentence is invalid");
+          }
+          const sentence = normalizeReaderText(rawSentence);
+          if (!sentence || sentence.length > 500) {
+            throw new Error("bundled handbook sentence length is invalid");
+          }
+          sentences.push({
+            text: sentence,
+            paragraphIndex,
+            chapterIndex: chapters.length
+          });
+        });
+        if (sentences.length > paragraphStart) paragraphIndex += 1;
+      });
+      if (sentences.length > start) {
+        chapters.push({
+          title: cleanChapterTitle(rawChapter.title, `Chapter ${chapters.length + 1}`),
+          start
+        });
+      } else throw new Error("bundled handbook chapter has no readable sentences");
+    });
+    if (
+      chapters.length !== USAF_HANDBOOK_SECTION_COUNT
+      || sentences.length !== USAF_HANDBOOK_READER_UNIT_COUNT
+    ) throw new Error("bundled handbook content count mismatch");
+    return finalizeBookParse(sentences, chapters);
+  }
+
+  async function fetchAndParseBundledBook(book) {
+    const response = await withTimeout(
+      fetch(book.dataUrl, { cache: "force-cache" }),
+      BUNDLED_BOOK_FETCH_TIMEOUT_MS,
+      "bundled USAF handbook"
+    );
+    if (!response.ok) throw new Error(`bundled USAF handbook ${response.status}`);
+    const payload = await withTimeout(
+      response.json(),
+      BUNDLED_BOOK_FETCH_TIMEOUT_MS,
+      "bundled USAF handbook body"
+    );
+    const parsed = parseBundledBook(payload, book);
+    if (!parsed.sentences.length) throw new Error("bundled USAF handbook has no readable sentences");
+    return {
+      ...parsed,
+      sourceUrl: book.link,
+      proxy: "bundled official USAF handbook"
+    };
+  }
+
   async function fetchAndParseBookUncached(book) {
     if (book?.kind === "news") {
       return fetchAndParseNewsArticle(book);
+    }
+    if (book?.source === "usaf") {
+      return fetchAndParseBundledBook(book);
     }
     let lastError = null;
     const candidates = await bookTextCandidates(book);
@@ -3479,6 +3718,7 @@
 
   async function fetchAndParseBook(book) {
     const key = readerDocumentKey(book);
+    const persistParsedDocument = book?.source !== "usaf";
     if (key && state.readerDocumentCache.has(key)) {
       const parsed = state.readerDocumentCache.get(key);
       state.readerDocumentCache.delete(key);
@@ -3489,7 +3729,10 @@
       return state.readerDocumentPromises.get(key);
     }
     const promise = (async () => {
-      const persisted = await readPersistentReaderDocument(key);
+      // The bundled handbook JSON is already cached by the service worker after
+      // its first load. Persisting its expanded sentence model would store a
+      // second, substantially larger copy of the same document.
+      const persisted = persistParsedDocument ? await readPersistentReaderDocument(key) : null;
       if (persisted) {
         rememberReaderDocument(key, persisted);
         return persisted;
@@ -3497,7 +3740,7 @@
       const parsed = await fetchAndParseBookUncached(book);
       if (parsed) {
         rememberReaderDocument(key, parsed);
-        writePersistentReaderDocument(key, parsed);
+        if (persistParsedDocument) writePersistentReaderDocument(key, parsed);
       }
       return parsed;
     })()
@@ -3535,6 +3778,7 @@
   function bookModeKickerText() {
     if (isNewsMode()) return "Live text news";
     if (state.bookShelfKind === "guided") return "Curated public-domain levels";
+    if (state.bookShelfKind === "official") return "Official source editions";
     if (state.bookShelfKind === "favorites") return "Saved books";
     return "Fast public-domain library";
   }
@@ -3549,6 +3793,7 @@
     els.bookReaderTitle.textContent = book.title;
     const bookMeta = [
       book.author || "Unknown author",
+      book.editionDate ? `${book.editionDate} edition` : "",
       bookLevelInfo(book)?.label || "",
       bookDifficultySummary(book)
     ].filter(Boolean).join(" · ");
@@ -3556,7 +3801,15 @@
       ? `${book.sourceLabel || book.author || "News"} · ${formatNewsDate(book.publishedAt)}`
       : bookMeta;
     els.bookSourceLink.href = book.link || STANDARD_EBOOKS_LIST_URL;
-    els.bookSourceLink.textContent = book.kind === "news" ? "Original article" : bookSourceLabel(book);
+    els.bookSourceLink.textContent = book.kind === "news"
+      ? "Original article"
+      : book.source === "usaf"
+        ? "Official USAF PDF"
+        : bookSourceLabel(book);
+    els.bookSourceLink.title = book.source === "usaf"
+      ? "Official Air Force Handbook 1 source PDF"
+      : "";
+    els.bookSourceNotice.hidden = book.source !== "usaf";
     els.bookChapterLabel.textContent = book.kind === "news" ? "Section" : "Chapter";
     els.bookEnglishLabel.textContent = book.kind === "news" ? "English translation" : "English original";
     els.bookProgressRange.max = String(Math.max(0, state.bookSentences.length - 1));
@@ -3781,7 +4034,11 @@
       const book = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
       if (!book) throw new Error(state.bookShelfKind === "favorites" ? "No favorite books found" : "No books match these filters");
       await loadBook(book, { random: true });
-      const shelfLabel = state.bookShelfKind === "guided" ? "guided" : "favorite";
+      const shelfLabel = state.bookShelfKind === "guided"
+        ? "guided"
+        : state.bookShelfKind === "official"
+          ? "official handbook"
+          : "favorite";
       setStatus(`Random ${shelfLabel} paragraph from ${book.title}`);
       return;
     }
@@ -3895,7 +4152,8 @@
     setStatus(`${language.label} sentence ${state.bookCurrentIndex + 1}`);
     await speakTextWithWordPacing(pair.source, language.speechLang, Number(els.bookSourceRate.value), token, {
       alignment,
-      speakingPane: "source"
+      speakingPane: "source",
+      piperSource: true
     });
     await delay(Number(els.gapMs.value), token);
     if (token !== state.playToken || !state.bookPlaying) return;
@@ -3964,6 +4222,7 @@
     clearSpeechHighlights();
     clearCorrespondingHighlights();
     stopPiperAudio();
+    terminatePiperWorker(new Error("Piper stopped"));
     if (window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
@@ -3984,7 +4243,7 @@
       ? `${entry.rarity || "Vernacular"} · ${entry.tier || entry.rank}`
       : `#${entry.rank} ${language.label}`;
     setStatus(entryStatus);
-    await speakText(source, language.speechLang, Number(els.ruRate.value), token);
+    await speakText(source, language.speechLang, Number(els.ruRate.value), token, { piperSource: true });
     await delay(Number(els.gapMs.value), token);
     const en = await meaningPromise;
     if (token !== state.playToken) return;
@@ -3999,14 +4258,18 @@
 
   async function speakText(text, lang, rate, token, options = {}) {
     if (token !== state.playToken || !text) return;
-    if (isDesktopPiperEnabled() && piperVoiceIdForLang(lang)) {
+    if (shouldUsePiperForRequest(text, lang, options)) {
       try {
         await speakWithPiper(text, lang, rate, token, options);
+        recordPiperSuccess();
         return;
       } catch (error) {
         if (token !== state.playToken) return;
+        recordPiperFailure(error);
         console.warn("Piper failed, using the system voice:", error);
-        setStatus("Piper unavailable, using system voice");
+        setStatus(piperCircuitOpen()
+          ? "Piper paused after an error; using system voice"
+          : "Piper unavailable, using system voice");
       }
     }
     await speakWithSystemVoice(text, lang, rate, token, options);
@@ -4026,32 +4289,29 @@
     const ranges = wordRanges(spokenText, lang);
     if (token !== state.playToken || !ranges.length) return;
 
-    // Keep the optional desktop engine's established word-at-a-time behavior.
-    if (isDesktopPiperEnabled() && piperVoiceIdForLang(lang)) {
-      const intervalMs = 60000 / clamp(wordsPerMinute, 10, 200);
-      for (let index = 0; index < ranges.length; index += 1) {
-        if (token !== state.playToken) return;
-        const started = window.performance?.now?.() ?? Date.now();
-        await speakText(ranges[index].text, lang, 1, token, {
-          ...options,
-          readerWordIndex: index
-        });
-        if (token !== state.playToken || index === ranges.length - 1) return;
-        const finished = window.performance?.now?.() ?? Date.now();
-        await delay(Math.max(0, intervalMs - (finished - started)), token);
-      }
-      return;
-    }
-
-    // A single utterance lets iOS preserve the selected voice's sentence-level
-    // prosody while boundary events continue to drive word highlighting.
+    // Both engines receive one complete sentence so prosody stays continuous.
+    // Piper inference per word is especially costly and creates audible gaps.
     await speakText(spokenText, lang, readerSystemRateFromWpm(wordsPerMinute), token, options);
   }
 
   async function prepareSpeechEngine() {
-    if (isDesktopPiperEnabled() && piperVoiceIdForLang(activeLanguage().speechLang)) {
-      return;
+    if (isPiperEnabled() && !piperCircuitOpen()) {
+      try {
+        // This call reaches audio.play() before its first await, preserving the
+        // user gesture required by iPhone browser and Home Screen playback.
+        await ensurePiperAudioUnlocked();
+        return;
+      } catch (error) {
+        recordPiperFailure(error);
+        stopPiperAudio();
+        console.warn("Piper audio unlock failed; using the system voice:", error);
+        setStatus("Piper audio was blocked; using system voice");
+      }
     }
+    await prepareSystemSpeechEngine();
+  }
+
+  async function prepareSystemSpeechEngine() {
     if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
       throw new Error("Speech synthesis unavailable");
     }
@@ -4178,60 +4438,233 @@
     await playPiperClip(clip, lang, rate, token, options);
   }
 
+  function shouldUsePiperForRequest(text, lang, options) {
+    const clean = stripForSpeech(text);
+    return Boolean(
+      options?.piperSource === true
+      && isPiperEnabled()
+      && !piperCircuitOpen()
+      && clean
+      && clean.length <= PIPER_MAX_TEXT_CHARS
+      && piperVoiceIdForLang(lang)
+      && piperLanguageKey(lang) === piperLanguageKey(activeLanguage().speechLang)
+    );
+  }
+
   function piperVoiceIdForLang(lang) {
     const lower = String(lang || "").toLowerCase();
     if (lower.startsWith("ru")) return PIPER_RU_VOICE_ID;
     if (lower.startsWith("fa")) return PIPER_FA_VOICE_ID;
     if (lower.startsWith("es")) return PIPER_ES_VOICE_ID;
     if (lower.startsWith("fr")) return PIPER_FR_VOICE_ID;
-    if (lower.startsWith("hi")) return PIPER_HI_VOICE_ID;
     if (lower.startsWith("en")) return PIPER_EN_VOICE_ID;
     return "";
   }
 
-  async function loadPiperModule(voiceId) {
-    const cached = state.piperModules.get(voiceId);
-    if (cached) return cached;
-    const urls = [
-      `${PIPER_ESM_URL}?voice=${encodeURIComponent(voiceId)}`,
-      `${PIPER_ESM_FALLBACK_URL}?bundle&voice=${encodeURIComponent(voiceId)}`
-    ];
-    let lastError = null;
-    for (const url of urls) {
-      try {
-        const module = await withTimeout(import(url), PIPER_IMPORT_TIMEOUT_MS, "Piper module load");
-        if (typeof module.download === "function") {
-          await withTimeout(module.download(voiceId), PIPER_DOWNLOAD_TIMEOUT_MS, "Piper voice download");
-        }
-        state.piperModules.set(voiceId, module);
-        return module;
-      } catch (error) {
-        lastError = error;
-      }
+  function piperCircuitOpen() {
+    if (!state.piperCircuitOpenUntil) return false;
+    if (Date.now() < state.piperCircuitOpenUntil) return true;
+    state.piperCircuitOpenUntil = 0;
+    state.piperFailureCount = 0;
+    return false;
+  }
+
+  function recordPiperSuccess() {
+    state.piperFailureCount = 0;
+    state.piperCircuitOpenUntil = 0;
+  }
+
+  function recordPiperFailure(error) {
+    terminatePiperWorker(error instanceof Error ? error : new Error("Piper failed"));
+    state.piperFailureCount += 1;
+    if (state.piperFailureCount >= PIPER_FAILURE_LIMIT) {
+      state.piperCircuitOpenUntil = Date.now() + PIPER_FAILURE_COOLDOWN_MS;
     }
-    throw lastError || new Error("Piper module could not load");
+  }
+
+  function ensurePiperAudioUnlocked() {
+    if (state.piperAudio && state.piperAudioUnlocked) return Promise.resolve(state.piperAudio);
+    const audio = state.piperAudio || new Audio();
+    state.piperAudio = audio;
+    audio.preload = "auto";
+    audio.playsInline = true;
+    audio.setAttribute?.("playsinline", "");
+    audio.setAttribute?.("webkit-playsinline", "");
+    audio.volume = 0;
+    audio.src = PIPER_SILENCE_DATA_URL;
+
+    let playPromise;
+    try {
+      // Keep this synchronous with the Play click. Awaiting model work before
+      // blessing an Audio element causes iOS to reject the eventual playback.
+      playPromise = audio.play();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return Promise.resolve(playPromise).then(() => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      audio.volume = pageVolume();
+      state.piperAudioUnlocked = true;
+      return audio;
+    });
+  }
+
+  function handlePiperWorkerMessage(event, worker) {
+    if (state.piperWorker !== worker) return;
+    const message = event.data || {};
+    const request = state.piperRequests.get(Number(message.id));
+    if (!request) return;
+    if (message.type === "progress") {
+      const loaded = Math.max(0, Number(message.loaded) || 0);
+      const total = Math.max(0, Number(message.total) || 0);
+      if (total > 0) {
+        setStatus(`Downloading ${activeLanguage().label} Piper voice · ${Math.min(100, Math.round((loaded / total) * 100))}%`);
+      } else if (loaded > 0) {
+        setStatus(`Downloading ${activeLanguage().label} Piper voice · ${(loaded / (1024 * 1024)).toFixed(1)} MB`);
+      }
+      return;
+    }
+    window.clearTimeout(request.timer);
+    state.piperRequests.delete(Number(message.id));
+    if (message.type === "result") {
+      if (!(message.blob instanceof Blob) || !message.blob.size) {
+        request.reject(new Error("Piper returned no audio"));
+        return;
+      }
+      state.piperWorkerReady = true;
+      request.resolve(message.blob);
+      return;
+    }
+    if (message.type === "cleared") {
+      request.resolve(true);
+      return;
+    }
+    request.reject(new Error(message.message || "Piper worker failed"));
+  }
+
+  function terminatePiperWorker(reason = new Error("Piper worker closed")) {
+    window.clearTimeout(state.piperIdleTimer);
+    state.piperIdleTimer = 0;
+    const worker = state.piperWorker;
+    state.piperWorker = null;
+    state.piperWorkerVoiceId = "";
+    state.piperWorkerReady = false;
+    if (worker) worker.terminate();
+    state.piperRequests.forEach((request) => {
+      window.clearTimeout(request.timer);
+      request.reject(reason);
+    });
+    state.piperRequests.clear();
+  }
+
+  function ensurePiperWorker(voiceId) {
+    window.clearTimeout(state.piperIdleTimer);
+    state.piperIdleTimer = 0;
+    if (state.piperWorker && state.piperWorkerVoiceId === voiceId) return state.piperWorker;
+    terminatePiperWorker(new Error("Piper voice changed"));
+    const worker = new Worker(PIPER_WORKER_URL, {
+      type: "module",
+      name: "wordfreak-piper"
+    });
+    state.piperWorker = worker;
+    state.piperWorkerVoiceId = voiceId;
+    worker.addEventListener("message", (event) => handlePiperWorkerMessage(event, worker));
+    worker.addEventListener("error", (event) => {
+      if (state.piperWorker !== worker) return;
+      event.preventDefault();
+      terminatePiperWorker(new Error(event.message || "Piper worker failed"));
+    });
+    worker.addEventListener("messageerror", () => {
+      if (state.piperWorker === worker) {
+        terminatePiperWorker(new Error("Piper worker returned unreadable data"));
+      }
+    });
+    return worker;
+  }
+
+  function requestPiperWorker(voiceId, message, timeoutMs, label) {
+    const worker = ensurePiperWorker(voiceId);
+    const id = state.piperRequestId + 1;
+    state.piperRequestId = id;
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        if (!state.piperRequests.has(id)) return;
+        terminatePiperWorker(timeoutError(label, timeoutMs));
+      }, timeoutMs);
+      state.piperRequests.set(id, { resolve, reject, timer });
+      try {
+        worker.postMessage({ ...message, id });
+      } catch (error) {
+        window.clearTimeout(timer);
+        state.piperRequests.delete(id);
+        reject(error);
+      }
+    });
+  }
+
+  function schedulePiperWorkerIdle() {
+    window.clearTimeout(state.piperIdleTimer);
+    if (!state.piperWorker) return;
+    state.piperIdleTimer = window.setTimeout(() => {
+      terminatePiperWorker(new Error("Piper worker idle"));
+    }, PIPER_IDLE_TIMEOUT_MS);
+  }
+
+  function takeCachedPiperClip(key) {
+    const clip = state.piperAudioCache.get(key);
+    if (!clip) return null;
+    state.piperAudioCache.delete(key);
+    state.piperAudioCache.set(key, clip);
+    return clip;
+  }
+
+  function cachePiperClip(key, clip) {
+    if (clip.text.length > PIPER_CACHE_TEXT_MAX_CHARS || clip.bytes > PIPER_AUDIO_CACHE_MAX_BYTES) return;
+    const existing = state.piperAudioCache.get(key);
+    if (existing) state.piperAudioCacheBytes -= existing.bytes;
+    state.piperAudioCache.delete(key);
+    state.piperAudioCache.set(key, clip);
+    state.piperAudioCacheBytes += clip.bytes;
+    while (
+      state.piperAudioCache.size > PIPER_AUDIO_CACHE_MAX_ITEMS
+      || state.piperAudioCacheBytes > PIPER_AUDIO_CACHE_MAX_BYTES
+    ) {
+      const oldestKey = state.piperAudioCache.keys().next().value;
+      const oldest = state.piperAudioCache.get(oldestKey);
+      state.piperAudioCache.delete(oldestKey);
+      state.piperAudioCacheBytes = Math.max(0, state.piperAudioCacheBytes - (oldest?.bytes || 0));
+    }
+  }
+
+  function clearPiperAudioCache() {
+    state.piperAudioCache.clear();
+    state.piperAudioPending.clear();
+    state.piperAudioCacheBytes = 0;
   }
 
   async function getPiperClip(text, lang) {
     const clean = stripForSpeech(text);
     const voiceId = piperVoiceIdForLang(lang);
-    if (!clean || !voiceId) return null;
+    if (!clean || !voiceId || clean.length > PIPER_MAX_TEXT_CHARS) return null;
     const key = `${voiceId}:${clean}`;
-    if (state.piperAudioCache.has(key)) return state.piperAudioCache.get(key);
+    const cached = takeCachedPiperClip(key);
+    if (cached) return cached;
     if (state.piperAudioPending.has(key)) return state.piperAudioPending.get(key);
 
     const pending = (async () => {
-      const module = await loadPiperModule(voiceId);
-      const blob = await withTimeout(
-        module.predict({ text: clean, voiceId }),
-        PIPER_PREDICT_TIMEOUT_MS,
+      const timeoutMs = state.piperWorkerReady
+        ? PIPER_PREDICT_TIMEOUT_MS
+        : PIPER_FIRST_REQUEST_TIMEOUT_MS;
+      const blob = await requestPiperWorker(
+        voiceId,
+        { type: "synthesize", voiceId, text: clean },
+        timeoutMs,
         "Piper speech"
       );
-      const clip = { blob, text: clean, voiceId };
-      state.piperAudioCache.set(key, clip);
-      while (state.piperAudioCache.size > PIPER_CACHE_LIMIT) {
-        state.piperAudioCache.delete(state.piperAudioCache.keys().next().value);
-      }
+      const clip = { blob, text: clean, voiceId, bytes: blob.size };
+      cachePiperClip(key, clip);
       return clip;
     })();
     state.piperAudioPending.set(key, pending);
@@ -4283,57 +4716,110 @@
     speakWord(0);
   }
 
-  function stopPiperAudio() {
+  function stopPiperAudio({ releasePlayer = false } = {}) {
     window.clearTimeout(state.piperHighlightTimer);
     state.piperHighlightTimer = 0;
-    if (state.activeAudio) {
-      state.activeAudio.pause();
-      state.activeAudio.removeAttribute("src");
-      state.activeAudio.load();
-      state.activeAudio = null;
+    if (state.piperPlaybackCancel) {
+      const cancel = state.piperPlaybackCancel;
+      state.piperPlaybackCancel = null;
+      cancel();
     }
-    if (state.activeAudioUrl) {
-      URL.revokeObjectURL(state.activeAudioUrl);
-      state.activeAudioUrl = "";
+    if (state.piperAudio) {
+      state.piperAudio.pause();
+      state.piperAudio.onloadedmetadata = null;
+      state.piperAudio.onended = null;
+      state.piperAudio.onerror = null;
+      state.piperAudio.removeAttribute("src");
+      state.piperAudio.load();
+    }
+    if (state.piperAudioUrl) {
+      URL.revokeObjectURL(state.piperAudioUrl);
+      state.piperAudioUrl = "";
+    }
+    if (releasePlayer) {
+      state.piperAudio = null;
+      state.piperAudioUnlocked = false;
     }
   }
 
   async function playPiperClip(clip, lang, rate, token, options = {}) {
     stopPiperAudio();
     if (token !== state.playToken) return;
-    const audio = new Audio();
+    if (!state.piperAudio || !state.piperAudioUnlocked) {
+      throw new Error("Piper audio is not unlocked; tap Play again");
+    }
+    const audio = state.piperAudio;
     const url = URL.createObjectURL(clip.blob);
     const playbackRate = clamp(rate || 1, 0.5, 2);
-    state.activeAudio = audio;
-    state.activeAudioUrl = url;
+    state.piperAudioUrl = url;
     audio.src = url;
     audio.playbackRate = playbackRate;
+    audio.preservesPitch = true;
+    if ("webkitPreservesPitch" in audio) audio.webkitPreservesPitch = true;
     audio.volume = pageVolume();
+    const playbackFinished = new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error = null) => {
+        if (settled) return;
+        settled = true;
+        state.piperPlaybackCancel = null;
+        if (error) reject(error);
+        else resolve();
+      };
+      state.piperPlaybackCancel = () => finish();
+      audio.onended = () => finish();
+      audio.onerror = () => finish(new Error("Piper audio playback failed"));
+    });
     audio.onloadedmetadata = () => {
       if (token === state.playToken && Number.isFinite(audio.duration)) {
         startPiperWordHighlights(clip.text, lang, (audio.duration / playbackRate) * 1000, token, options);
       }
     };
     try {
-      await audio.play();
-      await new Promise((resolve, reject) => {
-        audio.onended = resolve;
-        audio.onerror = () => reject(new Error("Piper audio playback failed"));
-        const watch = () => {
-          if (token !== state.playToken) resolve();
-          else window.setTimeout(watch, 80);
-        };
-        watch();
-      });
+      const playStarted = audio.play();
+      await Promise.all([Promise.resolve(playStarted), playbackFinished]);
     } finally {
-      if (state.activeAudio === audio) {
-        state.activeAudio = null;
-      }
-      if (state.activeAudioUrl === url) {
+      if (state.piperAudioUrl === url) {
+        state.piperPlaybackCancel = null;
+        audio.pause();
+        audio.onloadedmetadata = null;
+        audio.onended = null;
+        audio.onerror = null;
+        audio.removeAttribute("src");
+        audio.load();
         URL.revokeObjectURL(url);
-        state.activeAudioUrl = "";
+        state.piperAudioUrl = "";
       }
       clearPiperHighlight(options);
+      schedulePiperWorkerIdle();
+    }
+  }
+
+  async function clearDownloadedPiperVoices() {
+    if (!piperRuntimeAvailable()) {
+      setStatus("Piper storage controls are unavailable on this device");
+      return;
+    }
+    stopSpeech();
+    clearPiperAudioCache();
+    const button = els.piperClearBtn;
+    if (button) button.disabled = true;
+    setStatus("Clearing downloaded Piper voices");
+    try {
+      await requestPiperWorker(
+        "__storage__",
+        { type: "clear" },
+        PIPER_CLEAR_TIMEOUT_MS,
+        "Piper storage cleanup"
+      );
+      recordPiperSuccess();
+      setStatus("Downloaded Piper voices cleared");
+    } catch (error) {
+      setStatus(error.message || "Could not clear Piper voices");
+      console.warn("Piper storage cleanup failed:", error);
+    } finally {
+      terminatePiperWorker(new Error("Piper storage cleanup finished"));
+      if (button) button.disabled = false;
     }
   }
 
@@ -4882,9 +5368,25 @@
 
     if (els.engineSelect) {
       els.engineSelect.addEventListener("change", () => {
-        state.ttsEngine = els.engineSelect.value === "piper" && isDesktopPiperAvailable() ? "piper" : "system";
+        stopSpeech();
+        clearPiperAudioCache();
+        state.ttsEngine = els.engineSelect.value === "piper" && piperRuntimeAvailable()
+          ? "piper"
+          : "system";
+        recordPiperSuccess();
+        if (state.ttsEngine === "system") stopPiperAudio({ releasePlayer: true });
+        syncPiperControls();
+        updateSettingLabels();
+        updateVoiceSelectors();
         savePrefs();
+        setStatus(state.ttsEngine === "piper"
+          ? "Piper selected; the voice downloads on first Play"
+          : "System voices selected");
       });
+    }
+
+    if (els.piperClearBtn) {
+      els.piperClearBtn.addEventListener("click", clearDownloadedPiperVoices);
     }
 
     [els.ruRate, els.enRate, els.pageVolume, els.gapMs].forEach((input) => {
@@ -4930,6 +5432,12 @@
       fitRussianFocusWord();
       fitEnglishFocusWord();
     });
+    window.addEventListener("pagehide", () => {
+      state.playToken += 1;
+      stopPiperAudio({ releasePlayer: true });
+      terminatePiperWorker(new Error("Page hidden"));
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+    });
     if (window.speechSynthesis) {
       const handleVoicesChanged = () => syncAvailableVoices();
       if (typeof window.speechSynthesis.addEventListener === "function") {
@@ -4965,6 +5473,7 @@
     if (els.engineSelect) {
       els.engineSelect.value = state.ttsEngine;
     }
+    syncPiperControls();
     syncBookAudioControlsFromSettings();
     updateShuffleButton();
     updateSettingLabels();

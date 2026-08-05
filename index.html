@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="stylesheet" href="styles.css?v=26">
 </head>
 <body>
   <main class="app-shell">
@@ -76,13 +76,17 @@
           <option value="all">All</option>
         </select>
       </label>
-      <label class="desktop-piper-setting">
-        Speech engine
-        <select id="engineSelect">
-          <option value="system" selected>System voices</option>
-          <option value="piper">Piper where available</option>
-        </select>
-      </label>
+      <div class="piper-setting">
+        <label>
+          Speech engine
+          <select id="engineSelect">
+            <option value="system" selected>System voices</option>
+            <option value="piper">Piper · study language download</option>
+          </select>
+        </label>
+        <small id="piperEngineHint" class="piper-engine-hint">Piper downloads a study-language voice on first Play.</small>
+        <button id="piperClearBtn" class="piper-clear-button" type="button">Clear downloaded Piper voices</button>
+      </div>
       <label>
         <span id="sourceVoiceLabel">RU voice</span>
         <select id="sourceVoiceSelect">
@@ -155,6 +159,7 @@
           View
           <select id="bookShelfViewSelect">
             <option value="guided" selected>Guided levels</option>
+            <option value="official">Official handbooks</option>
             <option value="library">Fast public-domain library</option>
             <option value="favorites">Favorites</option>
           </select>
@@ -289,6 +294,8 @@
           <a id="bookSourceLink" class="book-source-link" href="https://standardebooks.org/ebooks" target="_blank" rel="noopener noreferrer">Source</a>
         </header>
 
+        <p id="bookSourceNotice" class="book-source-notice" hidden>This is an unofficial study adaptation. Wordfreak is not endorsed by the U.S. Department of Defense or U.S. Air Force; consult the linked official PDF.</p>
+
         <div class="reader-nav-row">
           <label>
             <span id="bookChapterLabel">Chapter</span>
@@ -337,6 +344,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=47" defer></script>
+  <script src="app.js?v=49" defer></script>
 </body>
 </html>
