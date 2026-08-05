@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=26">
+  <link rel="stylesheet" href="styles.css?v=27">
 </head>
 <body>
   <main class="app-shell">
@@ -23,7 +23,7 @@
       <div class="top-controls">
         <button id="bookToggle" class="icon-btn" type="button" aria-label="Books" title="Books">&#128214;</button>
         <button id="newsToggle" class="icon-btn" type="button" aria-label="Current news" title="Current news">&#128240;</button>
-        <button id="settingsToggle" class="icon-btn" type="button" aria-label="Settings" title="Settings">&#9881;</button>
+        <button id="settingsToggle" class="icon-btn" type="button" aria-label="Settings" aria-controls="settingsPanel" aria-expanded="false" title="Settings">&#9881;</button>
       </div>
     </header>
 
@@ -39,6 +39,17 @@
         <div id="meaningState" class="focus-kicker">English</div>
         <h2 id="enWord">...</h2>
         <p id="entryExample" class="entry-example" hidden></p>
+      </article>
+    </section>
+
+    <section id="focusSpeechTracks" class="speech-output-tracks" aria-label="Additional language tracks" aria-live="polite" hidden>
+      <article id="focusSpeechTrack2" class="speech-output-track" hidden>
+        <div id="focusSpeechTrack2Label" class="speech-output-label">Track 2</div>
+        <p id="focusSpeechTrack2Text" class="speech-output-text"></p>
+      </article>
+      <article id="focusSpeechTrack3" class="speech-output-track" hidden>
+        <div id="focusSpeechTrack3Label" class="speech-output-label">Track 3</div>
+        <p id="focusSpeechTrack3Text" class="speech-output-text"></p>
       </article>
     </section>
 
@@ -76,29 +87,112 @@
           <option value="all">All</option>
         </select>
       </label>
-      <div class="piper-setting">
-        <label>
-          Speech engine
-          <select id="engineSelect">
-            <option value="system" selected>System voices</option>
-            <option value="piper">Piper · study language download</option>
-          </select>
-        </label>
-        <small id="piperEngineHint" class="piper-engine-hint">Piper downloads a study-language voice on first Play.</small>
+      <section id="speechMixer" class="speech-mixer" aria-labelledby="speechMixerTitle">
+        <div class="speech-mixer-head">
+          <div>
+            <h2 id="speechMixerTitle">Speech sequence</h2>
+            <p>Track 1 always plays. Tracks 2–3 play in order and can be Off.</p>
+          </div>
+          <label class="speech-english-toggle checkbox-setting">
+            <input id="bookReadEnglish" type="checkbox" checked>
+            <span>
+              <strong>Read English translations &amp; definitions</strong>
+              <small>Turn off to skip English companion speech; Track 1 still plays.</small>
+            </span>
+          </label>
+        </div>
+
+        <div class="speech-track-list">
+          <fieldset id="speechTrack1" class="speech-track">
+            <legend>Track 1 · Study</legend>
+            <div class="speech-track-current">
+              <span>Language</span>
+              <strong id="speechTrack1Language">Current study language</strong>
+            </div>
+            <label>
+              Engine
+              <select id="engineSelect" aria-describedby="piperEngineHint piperResourceWarning">
+                <option value="system" selected>System / iPhone</option>
+                <option value="piper">Piper</option>
+              </select>
+            </label>
+            <label>
+              <span id="sourceVoiceLabel">Study voice</span>
+              <select id="sourceVoiceSelect">
+                <option value="">Auto</option>
+              </select>
+            </label>
+            <small id="piperEngineHint" class="speech-track-hint piper-engine-hint" role="status" aria-live="polite">System uses a voice installed on this device.</small>
+          </fieldset>
+
+          <fieldset id="speechTrack2" class="speech-track">
+            <legend>Track 2</legend>
+            <label>
+              Language
+              <select id="speechTrack2LanguageSelect" aria-describedby="speechTrack2Hint">
+                <option value="off">Off</option>
+                <option value="en" selected>English</option>
+                <option value="ru">Russian</option>
+                <option value="fa">Farsi</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="hi">Hindi</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+              </select>
+            </label>
+            <label>
+              Engine
+              <select id="speechTrack2EngineSelect" aria-describedby="speechTrack2Hint piperResourceWarning">
+                <option value="system" selected>System / iPhone</option>
+                <option value="piper">Piper</option>
+              </select>
+            </label>
+            <label class="speech-track-voice">
+              <span id="enVoiceLabel">English voice</span>
+              <select id="enVoiceSelect">
+                <option value="">Auto</option>
+              </select>
+            </label>
+            <small id="speechTrack2Hint" class="speech-track-hint" role="status" aria-live="polite">English follows the study language by default.</small>
+          </fieldset>
+
+          <fieldset id="speechTrack3" class="speech-track">
+            <legend>Track 3</legend>
+            <label>
+              Language
+              <select id="speechTrack3LanguageSelect" aria-describedby="speechTrack3Hint">
+                <option value="off" selected>Off</option>
+                <option value="en">English</option>
+                <option value="ru">Russian</option>
+                <option value="fa">Farsi</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="hi">Hindi</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+              </select>
+            </label>
+            <label>
+              Engine
+              <select id="speechTrack3EngineSelect" aria-describedby="speechTrack3Hint piperResourceWarning">
+                <option value="system" selected>System / iPhone</option>
+                <option value="piper">Piper</option>
+              </select>
+            </label>
+            <label class="speech-track-voice">
+              <span id="speechTrack3VoiceLabel">Voice</span>
+              <select id="speechTrack3VoiceSelect">
+                <option value="">Auto</option>
+              </select>
+            </label>
+            <small id="speechTrack3Hint" class="speech-track-hint" role="status" aria-live="polite">Choose another language or leave this track Off.</small>
+          </fieldset>
+        </div>
+
+        <p id="piperResourceWarning" class="piper-resource-warning">Piper supports at most two active voices. Each voice needs a one-time download of about 55–89 MB; unsupported-language Piper choices are disabled automatically.</p>
         <button id="piperClearBtn" class="piper-clear-button" type="button">Clear downloaded Piper voices</button>
-      </div>
-      <label>
-        <span id="sourceVoiceLabel">RU voice</span>
-        <select id="sourceVoiceSelect">
-          <option value="">Auto</option>
-        </select>
-      </label>
-      <label>
-        <span id="enVoiceLabel">EN voice</span>
-        <select id="enVoiceSelect">
-          <option value="">Auto</option>
-        </select>
-      </label>
+      </section>
       <label>
         EN region
         <select id="enLangSelect">
@@ -279,10 +373,6 @@
           </span>
           <input id="bookVolume" type="range" min="0" max="1" step="0.05" value="0.8">
         </label>
-        <label class="reader-english-toggle">
-          <span class="setting-title">Read English aloud</span>
-          <input id="bookReadEnglish" type="checkbox" checked>
-        </label>
       </div>
 
       <article id="bookReader" class="book-reader" hidden>
@@ -321,6 +411,17 @@
           </section>
         </div>
 
+        <section id="bookSpeechTracks" class="speech-output-tracks reader-output-tracks" aria-label="Additional reader language tracks" aria-live="polite" hidden>
+          <section id="bookSpeechTrack2" class="reader-pane speech-output-track" hidden>
+            <div id="bookSpeechTrack2Label" class="reader-label">Track 2</div>
+            <p id="bookSpeechTrack2Sentence" class="reader-sentence"></p>
+          </section>
+          <section id="bookSpeechTrack3" class="reader-pane speech-output-track" hidden>
+            <div id="bookSpeechTrack3Label" class="reader-label">Track 3</div>
+            <p id="bookSpeechTrack3Sentence" class="reader-sentence"></p>
+          </section>
+        </section>
+
         <div id="bookNearbyList" class="book-nearby" aria-label="Nearby sentences"></div>
       </article>
 
@@ -344,6 +445,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=49" defer></script>
+  <script src="app.js?v=50" defer></script>
 </body>
 </html>

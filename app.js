@@ -56,6 +56,7 @@
   const PIPER_PREDICT_TIMEOUT_MS = 45000;
   const PIPER_CLEAR_TIMEOUT_MS = 30000;
   const PIPER_IDLE_TIMEOUT_MS = 90000;
+  const PIPER_MAX_LIVE_WORKERS = 2;
   const PIPER_FAILURE_LIMIT = 1;
   const PIPER_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
   const PIPER_SILENCE_DATA_URL = "data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA";
@@ -397,11 +398,28 @@
     meaningState: document.getElementById("meaningState"),
     enWord: document.getElementById("enWord"),
     entryExample: document.getElementById("entryExample"),
+    focusSpeechTracks: document.getElementById("focusSpeechTracks"),
+    focusSpeechTrack2: document.getElementById("focusSpeechTrack2"),
+    focusSpeechTrack2Label: document.getElementById("focusSpeechTrack2Label"),
+    focusSpeechTrack2Text: document.getElementById("focusSpeechTrack2Text"),
+    focusSpeechTrack3: document.getElementById("focusSpeechTrack3"),
+    focusSpeechTrack3Label: document.getElementById("focusSpeechTrack3Label"),
+    focusSpeechTrack3Text: document.getElementById("focusSpeechTrack3Text"),
     prevBtn: document.getElementById("prevBtn"),
     playBtn: document.getElementById("playBtn"),
     nextBtn: document.getElementById("nextBtn"),
     shuffleBtn: document.getElementById("shuffleBtn"),
     engineSelect: document.getElementById("engineSelect"),
+    speechTrack1Language: document.getElementById("speechTrack1Language"),
+    speechTrack2LanguageSelect: document.getElementById("speechTrack2LanguageSelect"),
+    speechTrack2EngineSelect: document.getElementById("speechTrack2EngineSelect"),
+    speechTrack2Hint: document.getElementById("speechTrack2Hint"),
+    speechTrack3LanguageSelect: document.getElementById("speechTrack3LanguageSelect"),
+    speechTrack3EngineSelect: document.getElementById("speechTrack3EngineSelect"),
+    speechTrack3VoiceLabel: document.getElementById("speechTrack3VoiceLabel"),
+    speechTrack3VoiceSelect: document.getElementById("speechTrack3VoiceSelect"),
+    speechTrack3Hint: document.getElementById("speechTrack3Hint"),
+    piperResourceWarning: document.getElementById("piperResourceWarning"),
     piperEngineHint: document.getElementById("piperEngineHint"),
     piperClearBtn: document.getElementById("piperClearBtn"),
     sourceVoiceLabel: document.getElementById("sourceVoiceLabel"),
@@ -466,6 +484,13 @@
     bookSourceSentence: document.getElementById("bookSourceSentence"),
     bookEnglishLabel: document.getElementById("bookEnglishLabel"),
     bookEnglishSentence: document.getElementById("bookEnglishSentence"),
+    bookSpeechTracks: document.getElementById("bookSpeechTracks"),
+    bookSpeechTrack2: document.getElementById("bookSpeechTrack2"),
+    bookSpeechTrack2Label: document.getElementById("bookSpeechTrack2Label"),
+    bookSpeechTrack2Sentence: document.getElementById("bookSpeechTrack2Sentence"),
+    bookSpeechTrack3: document.getElementById("bookSpeechTrack3"),
+    bookSpeechTrack3Label: document.getElementById("bookSpeechTrack3Label"),
+    bookSpeechTrack3Sentence: document.getElementById("bookSpeechTrack3Sentence"),
     bookNearbyList: document.getElementById("bookNearbyList"),
     bookShelf: document.getElementById("bookShelf"),
     sourceHead: document.getElementById("sourceHead"),
@@ -490,6 +515,11 @@
     playing: false,
     playToken: 0,
     ttsEngine: "system",
+    speechTrack2Language: "en",
+    speechTrack2Engine: "system",
+    speechTrack3Language: "off",
+    speechTrack3Engine: "system",
+    focusSpeechRenderToken: 0,
     shuffle: false,
     band: "20000",
     bandByLanguage: {},
@@ -499,6 +529,11 @@
     voicePrefs: {
       ru: "",
       fa: "",
+      es: "",
+      fr: "",
+      hi: "",
+      ja: "",
+      ko: "",
       en: ""
     },
     enLang: "",
@@ -539,11 +574,8 @@
     newsFeedLoadToken: 0,
     newsAllArticles: [],
     newsSearch: "",
-    piperWorker: null,
-    piperWorkerVoiceId: "",
-    piperWorkerReady: false,
+    piperWorkers: new Map(),
     piperRequestId: 0,
-    piperRequests: new Map(),
     piperAudio: null,
     piperAudioUnlocked: false,
     piperAudioUrl: "",
@@ -552,9 +584,8 @@
     piperAudioCacheBytes: 0,
     piperAudioPending: new Map(),
     piperHighlightTimer: 0,
-    piperIdleTimer: 0,
-    piperFailureCount: 0,
-    piperCircuitOpenUntil: 0,
+    piperFailures: new Map(),
+    piperStorageBusy: false,
     activeHighlights: [],
     activeCorrespondingHighlights: [],
     scrollTimer: 0,
@@ -597,13 +628,22 @@
       state.enLang = typeof prefs.enLang === "string" ? prefs.enLang : state.enLang;
       const savedEngine = prefs.ttsEngine || prefs.desktopTtsEngine;
       state.ttsEngine = savedEngine === "piper" && piperRuntimeAvailable() ? "piper" : "system";
+      const savedTrack2Language = normalizeSpeechTrackLanguage(prefs.speechTrack2Language);
+      const savedTrack3Language = normalizeSpeechTrackLanguage(prefs.speechTrack3Language);
+      if (savedTrack2Language) state.speechTrack2Language = savedTrack2Language;
+      if (savedTrack3Language) state.speechTrack3Language = savedTrack3Language;
+      state.speechTrack2Engine = normalizeSpeechTrackEngine(prefs.speechTrack2Engine);
+      state.speechTrack3Engine = normalizeSpeechTrackEngine(prefs.speechTrack3Engine);
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
       els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
       els.bookSourceRate.value = String(clamp(prefs.bookSourceWpm || els.bookSourceRate.value, 10, 200));
       els.bookEnRate.value = String(clamp(prefs.bookEnWpm || els.bookEnRate.value, 10, 200));
       els.bookVolume.value = els.pageVolume.value;
-      els.bookReadEnglish.checked = prefs.bookReadEnglish !== false;
+      const readEnglishPreference = typeof prefs.readEnglishAloud === "boolean"
+        ? prefs.readEnglishAloud
+        : prefs.bookReadEnglish !== false;
+      els.bookReadEnglish.checked = readEnglishPreference;
       els.gapMs.value = prefs.gapMs || els.gapMs.value;
     } catch (error) {
       console.warn("Preference load failed:", error);
@@ -623,6 +663,11 @@
       bookLevel: state.bookLevel,
       newsSourceByLanguage: state.newsSourceByLanguage,
       bookReadEnglish: els.bookReadEnglish.checked,
+      readEnglishAloud: els.bookReadEnglish.checked,
+      speechTrack2Language: state.speechTrack2Language,
+      speechTrack2Engine: state.speechTrack2Engine,
+      speechTrack3Language: state.speechTrack3Language,
+      speechTrack3Engine: state.speechTrack3Engine,
       bookSourceWpm: els.bookSourceRate.value,
       bookEnWpm: els.bookEnRate.value,
       voicePrefs: state.voicePrefs,
@@ -649,16 +694,23 @@
   }
 
   function updateSettingLabels() {
-    const vernacular = activeLanguage().mode === "vernacular";
-    const piper = isPiperEnabled();
+    const language = activeLanguage();
+    const vernacular = language.mode === "vernacular";
+    const primaryTrack = speechTrackConfig(1);
+    const track2 = speechTrackConfig(2);
+    const track3 = speechTrackConfig(3);
     els.sourceRateLabel.textContent = vernacular ? "Word speed" : `${activeLanguage().shortLabel} speed`;
-    els.sourceVoiceLabel.textContent = piper
-      ? `${activeLanguage().shortLabel} Piper voice`
-      : (vernacular ? "English voice" : `${activeLanguage().shortLabel} voice`);
+    els.speechTrack1Language.textContent = language.label;
+    els.sourceVoiceLabel.textContent = speechTrackUsesPiper(primaryTrack)
+      ? `${language.label} Piper model`
+      : `${language.label} system voice`;
     els.enRateLabel.textContent = vernacular ? "Definition speed" : "EN speed";
-    els.enVoiceLabel.textContent = vernacular
-      ? (piper ? "Definition system voice" : "Definition voice · same")
-      : "EN system voice";
+    els.enVoiceLabel.textContent = track2.language === "off"
+      ? "Track 2 voice"
+      : `${languageTrackLabel(track2.language)} ${speechTrackUsesPiper(track2) ? "Piper model" : "system voice"}`;
+    els.speechTrack3VoiceLabel.textContent = track3.language === "off"
+      ? "Track 3 voice"
+      : `${languageTrackLabel(track3.language)} ${speechTrackUsesPiper(track3) ? "Piper model" : "system voice"}`;
     els.ruRateValue.textContent = `${Number(els.ruRate.value).toFixed(2)}x`;
     els.enRateValue.textContent = `${Number(els.enRate.value).toFixed(2)}x`;
     els.pageVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
@@ -803,6 +855,120 @@
     return LANGUAGES[state.language] || LANGUAGES.ru;
   }
 
+  function normalizeSpeechTrackLanguage(value) {
+    const key = String(value || "").toLowerCase();
+    if (key === "off") return "off";
+    return LANGUAGES[key] ? key : "";
+  }
+
+  function normalizeSpeechTrackEngine(value) {
+    return value === "piper" ? "piper" : "system";
+  }
+
+  function speechLanguageForKey(languageKey) {
+    return LANGUAGES[languageKey]?.speechLang || "";
+  }
+
+  function speechTrackConfig(slot) {
+    if (slot === 1) {
+      return {
+        slot,
+        id: "primary",
+        language: state.language,
+        engine: state.ttsEngine
+      };
+    }
+    return {
+      slot,
+      id: `track${slot}`,
+      language: slot === 2 ? state.speechTrack2Language : state.speechTrack3Language,
+      engine: slot === 2 ? state.speechTrack2Engine : state.speechTrack3Engine
+    };
+  }
+
+  function configuredSpeechTracks() {
+    const seen = new Set();
+    return [1, 2, 3].map(speechTrackConfig).filter((track) => {
+      if (!LANGUAGES[track.language] || seen.has(track.language)) return false;
+      seen.add(track.language);
+      return true;
+    });
+  }
+
+  function enabledCompanionTracks() {
+    return configuredSpeechTracks().filter((track) => track.slot > 1);
+  }
+
+  function englishSpeechEnabled() {
+    if (!els.bookReadEnglish.checked) return false;
+    if (state.language === "en") return true;
+    return enabledCompanionTracks().some((track) => track.language === "en");
+  }
+
+  function speechTrackIsAudible(track) {
+    return Boolean(
+      track
+      && (track.slot === 1 || track.language !== "en" || els.bookReadEnglish.checked)
+    );
+  }
+
+  function speechTrackHasSupportedPiper(track) {
+    return Boolean(
+      LANGUAGES[track?.language]
+      && track.engine === "piper"
+      && piperVoiceIdForLang(speechLanguageForKey(track.language))
+    );
+  }
+
+  function normalizeSpeechTrackState() {
+    state.speechTrack2Language = normalizeSpeechTrackLanguage(state.speechTrack2Language) || "off";
+    state.speechTrack3Language = normalizeSpeechTrackLanguage(state.speechTrack3Language) || "off";
+    state.speechTrack2Engine = normalizeSpeechTrackEngine(state.speechTrack2Engine);
+    state.speechTrack3Engine = normalizeSpeechTrackEngine(state.speechTrack3Engine);
+
+    const seen = new Set([state.language]);
+    [2, 3].forEach((slot) => {
+      const languageKey = slot === 2 ? state.speechTrack2Language : state.speechTrack3Language;
+      if (languageKey !== "off" && seen.has(languageKey)) {
+        if (slot === 2) state.speechTrack2Language = "off";
+        else state.speechTrack3Language = "off";
+        return;
+      }
+      if (languageKey !== "off") seen.add(languageKey);
+    });
+
+    // Preserve Piper preferences for skipped English and unsupported
+    // languages, but cap the voices that can actually speak right now. Prefer
+    // the study track and non-English companions; if English is re-enabled
+    // beside two foreign Piper tracks, English safely moves to System.
+    const activePiperTracks = [1, 2, 3]
+      .map(speechTrackConfig)
+      .filter((track) => speechTrackIsAudible(track) && speechTrackHasSupportedPiper(track))
+      .sort((left, right) => {
+        const leftPriority = left.slot === 1 ? 0 : left.language === "en" ? 2 : 1;
+        const rightPriority = right.slot === 1 ? 0 : right.language === "en" ? 2 : 1;
+        return leftPriority - rightPriority || left.slot - right.slot;
+      });
+    activePiperTracks.slice(PIPER_MAX_LIVE_WORKERS).forEach((track) => {
+      if (track.slot === 1) state.ttsEngine = "system";
+      else if (track.slot === 2) state.speechTrack2Engine = "system";
+      else state.speechTrack3Engine = "system";
+    });
+  }
+
+  function speechTrackUsesPiper(track) {
+    return Boolean(
+      track?.engine === "piper"
+      && piperRuntimeAvailable()
+      && piperVoiceIdForLang(speechLanguageForKey(track.language))
+    );
+  }
+
+  function languageTrackLabel(languageKey) {
+    if (languageKey === "en") return "English";
+    return LANGUAGES[languageKey]?.label || "Off";
+  }
+
   function readerEnabled() {
     return activeLanguage().readerEnabled !== false;
   }
@@ -851,8 +1017,23 @@
 
   function selectLanguage(languageKey) {
     clearPiperAudioCache();
-    state.bandByLanguage[state.language] = state.band;
-    state.language = LANGUAGES[languageKey] ? languageKey : "ru";
+    const previousLanguage = state.language;
+    const nextLanguage = LANGUAGES[languageKey] ? languageKey : "ru";
+    state.bandByLanguage[previousLanguage] = state.band;
+    state.language = nextLanguage;
+    // If the newly selected study language was already an optional track,
+    // swap the former study language into that slot. RU + EN therefore becomes
+    // EN + RU and switches back cleanly instead of silently losing English.
+    [2, 3].forEach((slot) => {
+      const current = slot === 2 ? state.speechTrack2Language : state.speechTrack3Language;
+      if (current !== nextLanguage) return;
+      const other = slot === 2 ? state.speechTrack3Language : state.speechTrack2Language;
+      const replacement = previousLanguage !== nextLanguage && other !== previousLanguage
+        ? previousLanguage
+        : "off";
+      if (slot === 2) state.speechTrack2Language = replacement;
+      else state.speechTrack3Language = replacement;
+    });
     state.band = String(
       state.bandByLanguage[state.language]
       || activeLanguage().defaultBand
@@ -860,13 +1041,14 @@
     );
     state.currentPos = 0;
     state.playDirection = 1;
+    normalizeSpeechTrackState();
     els.languageSelect.value = state.language;
     populateBandSelect();
     syncReaderLanguageSelects();
     updateContentModeAvailability();
+    syncPiperControls();
     updateSettingLabels();
     updateVoiceSelectors();
-    syncPiperControls();
   }
 
   function isNewsMode() {
@@ -909,7 +1091,7 @@
 
   function voicePrefKeyForLang(lang) {
     const prefix = langPrefix(lang);
-    return prefix === "fa" || prefix === "ru" || prefix === "en" ? prefix : "";
+    return Object.prototype.hasOwnProperty.call(LANGUAGES, prefix) ? prefix : "";
   }
 
   function voiceId(voice) {
@@ -990,11 +1172,52 @@
     }
   }
 
+  function populatePiperModelSelect(select, languageKey) {
+    const option = document.createElement("option");
+    option.value = piperVoiceIdForLang(speechLanguageForKey(languageKey));
+    option.textContent = `${languageTrackLabel(languageKey)} Piper · downloads on first Play`;
+    select.replaceChildren(option);
+    select.disabled = true;
+  }
+
   function updateVoiceSelectors() {
-    populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto · best match");
-    populateVoiceSelect(els.enVoiceSelect, state.enLang || "en-US", "Auto · best match");
-    els.sourceVoiceSelect.disabled = isPiperEnabled();
-    els.enVoiceSelect.disabled = activeLanguage().mode === "vernacular" && !isPiperEnabled();
+    const primary = speechTrackConfig(1);
+    const track2 = speechTrackConfig(2);
+    const track3 = speechTrackConfig(3);
+    if (speechTrackUsesPiper(primary)) {
+      populatePiperModelSelect(els.sourceVoiceSelect, primary.language);
+    } else {
+      populateVoiceSelect(els.sourceVoiceSelect, systemSpeechLang(speechLanguageForKey(primary.language)), "Auto · best match");
+      els.sourceVoiceSelect.disabled = false;
+    }
+
+    if (track2.language === "off") {
+      els.enVoiceSelect.replaceChildren(new Option("Choose a language", ""));
+      els.enVoiceSelect.disabled = true;
+    } else {
+      if (speechTrackUsesPiper(track2)) {
+        populatePiperModelSelect(els.enVoiceSelect, track2.language);
+      } else {
+        populateVoiceSelect(els.enVoiceSelect, systemSpeechLang(speechLanguageForKey(track2.language)), "Auto · best match");
+        els.enVoiceSelect.disabled = false;
+      }
+    }
+
+    if (track3.language === "off") {
+      els.speechTrack3VoiceSelect.replaceChildren(new Option("Choose a language", ""));
+      els.speechTrack3VoiceSelect.disabled = true;
+    } else {
+      if (speechTrackUsesPiper(track3)) {
+        populatePiperModelSelect(els.speechTrack3VoiceSelect, track3.language);
+      } else {
+        populateVoiceSelect(
+          els.speechTrack3VoiceSelect,
+          systemSpeechLang(speechLanguageForKey(track3.language)),
+          "Auto · best match"
+        );
+        els.speechTrack3VoiceSelect.disabled = false;
+      }
+    }
   }
 
   function normalizeCacheWord(value, language = state.language) {
@@ -1127,27 +1350,84 @@
     return String(lang || "").toLowerCase().split(/[-_]/)[0];
   }
 
+  function speechTrackHint(track) {
+    if (!LANGUAGES[track.language]) return "Choose another language or leave this track Off.";
+    if (track.language === "en" && !els.bookReadEnglish.checked && track.slot > 1) {
+      return "English is configured but currently skipped by Read English aloud.";
+    }
+    const speechLang = speechLanguageForKey(track.language);
+    if (track.engine === "piper") {
+      if (!piperRuntimeAvailable()) {
+        return "Piper needs WebAssembly and persistent browser storage on this device.";
+      }
+      if (!piperVoiceIdForLang(speechLang)) {
+        return "Piper is unavailable for this language; use a System / iPhone voice.";
+      }
+      const megabytes = PIPER_FIRST_USE_MEGABYTES[track.language] || 89;
+      return `First Play downloads about ${megabytes} MB for ${languageTrackLabel(track.language)}; sentences stay continuous.`;
+    }
+    return `Uses the selected ${languageTrackLabel(track.language)} voice installed on this device.`;
+  }
+
+  function syncSpeechTrackLanguageOptions(select, slot) {
+    const otherLanguage = slot === 2 ? state.speechTrack3Language : state.speechTrack2Language;
+    Array.from(select.options).forEach((option) => {
+      option.disabled = option.value !== "off"
+        && (option.value === state.language || option.value === otherLanguage);
+    });
+  }
+
   function syncPiperControls() {
     if (!els.engineSelect) return;
-    const option = els.engineSelect.querySelector('option[value="piper"]');
-    const supportedVoice = piperVoiceIdForLang(activeLanguage().speechLang);
+    normalizeSpeechTrackState();
     const runtimeAvailable = piperRuntimeAvailable();
-    const available = Boolean(supportedVoice && runtimeAvailable);
-    if (option) option.disabled = !available;
-    els.engineSelect.value = state.ttsEngine;
+    const tracks = [speechTrackConfig(1), speechTrackConfig(2), speechTrackConfig(3)];
+    const controls = [
+      { track: tracks[0], engine: els.engineSelect, hint: els.piperEngineHint },
+      { track: tracks[1], engine: els.speechTrack2EngineSelect, hint: els.speechTrack2Hint },
+      { track: tracks[2], engine: els.speechTrack3EngineSelect, hint: els.speechTrack3Hint }
+    ];
+    const selectedPiperCount = tracks.filter((track) => (
+      speechTrackIsAudible(track) && speechTrackHasSupportedPiper(track)
+    )).length;
+
+    els.speechTrack2LanguageSelect.value = state.speechTrack2Language;
+    els.speechTrack3LanguageSelect.value = state.speechTrack3Language;
+    syncSpeechTrackLanguageOptions(els.speechTrack2LanguageSelect, 2);
+    syncSpeechTrackLanguageOptions(els.speechTrack3LanguageSelect, 3);
+
+    controls.forEach(({ track, engine, hint }) => {
+      const enabled = Boolean(LANGUAGES[track.language]);
+      const supported = enabled && Boolean(piperVoiceIdForLang(speechLanguageForKey(track.language)));
+      const piperOption = engine.querySelector('option[value="piper"]');
+      if (piperOption) {
+        piperOption.disabled = !runtimeAvailable
+          || !supported
+          || (
+            speechTrackIsAudible(track)
+            && track.engine !== "piper"
+            && selectedPiperCount >= PIPER_MAX_LIVE_WORKERS
+          );
+      }
+      engine.disabled = !enabled;
+      engine.value = supported && runtimeAvailable ? track.engine : "system";
+      hint.textContent = speechTrackHint(track);
+    });
+
     if (els.piperClearBtn) {
       els.piperClearBtn.hidden = !runtimeAvailable;
     }
-    if (!els.piperEngineHint) return;
-    if (!runtimeAvailable) {
-      els.piperEngineHint.textContent = "Piper needs WebAssembly and persistent browser storage on this device.";
-    } else if (!supportedVoice) {
-      els.piperEngineHint.textContent = "Piper is not available for this study language; system voices will be used.";
-    } else if (state.ttsEngine === "piper") {
-      const megabytes = PIPER_FIRST_USE_MEGABYTES[piperLanguageKey()] || 90;
-      els.piperEngineHint.textContent = `First Play downloads about ${megabytes} MB. The voice stays in this browser until you clear it; Piper reads only the study-language side.`;
-    } else {
-      els.piperEngineHint.textContent = "System voices use the voices installed on this device. Piper is an optional study-language download.";
+    if (els.piperResourceWarning) {
+      const piperTracks = tracks.filter((track) => (
+        speechTrackIsAudible(track) && speechTrackHasSupportedPiper(track)
+      ));
+      const totalMegabytes = piperTracks.reduce(
+        (total, track) => total + (PIPER_FIRST_USE_MEGABYTES[track.language] || 89),
+        0
+      );
+      els.piperResourceWarning.textContent = piperTracks.length
+        ? `${piperTracks.length} of 2 Piper voices selected${totalMegabytes ? ` · up to about ${totalMegabytes} MB across first-use downloads` : ""}. Other tracks use System / iPhone voices.`
+        : "Piper supports at most two active voices. Each voice needs a one-time download of about 55–89 MB; System / iPhone remains the lightest option.";
     }
   }
 
@@ -1234,6 +1514,7 @@
       els.entryExample.hidden = true;
       els.entryExample.textContent = "";
       resetEnglishFocusWord();
+      clearFocusSpeechTracks();
       els.progressText.textContent = "0 / 0";
       return;
     }
@@ -1253,16 +1534,85 @@
     prepareEnglishFocusWord(enText);
     els.enWord.textContent = enText;
     els.enWord.classList.toggle("missing", !meaning);
+    const meaningLabel = language.meaningHead || "English";
     els.meaningState.textContent = meaning
-      ? (language.meaningHead || "English")
-      : `${language.meaningHead || "English"} pending`;
+      ? `${meaningLabel}${englishSpeechEnabled() ? "" : " · display only"}`
+      : `${meaningLabel} pending`;
     const example = language.mode === "vernacular" ? String(entry.example || "") : "";
     els.entryExample.textContent = example ? `“${example}”` : "";
     els.entryExample.hidden = !example;
     els.progressText.textContent = `${state.currentPos + 1} / ${state.order.length}`;
     fitRussianFocusWord({ immediate: true });
     fitEnglishFocusWord({ immediate: true });
+    renderFocusSpeechTracks(entry, meaning).catch((error) => {
+      console.warn("Additional focus translation failed:", error);
+    });
     savePrefs();
+  }
+
+  function focusSpeechTrackElements(slot) {
+    return slot === 2
+      ? { pane: els.focusSpeechTrack2, label: els.focusSpeechTrack2Label, text: els.focusSpeechTrack2Text }
+      : { pane: els.focusSpeechTrack3, label: els.focusSpeechTrack3Label, text: els.focusSpeechTrack3Text };
+  }
+
+  function bookSpeechTrackElements(slot) {
+    return slot === 2
+      ? { pane: els.bookSpeechTrack2, label: els.bookSpeechTrack2Label, text: els.bookSpeechTrack2Sentence }
+      : { pane: els.bookSpeechTrack3, label: els.bookSpeechTrack3Label, text: els.bookSpeechTrack3Sentence };
+  }
+
+  function setSupplementalSpeechTrack(elements, track, text) {
+    const language = LANGUAGES[track.language];
+    const visible = Boolean(language && track.language !== "en" && track.language !== state.language);
+    elements.pane.hidden = !visible;
+    if (!visible) {
+      elements.text.textContent = "";
+      return false;
+    }
+    elements.label.textContent = `Track ${track.slot} · ${language.label}`;
+    elements.text.lang = langPrefix(language.speechLang);
+    elements.text.dir = language.dir;
+    elements.text.textContent = text;
+    elements.pane.dataset.trackLanguage = track.language;
+    return true;
+  }
+
+  function clearFocusSpeechTracks() {
+    state.focusSpeechRenderToken += 1;
+    [2, 3].forEach((slot) => {
+      const elements = focusSpeechTrackElements(slot);
+      elements.pane.hidden = true;
+      elements.text.textContent = "";
+    });
+    els.focusSpeechTracks.hidden = true;
+  }
+
+  async function renderFocusSpeechTracks(entry, englishAnchor) {
+    const renderToken = state.focusSpeechRenderToken + 1;
+    state.focusSpeechRenderToken = renderToken;
+    const tracks = enabledCompanionTracks();
+    let visibleCount = 0;
+    tracks.forEach((track) => {
+      if (setSupplementalSpeechTrack(
+        focusSpeechTrackElements(track.slot),
+        track,
+        englishAnchor ? "Translating…" : "Waiting for English translation…"
+      )) visibleCount += 1;
+    });
+    [2, 3].filter((slot) => !tracks.some((track) => track.slot === slot)).forEach((slot) => {
+      setSupplementalSpeechTrack(focusSpeechTrackElements(slot), { slot, language: "off" }, "");
+    });
+    els.focusSpeechTracks.hidden = visibleCount === 0;
+    if (!entry || !englishAnchor || !visibleCount) return;
+
+    await Promise.all(tracks.map(async (track) => {
+      if (track.language === "en" || track.language === state.language) return;
+      const translated = await ensureBookSourceSentence(englishAnchor, track.language);
+      if (renderToken !== state.focusSpeechRenderToken || entry !== currentEntry()) return;
+      const elements = focusSpeechTrackElements(track.slot);
+      elements.text.textContent = translated || `${languageTrackLabel(track.language)} translation unavailable.`;
+    }));
   }
 
   function prepareRussianFocusWord(text) {
@@ -2370,6 +2720,45 @@
       source: await ensureBookSourceSentence(sentence.text, language),
       english: sentence.text
     };
+  }
+
+  async function readerTextForSpeechTrack(pair, track) {
+    if (!pair || !track || !LANGUAGES[track.language]) return "";
+    if (track.language === state.language) return pair.source;
+    if (track.language === "en") return pair.english;
+    return ensureBookSourceSentence(pair.english, track.language);
+  }
+
+  function clearBookSpeechTracks() {
+    [2, 3].forEach((slot) => {
+      const elements = bookSpeechTrackElements(slot);
+      elements.pane.hidden = true;
+      elements.text.textContent = "";
+    });
+    els.bookSpeechTracks.hidden = true;
+  }
+
+  async function renderBookSpeechTracks(pair, renderToken = state.bookRenderToken) {
+    const tracks = enabledCompanionTracks();
+    let visibleCount = 0;
+    tracks.forEach((track) => {
+      if (setSupplementalSpeechTrack(bookSpeechTrackElements(track.slot), track, "Translating…")) {
+        visibleCount += 1;
+      }
+    });
+    [2, 3].filter((slot) => !tracks.some((track) => track.slot === slot)).forEach((slot) => {
+      setSupplementalSpeechTrack(bookSpeechTrackElements(slot), { slot, language: "off" }, "");
+    });
+    els.bookSpeechTracks.hidden = visibleCount === 0;
+    if (!pair?.english || !visibleCount) return;
+
+    await Promise.all(tracks.map(async (track) => {
+      if (track.language === "en" || track.language === state.language) return;
+      const translated = await readerTextForSpeechTrack(pair, track);
+      if (renderToken !== state.bookRenderToken) return;
+      const elements = bookSpeechTrackElements(track.slot);
+      elements.text.textContent = translated || `${languageTrackLabel(track.language)} translation unavailable.`;
+    }));
   }
 
   function standardEbooksPageUrl(page, query = state.bookSearch, genre = state.bookGenre) {
@@ -3811,7 +4200,8 @@
       : "";
     els.bookSourceNotice.hidden = book.source !== "usaf";
     els.bookChapterLabel.textContent = book.kind === "news" ? "Section" : "Chapter";
-    els.bookEnglishLabel.textContent = book.kind === "news" ? "English translation" : "English original";
+    const englishLabel = book.kind === "news" ? "English translation" : "English original";
+    els.bookEnglishLabel.textContent = `${englishLabel}${englishSpeechEnabled() ? "" : " · display only"}`;
     els.bookProgressRange.max = String(Math.max(0, state.bookSentences.length - 1));
     els.bookProgressRange.value = String(state.bookCurrentIndex);
     els.bookChapterSelect.replaceChildren();
@@ -3879,9 +4269,16 @@
       if (state.language !== language || readerDocumentKey(state.bookLoadedBook) !== loadedKey) return;
       sentences.forEach((sentence) => {
         readerSentencePair(sentence, language, newsMode)
-          .then((pair) => pair.source && pair.english
-            ? ensureReaderAlignment(pair, language, newsMode)
-            : null)
+          .then((pair) => {
+            if (!pair.source || !pair.english) return null;
+            const work = [ensureReaderAlignment(pair, language, newsMode).enrichmentPromise];
+            enabledCompanionTracks().forEach((track) => {
+              if (track.language !== "en" && track.language !== language) {
+                work.push(readerTextForSpeechTrack(pair, track));
+              }
+            });
+            return Promise.allSettled(work);
+          })
           .catch((error) => console.warn("Sentence prefetch failed:", error));
       });
     }, 220);
@@ -3898,6 +4295,7 @@
     if (!sentence) {
       els.bookSourceSentence.textContent = isNewsMode() ? "Select a news article to begin." : "Select a book to begin.";
       els.bookEnglishSentence.textContent = isNewsMode() ? "The English translation will appear here." : "The English original will appear here.";
+      clearBookSpeechTracks();
       updateBookProgressControls();
       renderBookNearby();
       return;
@@ -3921,11 +4319,13 @@
     els.bookSourceSentence.textContent = pair.source || `${language.label} translation unavailable. Select this sentence to retry.`;
     els.bookEnglishSentence.textContent = pair.english || "English translation unavailable. Select this sentence to retry.";
     if (translationMissing) {
+      clearBookSpeechTracks();
       setStatus("Translation unavailable. Check your connection and select the sentence to retry.");
       scheduleReaderSentencePrefetch();
       return;
     }
     ensureReaderAlignment(pair, languageKey, newsMode);
+    await renderBookSpeechTracks(pair, renderToken);
     scheduleReaderSentencePrefetch();
   }
 
@@ -4146,29 +4546,50 @@
 
     els.bookSourceSentence.textContent = pair.source;
     els.bookEnglishSentence.textContent = pair.english;
+    await renderBookSpeechTracks(pair, state.bookRenderToken);
     const alignment = ensureReaderAlignment(pair, languageKey, newsMode);
     await Promise.race([alignment.enrichmentPromise, delayPlain(700)]);
     if (token !== state.playToken || !state.bookPlaying) return;
-    setStatus(`${language.label} sentence ${state.bookCurrentIndex + 1}`);
-    await speakTextWithWordPacing(pair.source, language.speechLang, Number(els.bookSourceRate.value), token, {
-      alignment,
-      speakingPane: "source",
-      piperSource: true
-    });
-    await delay(Number(els.gapMs.value), token);
-    if (token !== state.playToken || !state.bookPlaying) return;
 
-    if (!els.bookReadEnglish.checked) return;
-    setStatus(`English sentence ${state.bookCurrentIndex + 1}`);
-    await speakTextWithWordPacing(pair.english, "en-US", Number(els.bookEnRate.value), token, {
-      alignment,
-      speakingPane: "english"
-    });
-    await delay(Number(els.gapMs.value), token);
+    for (const track of configuredSpeechTracks()) {
+      if (track.language === "en" && !els.bookReadEnglish.checked) continue;
+      const text = await readerTextForSpeechTrack(pair, track);
+      if (token !== state.playToken || !state.bookPlaying) return;
+      if (!text) {
+        setStatus(`${languageTrackLabel(track.language)} translation unavailable; skipping track ${track.slot}`);
+        continue;
+      }
+      const isPrimary = track.language === languageKey;
+      const isEnglish = track.language === "en";
+      const options = {
+        engine: track.engine,
+        highlightTargets: isPrimary || isEnglish
+          ? null
+          : [{ id: `bookSpeechTrack${track.slot}Sentence`, text }]
+      };
+      if (isPrimary || isEnglish) {
+        options.alignment = alignment;
+        options.speakingPane = isPrimary ? "source" : "english";
+      }
+      setStatus(`${languageTrackLabel(track.language)} · track ${track.slot} · sentence ${state.bookCurrentIndex + 1}`);
+      await speakTextWithWordPacing(
+        text,
+        speechLanguageForKey(track.language),
+        Number(isEnglish ? els.bookEnRate.value : els.bookSourceRate.value),
+        token,
+        options
+      );
+      await delay(Number(els.gapMs.value), token);
+      if (token !== state.playToken || !state.bookPlaying) return;
+    }
   }
 
   async function startBookPlayback() {
     if (state.bookPlaying) return;
+    if (state.piperStorageBusy) {
+      setStatus("Wait for Piper storage cleanup to finish");
+      return;
+    }
     if (!state.bookSentences.length) {
       setStatus(isNewsMode() ? "Load a news article first" : "Load a book first");
       return;
@@ -4222,7 +4643,7 @@
     clearSpeechHighlights();
     clearCorrespondingHighlights();
     stopPiperAudio();
-    terminatePiperWorker(new Error("Piper stopped"));
+    terminateAllPiperWorkers(new Error("Piper stopped"));
     if (window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
@@ -4242,32 +4663,67 @@
     const entryStatus = language.mode === "vernacular"
       ? `${entry.rarity || "Vernacular"} · ${entry.tier || entry.rank}`
       : `#${entry.rank} ${language.label}`;
+    const primaryTrack = speechTrackConfig(1);
     setStatus(entryStatus);
-    await speakText(source, language.speechLang, Number(els.ruRate.value), token, { piperSource: true });
+    await speakText(source, language.speechLang, Number(els.ruRate.value), token, {
+      engine: primaryTrack.engine,
+      highlightTargets: [{ id: "ruWord", text: source }]
+    });
     await delay(Number(els.gapMs.value), token);
     const en = await meaningPromise;
     if (token !== state.playToken) return;
 
     const englishSpeech = makeSpokenEnglish(en, entry);
-    if (englishSpeech && token === state.playToken) {
+    if (language.mode === "vernacular" && els.bookReadEnglish.checked && englishSpeech) {
       setStatus(language.mode === "vernacular" ? "Definition" : `#${entry.rank} English`);
-      await speakText(englishSpeech, "en-US", Number(els.enRate.value), token);
+      await speakText(englishSpeech, "en-US", Number(els.enRate.value), token, {
+        engine: primaryTrack.engine,
+        highlightTargets: [{ id: "enWord", text: en }]
+      });
+      await delay(Number(els.gapMs.value), token);
+    }
+
+    for (const track of enabledCompanionTracks()) {
+      if (track.language === "en" && !els.bookReadEnglish.checked) continue;
+      const trackText = track.language === "en"
+        ? englishSpeech
+        : await ensureBookSourceSentence(en, track.language);
+      if (token !== state.playToken) return;
+      if (!trackText) {
+        setStatus(`${languageTrackLabel(track.language)} translation unavailable; skipping track ${track.slot}`);
+        continue;
+      }
+      setStatus(`#${entry.rank} ${languageTrackLabel(track.language)} · track ${track.slot}`);
+      await speakText(
+        trackText,
+        speechLanguageForKey(track.language),
+        Number(track.language === "en" ? els.enRate.value : els.ruRate.value),
+        token,
+        {
+          engine: track.engine,
+          highlightTargets: [{
+            id: track.language === "en" ? "enWord" : `focusSpeechTrack${track.slot}Text`,
+            text: track.language === "en" ? en : trackText
+          }]
+        }
+      );
       await delay(Number(els.gapMs.value), token);
     }
   }
 
   async function speakText(text, lang, rate, token, options = {}) {
-    if (token !== state.playToken || !text) return;
+    if (token !== state.playToken || !text || options.engine === "off") return;
+    const piperVoiceId = piperVoiceIdForLang(lang);
     if (shouldUsePiperForRequest(text, lang, options)) {
       try {
         await speakWithPiper(text, lang, rate, token, options);
-        recordPiperSuccess();
+        recordPiperSuccess(piperVoiceId);
         return;
       } catch (error) {
         if (token !== state.playToken) return;
-        recordPiperFailure(error);
+        recordPiperFailure(error, piperVoiceId);
         console.warn("Piper failed, using the system voice:", error);
-        setStatus(piperCircuitOpen()
+        setStatus(piperCircuitOpen(piperVoiceId)
           ? "Piper paused after an error; using system voice"
           : "Piper unavailable, using system voice");
       }
@@ -4294,21 +4750,44 @@
     await speakText(spokenText, lang, readerSystemRateFromWpm(wordsPerMinute), token, options);
   }
 
-  async function prepareSpeechEngine() {
-    if (isPiperEnabled() && !piperCircuitOpen()) {
+  async function prepareSpeechEngine(options = {}) {
+    const requestedTracks = options.engine
+      ? [{
+        language: Object.keys(LANGUAGES).find(
+          (key) => langPrefix(speechLanguageForKey(key)) === langPrefix(options.lang)
+        ) || state.language,
+        engine: options.engine
+      }]
+      : configuredSpeechTracks().filter((track) => (
+        track.slot === 1 || track.language !== "en" || els.bookReadEnglish.checked
+      ));
+    const piperVoiceIds = requestedTracks
+      .filter((track) => track.engine === "piper")
+      .map((track) => piperVoiceIdForLang(speechLanguageForKey(track.language)))
+      .filter((voiceId) => voiceId && !piperCircuitOpen(voiceId));
+    const systemRequested = requestedTracks.some((track) => track.engine !== "piper");
+    let piperReady = false;
+    if (piperVoiceIds.length && piperRuntimeAvailable()) {
       try {
         // This call reaches audio.play() before its first await, preserving the
         // user gesture required by iPhone browser and Home Screen playback.
+        // The same unlocked player serves both Piper workers sequentially.
         await ensurePiperAudioUnlocked();
-        return;
+        piperReady = true;
       } catch (error) {
-        recordPiperFailure(error);
+        piperVoiceIds.forEach((voiceId) => recordPiperFailure(error, voiceId));
         stopPiperAudio();
         console.warn("Piper audio unlock failed; using the system voice:", error);
         setStatus("Piper audio was blocked; using system voice");
       }
     }
-    await prepareSystemSpeechEngine();
+    if (piperReady && !systemRequested) return;
+    try {
+      await prepareSystemSpeechEngine();
+    } catch (error) {
+      if (!piperReady) throw error;
+      console.warn("System speech preparation failed; Piper tracks remain available:", error);
+    }
   }
 
   async function prepareSystemSpeechEngine() {
@@ -4438,16 +4917,36 @@
     await playPiperClip(clip, lang, rate, token, options);
   }
 
+  function piperEngineRequested(options = {}) {
+    if (options.engine === "system" || options.engine === "off") return false;
+    if (options.engine === "piper") return true;
+    // Keep the existing global-engine contract until each caller has its own
+    // track setting. New callers can opt any supported language into Piper by
+    // passing { engine: "piper" }.
+    return options.piperSource === true && isPiperEnabled();
+  }
+
+  function piperWorkerCapacityAvailable(voiceId) {
+    return Boolean(
+      voiceId
+      && (state.piperWorkers.has(voiceId) || state.piperWorkers.size < PIPER_MAX_LIVE_WORKERS)
+    );
+  }
+
   function shouldUsePiperForRequest(text, lang, options) {
     const clean = stripForSpeech(text);
+    const voiceId = piperVoiceIdForLang(lang);
     return Boolean(
-      options?.piperSource === true
-      && isPiperEnabled()
-      && !piperCircuitOpen()
+      piperEngineRequested(options)
+      && piperRuntimeAvailable()
+      && !piperCircuitOpen(voiceId)
       && clean
       && clean.length <= PIPER_MAX_TEXT_CHARS
-      && piperVoiceIdForLang(lang)
-      && piperLanguageKey(lang) === piperLanguageKey(activeLanguage().speechLang)
+      && voiceId
+      && (
+        state.piperAudioCache.has(`${voiceId}:${clean}`)
+        || piperWorkerCapacityAvailable(voiceId)
+      )
     );
   }
 
@@ -4461,25 +4960,36 @@
     return "";
   }
 
-  function piperCircuitOpen() {
-    if (!state.piperCircuitOpenUntil) return false;
-    if (Date.now() < state.piperCircuitOpenUntil) return true;
-    state.piperCircuitOpenUntil = 0;
-    state.piperFailureCount = 0;
+  function piperFailureKey(langOrVoice = activeLanguage().speechLang) {
+    return piperVoiceIdForLang(langOrVoice) || String(langOrVoice || "");
+  }
+
+  function piperCircuitOpen(langOrVoice = activeLanguage().speechLang) {
+    const key = piperFailureKey(langOrVoice);
+    const failure = key ? state.piperFailures.get(key) : null;
+    if (!failure) return false;
+    if (Date.now() < failure.openUntil) return true;
+    state.piperFailures.delete(key);
     return false;
   }
 
-  function recordPiperSuccess() {
-    state.piperFailureCount = 0;
-    state.piperCircuitOpenUntil = 0;
+  function recordPiperSuccess(langOrVoice = activeLanguage().speechLang) {
+    const key = piperFailureKey(langOrVoice);
+    if (key) state.piperFailures.delete(key);
   }
 
-  function recordPiperFailure(error) {
-    terminatePiperWorker(error instanceof Error ? error : new Error("Piper failed"));
-    state.piperFailureCount += 1;
-    if (state.piperFailureCount >= PIPER_FAILURE_LIMIT) {
-      state.piperCircuitOpenUntil = Date.now() + PIPER_FAILURE_COOLDOWN_MS;
+  function recordPiperFailure(error, langOrVoice = activeLanguage().speechLang) {
+    // Capacity is an expected bounded-resource fallback, not a broken voice.
+    if (error?.code === "PIPER_WORKER_LIMIT") return;
+    const key = piperFailureKey(langOrVoice);
+    if (!key) return;
+    const failure = state.piperFailures.get(key) || { count: 0, openUntil: 0 };
+    failure.count += 1;
+    if (failure.count >= PIPER_FAILURE_LIMIT) {
+      failure.openUntil = Date.now() + PIPER_FAILURE_COOLDOWN_MS;
     }
+    state.piperFailures.set(key, failure);
+    terminatePiperWorker(key, error instanceof Error ? error : new Error("Piper failed"));
   }
 
   function ensurePiperAudioUnlocked() {
@@ -4511,29 +5021,36 @@
     });
   }
 
-  function handlePiperWorkerMessage(event, worker) {
-    if (state.piperWorker !== worker) return;
+  function piperVoiceLabel(voiceId) {
+    const key = piperLanguageKey(voiceId);
+    const labels = { ru: "Russian", fa: "Farsi", es: "Spanish", fr: "French", en: "English" };
+    return labels[key] || "Piper";
+  }
+
+  function handlePiperWorkerMessage(event, context) {
+    if (state.piperWorkers.get(context.voiceId) !== context) return;
     const message = event.data || {};
-    const request = state.piperRequests.get(Number(message.id));
+    const request = context.requests.get(Number(message.id));
     if (!request) return;
     if (message.type === "progress") {
       const loaded = Math.max(0, Number(message.loaded) || 0);
       const total = Math.max(0, Number(message.total) || 0);
       if (total > 0) {
-        setStatus(`Downloading ${activeLanguage().label} Piper voice · ${Math.min(100, Math.round((loaded / total) * 100))}%`);
+        setStatus(`Downloading ${piperVoiceLabel(context.voiceId)} Piper voice · ${Math.min(100, Math.round((loaded / total) * 100))}%`);
       } else if (loaded > 0) {
-        setStatus(`Downloading ${activeLanguage().label} Piper voice · ${(loaded / (1024 * 1024)).toFixed(1)} MB`);
+        setStatus(`Downloading ${piperVoiceLabel(context.voiceId)} Piper voice · ${(loaded / (1024 * 1024)).toFixed(1)} MB`);
       }
       return;
     }
     window.clearTimeout(request.timer);
-    state.piperRequests.delete(Number(message.id));
+    context.requests.delete(Number(message.id));
+    if (!context.requests.size) schedulePiperWorkerIdle(context.voiceId);
     if (message.type === "result") {
       if (!(message.blob instanceof Blob) || !message.blob.size) {
         request.reject(new Error("Piper returned no audio"));
         return;
       }
-      state.piperWorkerReady = true;
+      context.ready = true;
       request.resolve(message.blob);
       return;
     }
@@ -4544,71 +5061,95 @@
     request.reject(new Error(message.message || "Piper worker failed"));
   }
 
-  function terminatePiperWorker(reason = new Error("Piper worker closed")) {
-    window.clearTimeout(state.piperIdleTimer);
-    state.piperIdleTimer = 0;
-    const worker = state.piperWorker;
-    state.piperWorker = null;
-    state.piperWorkerVoiceId = "";
-    state.piperWorkerReady = false;
-    if (worker) worker.terminate();
-    state.piperRequests.forEach((request) => {
+  function terminatePiperWorker(voiceId, reason = new Error("Piper worker closed")) {
+    const context = state.piperWorkers.get(voiceId);
+    if (!context) return;
+    state.piperWorkers.delete(voiceId);
+    window.clearTimeout(context.idleTimer);
+    context.idleTimer = 0;
+    context.worker.terminate();
+    context.requests.forEach((request) => {
       window.clearTimeout(request.timer);
       request.reject(reason);
     });
-    state.piperRequests.clear();
+    context.requests.clear();
+  }
+
+  function terminateAllPiperWorkers(reason = new Error("Piper workers closed")) {
+    Array.from(state.piperWorkers.keys()).forEach((voiceId) => {
+      terminatePiperWorker(voiceId, reason);
+    });
   }
 
   function ensurePiperWorker(voiceId) {
-    window.clearTimeout(state.piperIdleTimer);
-    state.piperIdleTimer = 0;
-    if (state.piperWorker && state.piperWorkerVoiceId === voiceId) return state.piperWorker;
-    terminatePiperWorker(new Error("Piper voice changed"));
+    const existing = state.piperWorkers.get(voiceId);
+    if (existing) {
+      window.clearTimeout(existing.idleTimer);
+      existing.idleTimer = 0;
+      return existing;
+    }
+    if (state.piperWorkers.size >= PIPER_MAX_LIVE_WORKERS) {
+      const error = new Error("Piper is already using the maximum of two voice workers");
+      error.code = "PIPER_WORKER_LIMIT";
+      throw error;
+    }
     const worker = new Worker(PIPER_WORKER_URL, {
       type: "module",
-      name: "wordfreak-piper"
+      name: `wordfreak-piper-${piperLanguageKey(voiceId) || "voice"}`
     });
-    state.piperWorker = worker;
-    state.piperWorkerVoiceId = voiceId;
-    worker.addEventListener("message", (event) => handlePiperWorkerMessage(event, worker));
+    const context = {
+      voiceId,
+      worker,
+      ready: false,
+      requests: new Map(),
+      idleTimer: 0
+    };
+    state.piperWorkers.set(voiceId, context);
+    worker.addEventListener("message", (event) => handlePiperWorkerMessage(event, context));
     worker.addEventListener("error", (event) => {
-      if (state.piperWorker !== worker) return;
+      if (state.piperWorkers.get(voiceId) !== context) return;
       event.preventDefault();
-      terminatePiperWorker(new Error(event.message || "Piper worker failed"));
+      terminatePiperWorker(voiceId, new Error(event.message || "Piper worker failed"));
     });
     worker.addEventListener("messageerror", () => {
-      if (state.piperWorker === worker) {
-        terminatePiperWorker(new Error("Piper worker returned unreadable data"));
+      if (state.piperWorkers.get(voiceId) === context) {
+        terminatePiperWorker(voiceId, new Error("Piper worker returned unreadable data"));
       }
     });
-    return worker;
+    return context;
   }
 
   function requestPiperWorker(voiceId, message, timeoutMs, label) {
-    const worker = ensurePiperWorker(voiceId);
+    let context;
+    try {
+      context = ensurePiperWorker(voiceId);
+    } catch (error) {
+      return Promise.reject(error);
+    }
     const id = state.piperRequestId + 1;
     state.piperRequestId = id;
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => {
-        if (!state.piperRequests.has(id)) return;
-        terminatePiperWorker(timeoutError(label, timeoutMs));
+        if (!context.requests.has(id)) return;
+        terminatePiperWorker(voiceId, timeoutError(label, timeoutMs));
       }, timeoutMs);
-      state.piperRequests.set(id, { resolve, reject, timer });
+      context.requests.set(id, { resolve, reject, timer });
       try {
-        worker.postMessage({ ...message, id });
+        context.worker.postMessage({ ...message, id });
       } catch (error) {
         window.clearTimeout(timer);
-        state.piperRequests.delete(id);
+        context.requests.delete(id);
         reject(error);
       }
     });
   }
 
-  function schedulePiperWorkerIdle() {
-    window.clearTimeout(state.piperIdleTimer);
-    if (!state.piperWorker) return;
-    state.piperIdleTimer = window.setTimeout(() => {
-      terminatePiperWorker(new Error("Piper worker idle"));
+  function schedulePiperWorkerIdle(voiceId) {
+    const context = state.piperWorkers.get(voiceId);
+    if (!context) return;
+    window.clearTimeout(context.idleTimer);
+    context.idleTimer = window.setTimeout(() => {
+      terminatePiperWorker(voiceId, new Error("Piper worker idle"));
     }, PIPER_IDLE_TIMEOUT_MS);
   }
 
@@ -4654,7 +5195,7 @@
     if (state.piperAudioPending.has(key)) return state.piperAudioPending.get(key);
 
     const pending = (async () => {
-      const timeoutMs = state.piperWorkerReady
+      const timeoutMs = state.piperWorkers.get(voiceId)?.ready
         ? PIPER_PREDICT_TIMEOUT_MS
         : PIPER_FIRST_REQUEST_TIMEOUT_MS;
       const blob = await requestPiperWorker(
@@ -4791,7 +5332,7 @@
         state.piperAudioUrl = "";
       }
       clearPiperHighlight(options);
-      schedulePiperWorkerIdle();
+      schedulePiperWorkerIdle(clip.voiceId);
     }
   }
 
@@ -4802,8 +5343,11 @@
     }
     stopSpeech();
     clearPiperAudioCache();
+    state.piperStorageBusy = true;
     const button = els.piperClearBtn;
     if (button) button.disabled = true;
+    els.playBtn.disabled = true;
+    els.bookPlayBtn.disabled = true;
     setStatus("Clearing downloaded Piper voices");
     try {
       await requestPiperWorker(
@@ -4812,14 +5356,17 @@
         PIPER_CLEAR_TIMEOUT_MS,
         "Piper storage cleanup"
       );
-      recordPiperSuccess();
+      state.piperFailures.clear();
       setStatus("Downloaded Piper voices cleared");
     } catch (error) {
       setStatus(error.message || "Could not clear Piper voices");
       console.warn("Piper storage cleanup failed:", error);
     } finally {
-      terminatePiperWorker(new Error("Piper storage cleanup finished"));
+      terminatePiperWorker("__storage__", new Error("Piper storage cleanup finished"));
+      state.piperStorageBusy = false;
       if (button) button.disabled = false;
+      els.playBtn.disabled = false;
+      els.bookPlayBtn.disabled = false;
     }
   }
 
@@ -4916,6 +5463,10 @@
 
   async function startPlayback() {
     if (state.playing) return;
+    if (state.piperStorageBusy) {
+      setStatus("Wait for Piper storage cleanup to finish");
+      return;
+    }
     state.playing = true;
     const token = state.playToken + 1;
     state.playToken = token;
@@ -4972,6 +5523,75 @@
     renderVisibleRows();
     scrollCurrentIntoView("center");
     setStatus("Ready");
+  }
+
+  function refreshSpeechTrackPresentation() {
+    syncPiperControls();
+    updateSettingLabels();
+    updateVoiceSelectors();
+    updateFocus();
+    if (state.bookMode && state.bookLoadedBook) {
+      renderBookReaderShell();
+      renderBookSentence().catch((error) => {
+        console.warn("Reader track refresh failed:", error);
+      });
+    }
+  }
+
+  function setSpeechTrackLanguage(slot, requestedLanguage) {
+    const language = normalizeSpeechTrackLanguage(requestedLanguage) || "off";
+    if (slot === 2) state.speechTrack2Language = language;
+    else state.speechTrack3Language = language;
+    normalizeSpeechTrackState();
+    stopSpeech();
+    clearPiperAudioCache();
+    refreshSpeechTrackPresentation();
+    savePrefs();
+    const selected = speechTrackConfig(slot);
+    setStatus(selected.language === "off"
+      ? `Track ${slot} turned off`
+      : `Track ${slot} set to ${languageTrackLabel(selected.language)}`);
+  }
+
+  function setSpeechTrackEngine(slot, requestedEngine) {
+    const nextEngine = normalizeSpeechTrackEngine(requestedEngine);
+    const track = speechTrackConfig(slot);
+    if (!LANGUAGES[track.language]) return;
+    const otherPiperCount = [1, 2, 3]
+      .filter((otherSlot) => otherSlot !== slot)
+      .map(speechTrackConfig)
+      .filter((otherTrack) => speechTrackIsAudible(otherTrack) && speechTrackHasSupportedPiper(otherTrack))
+      .length;
+    const speechLang = speechLanguageForKey(track.language);
+    let engine = nextEngine;
+    let message = "";
+    if (engine === "piper" && !piperVoiceIdForLang(speechLang)) {
+      engine = "system";
+      message = `Piper is unavailable for ${languageTrackLabel(track.language)}; using System / iPhone`;
+    } else if (engine === "piper" && !piperRuntimeAvailable()) {
+      engine = "system";
+      message = "Piper is unavailable on this device; using System / iPhone";
+    } else if (
+      engine === "piper"
+      && speechTrackIsAudible(track)
+      && otherPiperCount >= PIPER_MAX_LIVE_WORKERS
+    ) {
+      engine = "system";
+      message = "Two Piper voices are already selected; this track will use System / iPhone";
+    }
+
+    if (slot === 1) state.ttsEngine = engine;
+    else if (slot === 2) state.speechTrack2Engine = engine;
+    else state.speechTrack3Engine = engine;
+    stopSpeech();
+    clearPiperAudioCache();
+    state.piperFailures.clear();
+    if (!configuredSpeechTracks().some(speechTrackUsesPiper)) {
+      stopPiperAudio({ releasePlayer: true });
+    }
+    refreshSpeechTrackPresentation();
+    savePrefs();
+    setStatus(message || `${languageTrackLabel(track.language)} will use ${engine === "piper" ? "Piper" : "System / iPhone"}`);
   }
 
   function bindEvents() {
@@ -5052,6 +5672,7 @@
 
     els.settingsToggle.addEventListener("click", () => {
       els.settingsPanel.hidden = !els.settingsPanel.hidden;
+      els.settingsToggle.setAttribute("aria-expanded", String(!els.settingsPanel.hidden));
     });
 
     els.bookToggle.addEventListener("click", () => {
@@ -5301,8 +5922,26 @@
     });
 
     els.bookReadEnglish.addEventListener("change", () => {
+      stopSpeech();
+      const englishPiperWasSelected = enabledCompanionTracks().some((track) => (
+        track.language === "en" && track.engine === "piper"
+      ));
+      syncPiperControls();
+      updateFocus();
+      if (state.bookLoadedBook) renderBookReaderShell();
       savePrefs();
-      setStatus(els.bookReadEnglish.checked ? "English TTS enabled" : "English TTS skipped");
+      const englishPiperStillSelected = enabledCompanionTracks().some((track) => (
+        track.language === "en" && track.engine === "piper"
+      ));
+      setStatus(
+        els.bookReadEnglish.checked && englishPiperWasSelected && !englishPiperStillSelected
+          ? "English enabled with System / iPhone so the two foreign Piper voices stay active"
+          : els.bookReadEnglish.checked && !englishSpeechEnabled()
+            ? "English speech is allowed, but no English companion track is selected"
+          : els.bookReadEnglish.checked
+            ? "English translations and definitions will be read"
+            : "English translations and definitions will be skipped"
+      );
     });
 
     const prefetchShelfCard = (event) => {
@@ -5355,8 +5994,19 @@
     });
 
     els.enVoiceSelect.addEventListener("change", () => {
-      state.voicePrefs.en = els.enVoiceSelect.value;
-      savePrefs();
+      const key = voicePrefKeyForLang(speechLanguageForKey(state.speechTrack2Language));
+      if (key) {
+        state.voicePrefs[key] = els.enVoiceSelect.value;
+        savePrefs();
+      }
+    });
+
+    els.speechTrack3VoiceSelect.addEventListener("change", () => {
+      const key = voicePrefKeyForLang(speechLanguageForKey(state.speechTrack3Language));
+      if (key) {
+        state.voicePrefs[key] = els.speechTrack3VoiceSelect.value;
+        savePrefs();
+      }
     });
 
     els.enLangSelect.addEventListener("change", () => {
@@ -5366,24 +6016,25 @@
       savePrefs();
     });
 
-    if (els.engineSelect) {
-      els.engineSelect.addEventListener("change", () => {
-        stopSpeech();
-        clearPiperAudioCache();
-        state.ttsEngine = els.engineSelect.value === "piper" && piperRuntimeAvailable()
-          ? "piper"
-          : "system";
-        recordPiperSuccess();
-        if (state.ttsEngine === "system") stopPiperAudio({ releasePlayer: true });
-        syncPiperControls();
-        updateSettingLabels();
-        updateVoiceSelectors();
-        savePrefs();
-        setStatus(state.ttsEngine === "piper"
-          ? "Piper selected; the voice downloads on first Play"
-          : "System voices selected");
-      });
-    }
+    els.speechTrack2LanguageSelect.addEventListener("change", () => {
+      setSpeechTrackLanguage(2, els.speechTrack2LanguageSelect.value);
+    });
+
+    els.speechTrack3LanguageSelect.addEventListener("change", () => {
+      setSpeechTrackLanguage(3, els.speechTrack3LanguageSelect.value);
+    });
+
+    els.engineSelect.addEventListener("change", () => {
+      setSpeechTrackEngine(1, els.engineSelect.value);
+    });
+
+    els.speechTrack2EngineSelect.addEventListener("change", () => {
+      setSpeechTrackEngine(2, els.speechTrack2EngineSelect.value);
+    });
+
+    els.speechTrack3EngineSelect.addEventListener("change", () => {
+      setSpeechTrackEngine(3, els.speechTrack3EngineSelect.value);
+    });
 
     if (els.piperClearBtn) {
       els.piperClearBtn.addEventListener("click", clearDownloadedPiperVoices);
@@ -5433,10 +6084,8 @@
       fitEnglishFocusWord();
     });
     window.addEventListener("pagehide", () => {
-      state.playToken += 1;
+      stopSpeech();
       stopPiperAudio({ releasePlayer: true });
-      terminatePiperWorker(new Error("Page hidden"));
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
     });
     if (window.speechSynthesis) {
       const handleVoicesChanged = () => syncAvailableVoices();
@@ -5459,6 +6108,7 @@
 
   async function init() {
     loadPrefs();
+    normalizeSpeechTrackState();
     els.languageSelect.value = state.language;
     populateBandSelect();
     syncReaderLanguageSelects();
