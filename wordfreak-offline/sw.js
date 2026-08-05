@@ -1,4 +1,4 @@
-const CACHE_NAME = "wordfreak-offline-v1";
+const CACHE_NAME = "wordfreak-offline-v2";
 const ASSETS = [
   "./",
   "./index.html",

@@ -224,9 +224,16 @@
     voicePrefs: {
       ru: "",
       fa: "",
+      es: "",
+      fr: "",
+      hi: "",
+      ja: "",
+      ko: "",
       en: ""
     },
-    enLang: "",
+    enLang: "en-US",
+    voicesReadyPromise: null,
+    voiceLoadSettled: false,
     rowHeight: 42,
     translationCache: loadTranslationCache(),
     bookMode: false,
@@ -271,12 +278,14 @@
       if (prefs.voicePrefs && typeof prefs.voicePrefs === "object") {
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
-      state.enLang = typeof prefs.enLang === "string" ? prefs.enLang : state.enLang;
+      state.enLang = typeof prefs.enLang === "string" && langPrefix(prefs.enLang) === "en"
+        ? prefs.enLang
+        : "en-US";
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
       els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
-      els.bookSourceRate.value = els.ruRate.value;
-      els.bookEnRate.value = els.enRate.value;
+      els.bookSourceRate.value = String(clamp(prefs.bookSourceWpm || els.bookSourceRate.value, 10, 200));
+      els.bookEnRate.value = String(clamp(prefs.bookEnWpm || els.bookEnRate.value, 10, 200));
       els.bookVolume.value = els.pageVolume.value;
       els.gapMs.value = prefs.gapMs || els.gapMs.value;
     } catch (error) {
@@ -294,6 +303,8 @@
       bookGenre: state.bookGenre,
       voicePrefs: state.voicePrefs,
       enLang: state.enLang,
+      bookSourceWpm: els.bookSourceRate.value,
+      bookEnWpm: els.bookEnRate.value,
       ruRate: els.ruRate.value,
       enRate: els.enRate.value,
       pageVolume: els.pageVolume.value,
@@ -317,8 +328,8 @@
     els.ruRateValue.textContent = `${Number(els.ruRate.value).toFixed(2)}x`;
     els.enRateValue.textContent = `${Number(els.enRate.value).toFixed(2)}x`;
     els.pageVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
-    els.bookSourceRateValue.textContent = `${Number(els.bookSourceRate.value).toFixed(2)}x`;
-    els.bookEnRateValue.textContent = `${Number(els.bookEnRate.value).toFixed(2)}x`;
+    els.bookSourceRateValue.textContent = `${Math.round(Number(els.bookSourceRate.value))} WPM`;
+    els.bookEnRateValue.textContent = `${Math.round(Number(els.bookEnRate.value))} WPM`;
     els.bookVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
     els.gapValue.textContent = `${Number.parseInt(els.gapMs.value, 10)} ms`;
   }
@@ -405,38 +416,63 @@
   }
 
   function langPrefix(lang) {
-    return String(lang || "").toLowerCase().split("-")[0];
+    return normalizeLocale(lang).split("-")[0];
+  }
+
+  function normalizeLocale(lang) {
+    return String(lang || "").trim().replace(/_/g, "-").toLowerCase();
   }
 
   function voicePrefKeyForLang(lang) {
     const prefix = langPrefix(lang);
-    return prefix === "fa" || prefix === "ru" || prefix === "en" ? prefix : "";
+    const supportedPrefixes = new Set([
+      "en",
+      ...Object.values(LANGUAGES).map((language) => langPrefix(language.speechLang))
+    ]);
+    return supportedPrefixes.has(prefix) ? prefix : "";
   }
 
   function voiceId(voice) {
     return voice ? `${voice.voiceURI || voice.name}|${voice.lang}` : "";
   }
 
+  function voiceQuality(voice) {
+    const description = `${voice?.name || ""} ${voice?.voiceURI || ""}`.toLowerCase();
+    if (/super[\s._-]*compact/.test(description)) {
+      return { rank: 4, label: "Supercompact" };
+    }
+    if (/(^|[^a-z])premium([^a-z]|$)/.test(description)) {
+      return { rank: 0, label: "Premium" };
+    }
+    if (/(^|[^a-z])enhanced([^a-z]|$)/.test(description)) {
+      return { rank: 1, label: "Enhanced" };
+    }
+    if (/(^|[^a-z])compact([^a-z]|$)/.test(description)) {
+      return { rank: 3, label: "Compact" };
+    }
+    return { rank: 2, label: "quality not reported" };
+  }
+
   function voiceLabel(voice) {
-    const quality = voice.localService ? "local" : "network";
-    return `${voice.name} (${voice.lang}, ${quality})`;
+    const locale = voice?.lang || "locale not reported";
+    return `${voice?.name || "Unnamed voice"} · ${locale} · ${voiceQuality(voice).label}`;
   }
 
   function matchingVoices(lang) {
-    const lower = String(lang || "").toLowerCase();
+    const lower = normalizeLocale(lang);
     const prefix = langPrefix(lang);
-    const exactLang = lower.includes("-");
     return state.voices
       .filter((voice) => {
-        const voiceLang = String(voice.lang || "").toLowerCase();
-        return voiceLang === lower || (!exactLang && voiceLang.startsWith(prefix));
+        const voiceLang = normalizeLocale(voice.lang);
+        return Boolean(prefix) && (voiceLang === prefix || langPrefix(voiceLang) === prefix);
       })
       .sort((a, b) => {
-        const aLang = String(a.lang || "").toLowerCase();
-        const bLang = String(b.lang || "").toLowerCase();
+        const aLang = normalizeLocale(a.lang);
+        const bLang = normalizeLocale(b.lang);
         if (aLang === lower && bLang !== lower) return -1;
         if (aLang !== lower && bLang === lower) return 1;
-        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+        const qualityDifference = voiceQuality(a).rank - voiceQuality(b).rank;
+        if (qualityDifference) return qualityDifference;
         return String(a.name || "").localeCompare(String(b.name || ""));
       });
   }
@@ -449,7 +485,9 @@
 
     const auto = document.createElement("option");
     auto.value = "";
-    auto.textContent = emptyLabel;
+    auto.textContent = voices[0]
+      ? `${emptyLabel} · ${voiceLabel(voices[0])}`
+      : `${emptyLabel} · no matching voice reported`;
     select.appendChild(auto);
 
     voices.forEach((voice) => {
@@ -467,8 +505,8 @@
   }
 
   function updateVoiceSelectors() {
-    populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto default");
-    populateVoiceSelect(els.enVoiceSelect, state.enLang || "en", "Auto default");
+    populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto");
+    populateVoiceSelect(els.enVoiceSelect, systemSpeechLang("en-US"), "Auto");
   }
 
   function normalizeCacheWord(value, language = state.language) {
@@ -497,15 +535,19 @@
   }
 
   function stripForSpeech(value) {
-    return normalizeSpaces(
-      String(value || "")
-        // Some iOS voices pronounce escaped book punctuation literally.
-        .replace(/[\\/"“”„‟«»‹›()[\]{}<>|*_~^#=+]/g, " ")
-        .replace(/[—–―]/g, " ")
-        .replace(/\.\.\.|…/g, " ")
-        .replace(/[;:]/g, ",")
-        .replace(/\s+([,.!?])/g, "$1")
-    );
+    return normalizeSpaces(String(value || "")
+        .normalize("NFKC")
+        // Invisible direction controls can make iOS announce nearby marks.
+        .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "")
+        // Normalize typographic marks while retaining useful speech pauses.
+        .replace(/[“”„‟«»‹›]/g, "\"")
+        .replace(/[‘’‛ʼ]/g, "'")
+        .replace(/[–―]/g, "—")
+        .replace(/[\p{S}]+/gu, " ")
+        .replace(/[\\/()<>\[\]{}|*_~^#=+]/g, " ")
+        .replace(/\s+([,.;:!?…،؛؟。！？।॥])/gu, "$1")
+        .replace(/([,.;:!?…،؛؟。！？।॥])(?=[\p{L}\p{N}])/gu, "$1 ")
+        .replace(/\s*—\s*/g, " — "));
   }
 
   function clamp(value, min, max) {
@@ -517,14 +559,10 @@
   }
 
   function syncBookAudioControlsFromSettings() {
-    els.bookSourceRate.value = els.ruRate.value;
-    els.bookEnRate.value = els.enRate.value;
     els.bookVolume.value = els.pageVolume.value;
   }
 
   function syncSettingsAudioControlsFromBook() {
-    els.ruRate.value = els.bookSourceRate.value;
-    els.enRate.value = els.bookEnRate.value;
     els.pageVolume.value = els.bookVolume.value;
   }
 
@@ -837,10 +875,92 @@
     while ((match = wordPattern.exec(clean)) !== null) {
       ranges.push({
         start: match.index,
-        end: match.index + match[0].length
+        end: match.index + match[0].length,
+        text: match[0]
       });
     }
     return ranges;
+  }
+
+  function speechChunkBand(wordsPerMinute) {
+    const wpm = clamp(wordsPerMinute, 10, 200);
+    if (wpm <= 45) return { min: 1, max: 1, target: 1 };
+    if (wpm <= 75) return { min: 2, max: 2, target: 2 };
+    if (wpm <= 120) {
+      return {
+        min: 3,
+        max: 4,
+        target: clamp(Math.round(3 + ((wpm - 76) / 44)), 3, 4)
+      };
+    }
+    return {
+      min: 5,
+      max: 8,
+      target: clamp(Math.round(5 + (((wpm - 121) / 79) * 3)), 5, 8)
+    };
+  }
+
+  function speechBoundaryScore(value) {
+    const betweenWords = String(value || "");
+    if (/[.!?…؟。！？।॥]/u.test(betweenWords)) return 3;
+    if (/[;:؛]/u.test(betweenWords)) return 2;
+    if (/[,،\u2014]/u.test(betweenWords)) return 1;
+    return 0;
+  }
+
+  function speechChunks(text, wordsPerMinute) {
+    const clean = stripForSpeech(text);
+    const ranges = wordRanges(clean);
+    if (!ranges.length) return [];
+    const band = speechChunkBand(wordsPerMinute);
+    const chunks = [];
+    let wordStart = 0;
+
+    while (wordStart < ranges.length) {
+      const remaining = ranges.length - wordStart;
+      let wordCount = Math.min(band.target, remaining);
+      let chosenBoundaryScore = 0;
+      if (remaining > band.max) {
+        let bestBoundary = null;
+        const maximum = Math.min(band.max, remaining - 1);
+        for (let count = 1; count <= maximum; count += 1) {
+          const current = ranges[wordStart + count - 1];
+          const next = ranges[wordStart + count];
+          const score = speechBoundaryScore(clean.slice(current.end, next.start));
+          if (!score || (score < 3 && count < band.min)) continue;
+          const distance = Math.abs(count - band.target);
+          if (!bestBoundary || score > bestBoundary.score || (score === bestBoundary.score && distance < bestBoundary.distance)) {
+            bestBoundary = { count, score, distance };
+          }
+        }
+        wordCount = bestBoundary?.count || Math.min(band.target, maximum);
+        chosenBoundaryScore = bestBoundary?.score || 0;
+      } else if (remaining <= band.max) {
+        wordCount = remaining;
+      }
+
+      if (remaining - wordCount === 1 && chosenBoundaryScore < 3) {
+        // Keep a hard sentence break, but otherwise rebalance the final two
+        // chunks so normal-rate playback does not fall back to a robotic
+        // one-word utterance at the tail.
+        wordCount = wordCount > 2 ? wordCount - 1 : wordCount + 1;
+      }
+
+      const chunkStart = ranges[wordStart].start;
+      const nextRange = ranges[wordStart + wordCount];
+      const chunkEnd = nextRange ? nextRange.start : clean.length;
+      const chunkText = clean.slice(chunkStart, chunkEnd).trim();
+      if (chunkText) {
+        chunks.push({
+          text: chunkText,
+          charStart: chunkStart,
+          wordStart,
+          wordCount
+        });
+      }
+      wordStart += wordCount;
+    }
+    return chunks;
   }
 
   function activeWordIndexForChar(text, charIndex) {
@@ -1946,7 +2066,7 @@
 
     els.bookSourceSentence.textContent = source;
     setStatus(`${language.label} sentence ${state.bookCurrentIndex + 1}`);
-    await speakText(source, language.speechLang, Number(els.bookSourceRate.value), token, {
+    await speakTextWithPhrasePacing(source, language.speechLang, Number(els.bookSourceRate.value), token, {
       highlightText: source,
       highlightTargets: [{ id: "bookSourceSentence", text: source }]
     });
@@ -1955,7 +2075,7 @@
 
     els.bookEnglishSentence.textContent = sentence.text;
     setStatus(`English sentence ${state.bookCurrentIndex + 1}`);
-    await speakText(sentence.text, "en-US", Number(els.bookEnRate.value), token, {
+    await speakTextWithPhrasePacing(sentence.text, "en-US", Number(els.bookEnRate.value), token, {
       highlightText: sentence.text,
       highlightTargets: [{ id: "bookEnglishSentence", text: sentence.text }]
     });
@@ -2049,15 +2169,37 @@
     await speakWithSystemVoice(text, lang, rate, token, options);
   }
 
+  async function speakTextWithPhrasePacing(text, lang, wordsPerMinute, token, options = {}) {
+    const spokenText = stripForSpeech(text);
+    const chunks = speechChunks(spokenText, wordsPerMinute);
+    if (token !== state.playToken || !chunks.length) return;
+    const wpm = clamp(wordsPerMinute, 10, 200);
+
+    try {
+      for (const chunk of chunks) {
+        if (token !== state.playToken) return;
+        const started = window.performance?.now?.() ?? Date.now();
+        await speakText(chunk.text, lang, 1, token, {
+          ...options,
+          highlightText: spokenText,
+          highlightCharOffset: chunk.charStart,
+          preserveHighlightAfterEnd: true
+        });
+        if (token !== state.playToken) return;
+        const finished = window.performance?.now?.() ?? Date.now();
+        const targetChunkMs = chunk.wordCount * (60000 / wpm);
+        await delay(Math.max(0, targetChunkMs - (finished - started)), token);
+      }
+    } finally {
+      clearSpeechHighlights(options.highlightTargets);
+    }
+  }
+
   async function prepareSpeechEngine() {
     if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
       throw new Error("Speech synthesis unavailable");
     }
-    if (!syncAvailableVoices()) {
-      refreshVoices().catch((error) => {
-        console.warn("Voice refresh failed:", error);
-      });
-    }
+    await refreshVoices();
     try {
       window.speechSynthesis.cancel();
       window.speechSynthesis.resume();
@@ -2083,9 +2225,7 @@
       throw new Error("Speech synthesis unavailable");
     }
     if (!syncAvailableVoices()) {
-      refreshVoices().catch((error) => {
-        console.warn("Voice refresh failed:", error);
-      });
+      await refreshVoices();
     }
     const spokenText = stripForSpeech(text);
     if (!spokenText || token !== state.playToken) return;
@@ -2120,60 +2260,73 @@
       const utterance = new SpeechSynthesisUtterance(spokenText);
       utterance.rate = rate;
       utterance.volume = pageVolume();
-      const voice = findVoice(lang);
+      const speechLang = systemSpeechLang(lang);
+      const voice = findVoice(speechLang);
       if (voice) {
         utterance.voice = voice;
-        utterance.lang = voice.lang || lang;
-      } else if (shouldSetSystemLanguage(lang)) {
-        utterance.lang = systemSpeechLang(lang);
+        utterance.lang = voice.lang || speechLang;
+      } else {
+        utterance.lang = speechLang;
       }
+      const highlightOffset = Math.max(0, Number(options.highlightCharOffset) || 0);
+      let settled = false;
+      const finish = (callback) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        callback();
+      };
       const timeout = window.setTimeout(() => {
-        reject(new Error("Speech did not start"));
+        finish(() => reject(new Error("Speech did not start")));
       }, 5000);
       utterance.onstart = () => {
         window.clearTimeout(timeout);
-        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, 0);
+        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, highlightOffset);
       };
       utterance.onboundary = (event) => {
         if (event.name && event.name !== "word") return;
-        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, event.charIndex || 0);
+        applySpeechHighlight(
+          options.highlightTargets,
+          options.highlightText || spokenText,
+          highlightOffset + (event.charIndex || 0)
+        );
       };
       utterance.onend = () => {
-        window.clearTimeout(timeout);
-        clearSpeechHighlights(options.highlightTargets);
-        resolve();
+        finish(() => {
+          if (!options.preserveHighlightAfterEnd) {
+            clearSpeechHighlights(options.highlightTargets);
+          }
+          resolve();
+        });
       };
       utterance.onerror = (event) => {
-        window.clearTimeout(timeout);
-        clearSpeechHighlights(options.highlightTargets);
-        reject(new Error(event.error || "Speech synthesis error"));
+        finish(() => {
+          clearSpeechHighlights(options.highlightTargets);
+          reject(new Error(event.error || "Speech synthesis error"));
+        });
       };
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
-      window.setTimeout(() => window.speechSynthesis.resume(), 0);
     });
-  }
-
-  function shouldSetSystemLanguage(lang) {
-    return Boolean(systemSpeechLang(lang));
   }
 
   function systemSpeechLang(lang) {
     if (langPrefix(lang) === "en") {
-      return state.voicePrefs.en ? lang : state.enLang;
+      return langPrefix(state.enLang) === "en"
+        ? state.enLang
+        : normalizeLocale(lang) || "en-US";
     }
-    return lang;
+    return normalizeLocale(lang) || activeLanguage().speechLang;
   }
 
   function findVoice(lang) {
-    const prefKey = voicePrefKeyForLang(lang);
+    const speechLang = systemSpeechLang(lang);
+    const prefKey = voicePrefKeyForLang(speechLang);
     const selected = prefKey ? state.voicePrefs[prefKey] : "";
     if (selected) {
       const selectedVoice = state.voices.find((voice) => voiceId(voice) === selected);
       if (selectedVoice) return selectedVoice;
     }
-    return null;
+    return matchingVoices(speechLang)[0] || null;
   }
 
   function syncAvailableVoices() {
@@ -2181,16 +2334,50 @@
     const voices = window.speechSynthesis.getVoices();
     if (!voices.length) return false;
     state.voices = voices;
+    state.voiceLoadSettled = true;
     updateVoiceSelectors();
     return true;
   }
 
   async function refreshVoices() {
-    if (!window.speechSynthesis) return;
-    if (syncAvailableVoices()) return;
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await delayPlain(120);
-      if (syncAvailableVoices()) return;
+    if (!window.speechSynthesis) return [];
+    if (syncAvailableVoices() || state.voiceLoadSettled) return state.voices;
+    if (state.voicesReadyPromise) return state.voicesReadyPromise;
+
+    let voiceChangeHandler = null;
+    const pending = new Promise((resolve) => {
+      let settled = false;
+      let pollTimer = 0;
+      let timeout = 0;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        state.voiceLoadSettled = true;
+        window.clearInterval(pollTimer);
+        window.clearTimeout(timeout);
+        if (voiceChangeHandler && typeof window.speechSynthesis.removeEventListener === "function") {
+          window.speechSynthesis.removeEventListener("voiceschanged", voiceChangeHandler);
+        }
+        resolve(state.voices);
+      };
+      const check = () => {
+        if (syncAvailableVoices()) finish();
+      };
+      voiceChangeHandler = check;
+      if (typeof window.speechSynthesis.addEventListener === "function") {
+        window.speechSynthesis.addEventListener("voiceschanged", voiceChangeHandler);
+      }
+      pollTimer = window.setInterval(check, 100);
+      timeout = window.setTimeout(finish, 3000);
+      check();
+    });
+    state.voicesReadyPromise = pending;
+    try {
+      return await pending;
+    } finally {
+      if (state.voicesReadyPromise === pending) {
+        state.voicesReadyPromise = null;
+      }
     }
   }
 
@@ -2616,8 +2803,7 @@
     });
     if (window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = () => {
-        state.voices = window.speechSynthesis.getVoices();
-        updateVoiceSelectors();
+        syncAvailableVoices();
       };
     }
   }
@@ -2649,7 +2835,9 @@
     updateVoiceSelectors();
     bindEvents();
     await loadData();
-    await refreshVoices();
+    // Reserve the bounded async-voice wait for the first playback gesture.
+    // voiceschanged still fills the picker as soon as Safari reports voices.
+    syncAvailableVoices();
     updateVoiceSelectors();
     registerServiceWorker();
   }

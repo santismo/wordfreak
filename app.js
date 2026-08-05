@@ -41,6 +41,8 @@
   const PIPER_IMPORT_TIMEOUT_MS = 20000;
   const PIPER_DOWNLOAD_TIMEOUT_MS = 90000;
   const PIPER_PREDICT_TIMEOUT_MS = 45000;
+  const VOICE_LOAD_TIMEOUT_MS = 3600;
+  const VOICE_LOAD_POLL_MS = 120;
   const BOOK_SHELF_KINDS = new Set(["guided", "library", "favorites"]);
   const BOOK_LEVELS = {
     starter: {
@@ -456,6 +458,8 @@
     band: "20000",
     bandByLanguage: {},
     voices: [],
+    voiceRefreshPromise: null,
+    voiceLoadSettled: false,
     voicePrefs: {
       ru: "",
       fa: "",
@@ -857,25 +861,51 @@
     return voice ? `${voice.voiceURI || voice.name}|${voice.lang}` : "";
   }
 
+  function normalizedVoiceLocale(value) {
+    return String(value || "").trim().replace(/_/g, "-").toLowerCase();
+  }
+
+  function voiceQuality(voice) {
+    const name = String(voice?.name || "");
+    const uri = String(voice?.voiceURI || "");
+    const description = `${name} ${uri}`.toLowerCase();
+    if (/(^|[^a-z])premium([^a-z]|$)/.test(description)) {
+      return { rank: 5, label: "Premium" };
+    }
+    if (/(^|[^a-z])enhanced([^a-z]|$)/.test(description)) {
+      return { rank: 4, label: "Enhanced" };
+    }
+    if (/super[\s._-]*compact/.test(description)) {
+      return { rank: 1, label: "Supercompact" };
+    }
+    if (/(^|[^a-z])compact([^a-z]|$)/.test(description)) {
+      return { rank: 2, label: "Compact" };
+    }
+    if (/com\.apple\.|apple[\s._-]*(?:tts|speech|voice)/.test(description)) {
+      return { rank: 3, label: "Apple built-in" };
+    }
+    return { rank: 3, label: "quality unspecified" };
+  }
+
   function voiceLabel(voice) {
-    const quality = voice.localService ? "local" : "network";
-    return `${voice.name} (${voice.lang}, ${quality})`;
+    const quality = voiceQuality(voice);
+    return `${voice.name} (${voice.lang || "locale unspecified"}, ${quality.label})`;
   }
 
   function matchingVoices(lang) {
-    const lower = String(lang || "").toLowerCase();
-    const prefix = langPrefix(lang);
+    const requestedLocale = normalizedVoiceLocale(lang);
+    const prefix = langPrefix(requestedLocale);
     return state.voices
       .filter((voice) => {
-        const voiceLang = String(voice.lang || "").toLowerCase();
-        return voiceLang === lower || voiceLang === prefix || voiceLang.startsWith(`${prefix}-`);
+        const voiceLang = normalizedVoiceLocale(voice.lang);
+        return voiceLang === requestedLocale || voiceLang === prefix || voiceLang.startsWith(`${prefix}-`);
       })
       .sort((a, b) => {
-        const aLang = String(a.lang || "").toLowerCase();
-        const bLang = String(b.lang || "").toLowerCase();
-        if (aLang === lower && bLang !== lower) return -1;
-        if (aLang !== lower && bLang === lower) return 1;
-        if (a.localService !== b.localService) return a.localService ? -1 : 1;
+        const aExact = normalizedVoiceLocale(a.lang) === requestedLocale;
+        const bExact = normalizedVoiceLocale(b.lang) === requestedLocale;
+        if (aExact !== bExact) return aExact ? -1 : 1;
+        const qualityDifference = voiceQuality(b).rank - voiceQuality(a).rank;
+        if (qualityDifference) return qualityDifference;
         return String(a.name || "").localeCompare(String(b.name || ""));
       });
   }
@@ -906,8 +936,8 @@
   }
 
   function updateVoiceSelectors() {
-    populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto default");
-    populateVoiceSelect(els.enVoiceSelect, state.enLang || "en", "Auto default");
+    populateVoiceSelect(els.sourceVoiceSelect, activeLanguage().speechLang, "Auto · best match");
+    populateVoiceSelect(els.enVoiceSelect, state.enLang || "en-US", "Auto · best match");
     els.enVoiceSelect.disabled = activeLanguage().mode === "vernacular";
   }
 
@@ -1000,10 +1030,12 @@
       // Directional and zero-width characters are not words, but can make a
       // voice spell or name nearby punctuation.
       .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, "")
-      // Keep a joined word a single speech/highlight token before dropping
-      // every punctuation and symbol class, including Persian/Arabic marks.
-      .replace(/([\p{L}\p{N}])['\u2018\u2019\u201B\u02BC\-‐‑]+([\p{L}\p{N}])/gu, "$1$2")
-      .replace(/[\p{P}\p{S}]+/gu, " ");
+      // Decorative symbols can make a system voice announce their names. Keep
+      // linguistic punctuation, though: commas, stops, dashes, quotes, and the
+      // Persian/Arabic/Japanese equivalents give a phrase its natural prosody.
+      .replace(/[\p{S}]+/gu, " ")
+      .replace(/[\\/_#@*^=+<>|~`]+/g, " ")
+      .replace(/\s+([,.;:!?…،؛؟。！？।॥])/gu, "$1");
     return hasLinguisticContent(clean) ? normalizeSpaces(clean) : "";
   }
 
@@ -1823,14 +1855,22 @@
     return alignment;
   }
 
-  function applyReaderWordHighlight(alignment, speakingPane, charIndex, spokenText = "", forcedWordIndex = null) {
+  function applyReaderWordHighlight(
+    alignment,
+    speakingPane,
+    charIndex,
+    spokenText = "",
+    forcedWordIndex = null,
+    wordOffset = 0
+  ) {
     if (!alignment) return;
     const speakingRanges = speakingPane === "source" ? alignment.sourceRanges : alignment.englishRanges;
     const renderedText = speakingPane === "source" ? alignment.sourceText : alignment.englishText;
     const boundaryRanges = wordRanges(spokenText || renderedText, speakingPane === "source" ? alignment.sourceLanguage : "en");
+    const localWordIndex = Math.max(0, activeWordIndexForChar(spokenText || renderedText, charIndex, boundaryRanges));
     const activeIndex = Number.isInteger(forcedWordIndex)
       ? clamp(forcedWordIndex, 0, Math.max(0, speakingRanges.length - 1))
-      : activeWordIndexForChar(spokenText || renderedText, charIndex, boundaryRanges);
+      : clamp(wordOffset + localWordIndex, 0, Math.max(0, speakingRanges.length - 1));
     const mappedIndexes = speakingPane === "source"
       ? alignment.sourceToEnglish[activeIndex] || []
       : alignment.englishToSource[activeIndex] || [];
@@ -3973,21 +4013,101 @@
     await speakWithSystemVoice(text, lang, rate, token, options);
   }
 
+  function readerChunkWordLimit(wordsPerMinute) {
+    const wpm = clamp(wordsPerMinute, 10, 200);
+    if (wpm <= 45) return 1;
+    if (wpm <= 75) return 2;
+    if (wpm <= 120) return clamp(Math.round(3 + ((wpm - 76) / 44)), 3, 4);
+    return clamp(Math.round(5 + (((wpm - 121) / 79) * 3)), 5, 8);
+  }
+
+  function readerSpeechChunks(spokenText, lang, wordsPerMinute) {
+    const ranges = wordRanges(spokenText, lang);
+    if (!ranges.length) return [];
+    const wordLimit = readerChunkWordLimit(wordsPerMinute);
+    const hardPause = /[.!?…؟。！？।॥]/u;
+    const softPause = /[,;:،؛]/u;
+    const chunks = [];
+    let start = 0;
+
+    while (start < ranges.length) {
+      const limitEnd = Math.min(ranges.length - 1, start + wordLimit - 1);
+      let end = start;
+      let breakKind = "";
+      for (let index = start; index <= limitEnd; index += 1) {
+        end = index;
+        const nextWordStart = ranges[index + 1]?.start ?? spokenText.length;
+        const separator = spokenText.slice(ranges[index].end, nextWordStart);
+        const wordCount = index - start + 1;
+        if (hardPause.test(separator)) {
+          breakKind = "hard";
+          break;
+        }
+        if (wordCount >= 2 && softPause.test(separator)) {
+          breakKind = "soft";
+          break;
+        }
+      }
+
+      const remaining = ranges.length - end - 1;
+      const chunkWordCount = end - start + 1;
+      if (breakKind !== "hard" && remaining === 1 && wordLimit > 1) {
+        // Avoid turning an ordinary final word into the one-word utterance this
+        // chunking path is designed to eliminate.
+        if (chunkWordCount > 2) end -= 1;
+        else end += 1;
+      }
+
+      const textStart = start === 0 ? 0 : ranges[start].start;
+      const textEnd = ranges[end + 1]?.start ?? spokenText.length;
+      const chunkText = spokenText.slice(textStart, textEnd).trim();
+      if (chunkText) {
+        chunks.push({
+          text: chunkText,
+          wordOffset: start,
+          wordCount: end - start + 1
+        });
+      }
+      start = end + 1;
+    }
+    return chunks;
+  }
+
   async function speakTextWithWordPacing(text, lang, wordsPerMinute, token, options = {}) {
     const spokenText = stripForSpeech(text);
     const ranges = wordRanges(spokenText, lang);
     if (token !== state.playToken || !ranges.length) return;
     const intervalMs = 60000 / clamp(wordsPerMinute, 10, 200);
-    for (let index = 0; index < ranges.length; index += 1) {
+
+    // Keep the optional desktop engine's established word-at-a-time behavior.
+    // Phrase chunking here is specifically for the browser system voices.
+    if (isDesktopPiperEnabled() && piperVoiceIdForLang(lang)) {
+      for (let index = 0; index < ranges.length; index += 1) {
+        if (token !== state.playToken) return;
+        const started = window.performance?.now?.() ?? Date.now();
+        await speakText(ranges[index].text, lang, 1, token, {
+          ...options,
+          readerWordIndex: index
+        });
+        if (token !== state.playToken || index === ranges.length - 1) return;
+        const finished = window.performance?.now?.() ?? Date.now();
+        await delay(Math.max(0, intervalMs - (finished - started)), token);
+      }
+      return;
+    }
+
+    const chunks = readerSpeechChunks(spokenText, lang, wordsPerMinute);
+    for (const chunk of chunks) {
       if (token !== state.playToken) return;
       const started = window.performance?.now?.() ?? Date.now();
-      await speakText(ranges[index].text, lang, 1, token, {
+      await speakText(chunk.text, lang, 1, token, {
         ...options,
-        readerWordIndex: index
+        readerWordOffset: chunk.wordOffset
       });
-      if (token !== state.playToken || index === ranges.length - 1) return;
+      if (token !== state.playToken) return;
       const finished = window.performance?.now?.() ?? Date.now();
-      await delay(Math.max(0, intervalMs - (finished - started)), token);
+      const targetDuration = intervalMs * chunk.wordCount;
+      await delay(Math.max(0, targetDuration - (finished - started)), token);
     }
   }
 
@@ -3998,11 +4118,9 @@
     if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
       throw new Error("Speech synthesis unavailable");
     }
-    if (!syncAvailableVoices()) {
-      refreshVoices().catch((error) => {
-        console.warn("Voice refresh failed:", error);
-      });
-    }
+    // Safari can return an empty list initially and populate it asynchronously.
+    // Wait for voiceschanged or the polling window before the first utterance.
+    await refreshVoices();
     try {
       window.speechSynthesis.cancel();
       window.speechSynthesis.resume();
@@ -4027,11 +4145,7 @@
     if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") {
       throw new Error("Speech synthesis unavailable");
     }
-    if (!syncAvailableVoices()) {
-      refreshVoices().catch((error) => {
-        console.warn("Voice refresh failed:", error);
-      });
-    }
+    await refreshVoices();
     const spokenText = stripForSpeech(text);
     if (!spokenText || token !== state.playToken) return;
 
@@ -4083,7 +4197,8 @@
             options.speakingPane,
             charIndex,
             spokenText,
-            Number.isInteger(options.readerWordIndex) ? options.readerWordIndex : null
+            Number.isInteger(options.readerWordIndex) ? options.readerWordIndex : null,
+            Number.isInteger(options.readerWordOffset) ? options.readerWordOffset : 0
           );
           return;
         }
@@ -4117,10 +4232,7 @@
         clearCorrespondingHighlights();
         reject(new Error(event.error || "Speech synthesis error"));
       };
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
-      window.setTimeout(() => window.speechSynthesis.resume(), 0);
     });
   }
 
@@ -4304,12 +4416,13 @@
     const speechLang = systemSpeechLang(lang) || lang;
     const prefKey = voicePrefKeyForLang(speechLang);
     const selected = prefKey ? state.voicePrefs[prefKey] : "";
-    const voices = matchingVoices(speechLang);
     if (selected) {
-      const selectedVoice = voices.find((voice) => voiceId(voice) === selected);
+      // A user's explicit voice always wins, even if a browser reports its
+      // locale in an unusual form that would miss the normal matching filter.
+      const selectedVoice = state.voices.find((voice) => voiceId(voice) === selected);
       if (selectedVoice) return selectedVoice;
     }
-    return voices.find((voice) => voice.default) || voices[0] || null;
+    return matchingVoices(speechLang)[0] || null;
   }
 
   function syncAvailableVoices() {
@@ -4317,16 +4430,50 @@
     const voices = window.speechSynthesis.getVoices();
     if (!voices.length) return false;
     state.voices = voices;
+    state.voiceLoadSettled = true;
     updateVoiceSelectors();
     return true;
   }
 
   async function refreshVoices() {
-    if (!window.speechSynthesis) return;
-    if (syncAvailableVoices()) return;
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await delayPlain(120);
-      if (syncAvailableVoices()) return;
+    if (!window.speechSynthesis) return [];
+    if (syncAvailableVoices() || state.voiceLoadSettled) return state.voices;
+    if (state.voiceRefreshPromise) return state.voiceRefreshPromise;
+
+    const synthesis = window.speechSynthesis;
+    const pending = new Promise((resolve) => {
+      let pollTimer = 0;
+      let timeoutTimer = 0;
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        state.voiceLoadSettled = true;
+        window.clearInterval(pollTimer);
+        window.clearTimeout(timeoutTimer);
+        if (typeof synthesis.removeEventListener === "function") {
+          synthesis.removeEventListener("voiceschanged", check);
+        }
+        resolve(state.voices);
+      };
+      const check = () => {
+        if (syncAvailableVoices()) finish();
+      };
+
+      if (typeof synthesis.addEventListener === "function") {
+        synthesis.addEventListener("voiceschanged", check);
+      }
+      pollTimer = window.setInterval(check, VOICE_LOAD_POLL_MS);
+      timeoutTimer = window.setTimeout(finish, VOICE_LOAD_TIMEOUT_MS);
+      check();
+    });
+    state.voiceRefreshPromise = pending;
+    try {
+      return await pending;
+    } finally {
+      if (state.voiceRefreshPromise === pending) {
+        state.voiceRefreshPromise = null;
+      }
     }
   }
 
@@ -4848,10 +4995,12 @@
       fitEnglishFocusWord();
     });
     if (window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        state.voices = window.speechSynthesis.getVoices();
-        updateVoiceSelectors();
-      };
+      const handleVoicesChanged = () => syncAvailableVoices();
+      if (typeof window.speechSynthesis.addEventListener === "function") {
+        window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged);
+      } else {
+        window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+      }
     }
   }
 
@@ -4886,7 +5035,10 @@
     updateVoiceSelectors();
     bindEvents();
     await loadData();
-    await refreshVoices();
+    // Do not spend the bounded async-voice wait during startup. If Safari has
+    // not populated its list yet, the first user-triggered playback will wait
+    // for it while the voiceschanged listener continues to update the picker.
+    syncAvailableVoices();
     updateVoiceSelectors();
     registerServiceWorker();
   }

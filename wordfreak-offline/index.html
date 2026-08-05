@@ -90,8 +90,7 @@
       <label>
         EN region
         <select id="enLangSelect">
-          <option value="">Default</option>
-          <option value="en-US">en-US</option>
+          <option value="en-US" selected>en-US</option>
           <option value="en-GB">en-GB</option>
           <option value="en-AU">en-AU</option>
           <option value="en-CA">en-CA</option>
@@ -212,16 +211,16 @@
         <label>
           <span class="setting-title">
             Source speed
-            <output id="bookSourceRateValue">0.82x</output>
+            <output id="bookSourceRateValue">90 WPM</output>
           </span>
-          <input id="bookSourceRate" type="range" min="0.55" max="1.25" step="0.05" value="0.82">
+          <input id="bookSourceRate" type="range" min="10" max="200" step="5" value="90" aria-label="Source words per minute">
         </label>
         <label>
           <span class="setting-title">
             EN speed
-            <output id="bookEnRateValue">0.95x</output>
+            <output id="bookEnRateValue">120 WPM</output>
           </span>
-          <input id="bookEnRate" type="range" min="0.65" max="1.35" step="0.05" value="0.95">
+          <input id="bookEnRate" type="range" min="10" max="200" step="5" value="120" aria-label="English words per minute">
         </label>
         <label>
           <span class="setting-title">
@@ -289,6 +288,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=1" defer></script>
+  <script src="app.js?v=2" defer></script>
 </body>
 </html>
