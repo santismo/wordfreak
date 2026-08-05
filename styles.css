@@ -103,10 +103,6 @@ select {
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 
-  body.desktop-edition .desktop-piper-setting {
-    display: grid;
-  }
-
   body.desktop-edition .book-view {
     padding: 18px;
   }
@@ -270,8 +266,30 @@ select {
   font-size: 0.78rem;
 }
 
-.desktop-piper-setting {
-  display: none;
+.piper-setting {
+  min-width: 0;
+  grid-column: span 2;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.piper-engine-hint {
+  color: var(--muted);
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.piper-clear-button {
+  min-height: 30px;
+  justify-self: start;
+  padding: 0 9px;
+  color: var(--soft);
+  font-size: 0.7rem;
+}
+
+.piper-clear-button:disabled {
+  opacity: 0.55;
 }
 
 .setting-title {
@@ -462,6 +480,13 @@ body.book-mode .dataset-meta {
 
 .book-source-link:hover {
   text-decoration: underline;
+}
+
+.book-source-notice {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .reader-nav-row {
