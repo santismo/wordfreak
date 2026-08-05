@@ -882,85 +882,15 @@
     return ranges;
   }
 
-  function speechChunkBand(wordsPerMinute) {
+  function speechRateForWordsPerMinute(wordsPerMinute) {
+    // A system voice's natural pace varies, so WPM is necessarily an
+    // approximation. Keeping the entire sentence in one utterance lets the
+    // voice preserve its own phrasing instead of inserting chunk-sized gaps.
     const wpm = clamp(wordsPerMinute, 10, 200);
-    if (wpm <= 45) return { min: 1, max: 1, target: 1 };
-    if (wpm <= 75) return { min: 2, max: 2, target: 2 };
     if (wpm <= 120) {
-      return {
-        min: 3,
-        max: 4,
-        target: clamp(Math.round(3 + ((wpm - 76) / 44)), 3, 4)
-      };
+      return 0.55 + (((wpm - 10) / 110) * 0.45);
     }
-    return {
-      min: 5,
-      max: 8,
-      target: clamp(Math.round(5 + (((wpm - 121) / 79) * 3)), 5, 8)
-    };
-  }
-
-  function speechBoundaryScore(value) {
-    const betweenWords = String(value || "");
-    if (/[.!?…؟。！？।॥]/u.test(betweenWords)) return 3;
-    if (/[;:؛]/u.test(betweenWords)) return 2;
-    if (/[,،\u2014]/u.test(betweenWords)) return 1;
-    return 0;
-  }
-
-  function speechChunks(text, wordsPerMinute) {
-    const clean = stripForSpeech(text);
-    const ranges = wordRanges(clean);
-    if (!ranges.length) return [];
-    const band = speechChunkBand(wordsPerMinute);
-    const chunks = [];
-    let wordStart = 0;
-
-    while (wordStart < ranges.length) {
-      const remaining = ranges.length - wordStart;
-      let wordCount = Math.min(band.target, remaining);
-      let chosenBoundaryScore = 0;
-      if (remaining > band.max) {
-        let bestBoundary = null;
-        const maximum = Math.min(band.max, remaining - 1);
-        for (let count = 1; count <= maximum; count += 1) {
-          const current = ranges[wordStart + count - 1];
-          const next = ranges[wordStart + count];
-          const score = speechBoundaryScore(clean.slice(current.end, next.start));
-          if (!score || (score < 3 && count < band.min)) continue;
-          const distance = Math.abs(count - band.target);
-          if (!bestBoundary || score > bestBoundary.score || (score === bestBoundary.score && distance < bestBoundary.distance)) {
-            bestBoundary = { count, score, distance };
-          }
-        }
-        wordCount = bestBoundary?.count || Math.min(band.target, maximum);
-        chosenBoundaryScore = bestBoundary?.score || 0;
-      } else if (remaining <= band.max) {
-        wordCount = remaining;
-      }
-
-      if (remaining - wordCount === 1 && chosenBoundaryScore < 3) {
-        // Keep a hard sentence break, but otherwise rebalance the final two
-        // chunks so normal-rate playback does not fall back to a robotic
-        // one-word utterance at the tail.
-        wordCount = wordCount > 2 ? wordCount - 1 : wordCount + 1;
-      }
-
-      const chunkStart = ranges[wordStart].start;
-      const nextRange = ranges[wordStart + wordCount];
-      const chunkEnd = nextRange ? nextRange.start : clean.length;
-      const chunkText = clean.slice(chunkStart, chunkEnd).trim();
-      if (chunkText) {
-        chunks.push({
-          text: chunkText,
-          charStart: chunkStart,
-          wordStart,
-          wordCount
-        });
-      }
-      wordStart += wordCount;
-    }
-    return chunks;
+    return 1 + (((wpm - 120) / 80) * 0.45);
   }
 
   function activeWordIndexForChar(text, charIndex) {
@@ -2171,28 +2101,14 @@
 
   async function speakTextWithPhrasePacing(text, lang, wordsPerMinute, token, options = {}) {
     const spokenText = stripForSpeech(text);
-    const chunks = speechChunks(spokenText, wordsPerMinute);
-    if (token !== state.playToken || !chunks.length) return;
-    const wpm = clamp(wordsPerMinute, 10, 200);
-
-    try {
-      for (const chunk of chunks) {
-        if (token !== state.playToken) return;
-        const started = window.performance?.now?.() ?? Date.now();
-        await speakText(chunk.text, lang, 1, token, {
-          ...options,
-          highlightText: spokenText,
-          highlightCharOffset: chunk.charStart,
-          preserveHighlightAfterEnd: true
-        });
-        if (token !== state.playToken) return;
-        const finished = window.performance?.now?.() ?? Date.now();
-        const targetChunkMs = chunk.wordCount * (60000 / wpm);
-        await delay(Math.max(0, targetChunkMs - (finished - started)), token);
-      }
-    } finally {
-      clearSpeechHighlights(options.highlightTargets);
-    }
+    if (token !== state.playToken || !spokenText) return;
+    await speakText(
+      spokenText,
+      lang,
+      speechRateForWordsPerMinute(wordsPerMinute),
+      token,
+      { ...options, highlightText: spokenText }
+    );
   }
 
   async function prepareSpeechEngine() {
@@ -2268,7 +2184,6 @@
       } else {
         utterance.lang = speechLang;
       }
-      const highlightOffset = Math.max(0, Number(options.highlightCharOffset) || 0);
       let settled = false;
       const finish = (callback) => {
         if (settled) return;
@@ -2281,21 +2196,19 @@
       }, 5000);
       utterance.onstart = () => {
         window.clearTimeout(timeout);
-        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, highlightOffset);
+        applySpeechHighlight(options.highlightTargets, options.highlightText || spokenText, 0);
       };
       utterance.onboundary = (event) => {
         if (event.name && event.name !== "word") return;
         applySpeechHighlight(
           options.highlightTargets,
           options.highlightText || spokenText,
-          highlightOffset + (event.charIndex || 0)
+          event.charIndex || 0
         );
       };
       utterance.onend = () => {
         finish(() => {
-          if (!options.preserveHighlightAfterEnd) {
-            clearSpeechHighlights(options.highlightTargets);
-          }
+          clearSpeechHighlights(options.highlightTargets);
           resolve();
         });
       };
