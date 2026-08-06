@@ -59,6 +59,9 @@
   const PIPER_MAX_LIVE_WORKERS = 2;
   const PIPER_FAILURE_LIMIT = 1;
   const PIPER_FAILURE_COOLDOWN_MS = 5 * 60 * 1000;
+  const SPEECH_VOLUME_BOOST_MIN = 0.5;
+  const SPEECH_VOLUME_BOOST_MAX = 1.5;
+  const SPEECH_VOLUME_BOOST_DEFAULT = 1;
   const PIPER_SILENCE_DATA_URL = "data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA";
   const VOICE_LOAD_TIMEOUT_MS = 3600;
   const VOICE_LOAD_POLL_MS = 120;
@@ -419,6 +422,13 @@
     speechTrack3VoiceLabel: document.getElementById("speechTrack3VoiceLabel"),
     speechTrack3VoiceSelect: document.getElementById("speechTrack3VoiceSelect"),
     speechTrack3Hint: document.getElementById("speechTrack3Hint"),
+    speechTrack1Volume: document.getElementById("speechTrack1Volume"),
+    speechTrack1VolumeValue: document.getElementById("speechTrack1VolumeValue"),
+    speechTrack2Volume: document.getElementById("speechTrack2Volume"),
+    speechTrack2VolumeValue: document.getElementById("speechTrack2VolumeValue"),
+    speechTrack3Volume: document.getElementById("speechTrack3Volume"),
+    speechTrack3VolumeValue: document.getElementById("speechTrack3VolumeValue"),
+    speechVolumeHint: document.getElementById("speechVolumeHint"),
     piperResourceWarning: document.getElementById("piperResourceWarning"),
     piperEngineHint: document.getElementById("piperEngineHint"),
     piperClearBtn: document.getElementById("piperClearBtn"),
@@ -519,6 +529,9 @@
     speechTrack2Engine: "system",
     speechTrack3Language: "off",
     speechTrack3Engine: "system",
+    speechVolumeBoosts: Object.fromEntries(
+      Object.keys(LANGUAGES).map((languageKey) => [languageKey, SPEECH_VOLUME_BOOST_DEFAULT])
+    ),
     focusSpeechRenderToken: 0,
     shuffle: false,
     band: "20000",
@@ -634,9 +647,16 @@
       if (savedTrack3Language) state.speechTrack3Language = savedTrack3Language;
       state.speechTrack2Engine = normalizeSpeechTrackEngine(prefs.speechTrack2Engine);
       state.speechTrack3Engine = normalizeSpeechTrackEngine(prefs.speechTrack3Engine);
+      if (prefs.speechVolumeBoosts && typeof prefs.speechVolumeBoosts === "object") {
+        Object.keys(LANGUAGES).forEach((languageKey) => {
+          state.speechVolumeBoosts[languageKey] = normalizeSpeechVolumeBoost(
+            prefs.speechVolumeBoosts[languageKey]
+          );
+        });
+      }
       els.ruRate.value = prefs.ruRate || els.ruRate.value;
       els.enRate.value = prefs.enRate || els.enRate.value;
-      els.pageVolume.value = prefs.pageVolume || els.pageVolume.value;
+      els.pageVolume.value = String(clamp(prefs.pageVolume ?? els.pageVolume.value, 0, 1));
       els.bookSourceRate.value = String(clamp(prefs.bookSourceWpm || els.bookSourceRate.value, 10, 200));
       els.bookEnRate.value = String(clamp(prefs.bookEnWpm || els.bookEnRate.value, 10, 200));
       els.bookVolume.value = els.pageVolume.value;
@@ -668,6 +688,12 @@
       speechTrack2Engine: state.speechTrack2Engine,
       speechTrack3Language: state.speechTrack3Language,
       speechTrack3Engine: state.speechTrack3Engine,
+      speechVolumeBoosts: Object.fromEntries(
+        Object.keys(LANGUAGES).map((languageKey) => [
+          languageKey,
+          normalizeSpeechVolumeBoost(state.speechVolumeBoosts[languageKey])
+        ])
+      ),
       bookSourceWpm: els.bookSourceRate.value,
       bookEnWpm: els.bookEnRate.value,
       voicePrefs: state.voicePrefs,
@@ -718,6 +744,7 @@
     els.bookEnRateValue.textContent = `${Math.round(Number(els.bookEnRate.value))} WPM`;
     els.bookVolumeValue.textContent = `${Math.round(pageVolume() * 100)}%`;
     els.gapValue.textContent = `${Number.parseInt(els.gapMs.value, 10)} ms`;
+    syncSpeechVolumeControls();
   }
 
   function loadTranslationCache() {
@@ -865,6 +892,20 @@
     return value === "piper" ? "piper" : "system";
   }
 
+  function normalizeSpeechVolumeBoost(value) {
+    if (
+      value === null
+      || value === undefined
+      || typeof value === "boolean"
+      || (typeof value === "string" && !value.trim())
+    ) {
+      return SPEECH_VOLUME_BOOST_DEFAULT;
+    }
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return SPEECH_VOLUME_BOOST_DEFAULT;
+    return clamp(numericValue, SPEECH_VOLUME_BOOST_MIN, SPEECH_VOLUME_BOOST_MAX);
+  }
+
   function speechLanguageForKey(languageKey) {
     return LANGUAGES[languageKey]?.speechLang || "";
   }
@@ -884,6 +925,55 @@
       language: slot === 2 ? state.speechTrack2Language : state.speechTrack3Language,
       engine: slot === 2 ? state.speechTrack2Engine : state.speechTrack3Engine
     };
+  }
+
+  function speechVolumeLanguageKey(languageOrLang) {
+    const normalized = String(languageOrLang || "").trim().toLowerCase();
+    if (LANGUAGES[normalized]) return normalized;
+    const prefix = normalized.split(/[-_]/)[0];
+    if (!prefix) return "";
+    return Object.keys(LANGUAGES).find((languageKey) => (
+      speechLanguageForKey(languageKey).toLowerCase().split(/[-_]/)[0] === prefix
+    )) || "";
+  }
+
+  function speechVolumeBoost(languageOrLang) {
+    const languageKey = speechVolumeLanguageKey(languageOrLang);
+    if (!languageKey) return SPEECH_VOLUME_BOOST_DEFAULT;
+    return normalizeSpeechVolumeBoost(state.speechVolumeBoosts[languageKey]);
+  }
+
+  function effectiveSpeechVolume(languageOrLang) {
+    return clamp(pageVolume() * speechVolumeBoost(languageOrLang), 0, 1);
+  }
+
+  function syncSpeechVolumeControls() {
+    const controls = [
+      { track: speechTrackConfig(1), input: els.speechTrack1Volume, output: els.speechTrack1VolumeValue },
+      { track: speechTrackConfig(2), input: els.speechTrack2Volume, output: els.speechTrack2VolumeValue },
+      { track: speechTrackConfig(3), input: els.speechTrack3Volume, output: els.speechTrack3VolumeValue }
+    ];
+    controls.forEach(({ track, input, output }) => {
+      if (!input) return;
+      const enabled = Boolean(LANGUAGES[track.language]);
+      const boost = enabled ? speechVolumeBoost(track.language) : SPEECH_VOLUME_BOOST_DEFAULT;
+      const percent = `${Math.round(boost * 100)}%`;
+      input.disabled = !enabled;
+      input.value = String(boost);
+      input.setAttribute("aria-valuetext", percent);
+      if (output) output.textContent = percent;
+    });
+  }
+
+  function setSpeechTrackVolumeBoost(slot, value) {
+    const track = speechTrackConfig(slot);
+    if (!LANGUAGES[track.language]) {
+      syncSpeechVolumeControls();
+      return;
+    }
+    state.speechVolumeBoosts[track.language] = normalizeSpeechVolumeBoost(value);
+    syncSpeechVolumeControls();
+    savePrefs();
   }
 
   function configuredSpeechTracks() {
@@ -4854,7 +4944,7 @@
       }
       const utterance = new SpeechSynthesisUtterance(spokenText);
       utterance.rate = rate;
-      utterance.volume = pageVolume();
+      utterance.volume = effectiveSpeechVolume(lang);
       const speechLang = systemSpeechLang(lang) || lang;
       const voice = findVoice(speechLang);
       if (voice) {
@@ -5297,7 +5387,7 @@
     audio.playbackRate = playbackRate;
     audio.preservesPitch = true;
     if ("webkitPreservesPitch" in audio) audio.webkitPreservesPitch = true;
-    audio.volume = pageVolume();
+    audio.volume = effectiveSpeechVolume(lang);
     const playbackFinished = new Promise((resolve, reject) => {
       let settled = false;
       const finish = (error = null) => {
@@ -6034,6 +6124,16 @@
 
     els.speechTrack3EngineSelect.addEventListener("change", () => {
       setSpeechTrackEngine(3, els.speechTrack3EngineSelect.value);
+    });
+
+    [
+      [1, els.speechTrack1Volume],
+      [2, els.speechTrack2Volume],
+      [3, els.speechTrack3Volume]
+    ].forEach(([slot, input]) => {
+      input?.addEventListener("input", () => {
+        setSpeechTrackVolumeBoost(slot, input.value);
+      });
     });
 
     if (els.piperClearBtn) {
