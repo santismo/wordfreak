@@ -363,8 +363,25 @@ select {
 
 .speech-track-current,
 .speech-track-voice,
+.speech-track-volume,
 .speech-track-hint {
   grid-column: 1 / -1;
+}
+
+.speech-track-volume {
+  min-width: 0;
+}
+
+.speech-track-volume input[type="range"] {
+  min-height: 44px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.speech-track-volume output {
+  color: var(--soft);
+  font-variant-numeric: tabular-nums;
 }
 
 .speech-track-current {
@@ -392,6 +409,13 @@ select {
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1.35;
+}
+
+.speech-volume-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .piper-resource-warning {
@@ -1139,6 +1163,7 @@ body.book-mode .dataset-meta {
   .speech-track > *,
   .speech-track-current,
   .speech-track-voice,
+  .speech-track-volume,
   .speech-track-hint {
     grid-column: 1;
   }

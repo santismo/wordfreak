@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=27">
+  <link rel="stylesheet" href="styles.css?v=28">
 </head>
 <body>
   <main class="app-shell">
@@ -122,6 +122,13 @@
                 <option value="">Auto</option>
               </select>
             </label>
+            <label class="speech-track-volume">
+              <span class="setting-title">
+                Volume boost
+                <output id="speechTrack1VolumeValue" for="speechTrack1Volume">100%</output>
+              </span>
+              <input id="speechTrack1Volume" type="range" min="0.5" max="1.5" step="0.05" value="1" aria-describedby="speechVolumeHint">
+            </label>
             <small id="piperEngineHint" class="speech-track-hint piper-engine-hint" role="status" aria-live="polite">System uses a voice installed on this device.</small>
           </fieldset>
 
@@ -153,6 +160,13 @@
               <select id="enVoiceSelect">
                 <option value="">Auto</option>
               </select>
+            </label>
+            <label class="speech-track-volume">
+              <span class="setting-title">
+                Volume boost
+                <output id="speechTrack2VolumeValue" for="speechTrack2Volume">100%</output>
+              </span>
+              <input id="speechTrack2Volume" type="range" min="0.5" max="1.5" step="0.05" value="1" aria-describedby="speechVolumeHint">
             </label>
             <small id="speechTrack2Hint" class="speech-track-hint" role="status" aria-live="polite">English follows the study language by default.</small>
           </fieldset>
@@ -186,10 +200,18 @@
                 <option value="">Auto</option>
               </select>
             </label>
+            <label class="speech-track-volume">
+              <span class="setting-title">
+                Volume boost
+                <output id="speechTrack3VolumeValue" for="speechTrack3Volume">100%</output>
+              </span>
+              <input id="speechTrack3Volume" type="range" min="0.5" max="1.5" step="0.05" value="1" aria-describedby="speechVolumeHint">
+            </label>
             <small id="speechTrack3Hint" class="speech-track-hint" role="status" aria-live="polite">Choose another language or leave this track Off.</small>
           </fieldset>
         </div>
 
+        <p id="speechVolumeHint" class="speech-volume-hint">Boost is remembered by language, applies to System / iPhone and Piper, and cannot exceed your phone or browser's maximum volume.</p>
         <p id="piperResourceWarning" class="piper-resource-warning">Piper supports at most two active voices. Each voice needs a one-time download of about 55–89 MB; unsupported-language Piper choices are disabled automatically.</p>
         <button id="piperClearBtn" class="piper-clear-button" type="button">Clear downloaded Piper voices</button>
       </section>
@@ -223,7 +245,7 @@
       </label>
       <label>
         <span class="setting-title">
-          Volume
+          Master volume
           <output id="pageVolumeValue">80%</output>
         </span>
         <input id="pageVolume" type="range" min="0" max="1" step="0.05" value="0.8">
@@ -368,7 +390,7 @@
         </label>
         <label>
           <span class="setting-title">
-            Volume
+            Master volume
             <output id="bookVolumeValue">80%</output>
           </span>
           <input id="bookVolume" type="range" min="0" max="1" step="0.05" value="0.8">
@@ -445,6 +467,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=50" defer></script>
+  <script src="app.js?v=51" defer></script>
 </body>
 </html>
