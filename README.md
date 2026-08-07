@@ -26,6 +26,8 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Official-handbooks shelf with the current Air Force Handbook 1, *Airman* (15 February 2025), bundled for reliable sentence navigation and linked to its official USAF PDF
 - Current text-news reader using Meduza, VOA Persian, Radio Farda, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and optional Google News feeds
 - News headline filtering, source selection, refresh, random article loading, and full article text browsing without favorites
+- Optional Classical or Lo-fi study music across frequency/vocabulary, English Vernacular, book, and news modes, with its own transport, volume, and automatic speech ducking
+- Live Wikimedia Commons collections with more than 500 Classical and Lo-fi source files as of 6 August 2026, strict per-track review/license checks, and visible source and Creative Commons attribution
 - Immediate word-by-word pairing during book and news playback: each spoken word gets a monotonic best-guess counterpart right away, then contextual translation refines it to a one-to-four-word phrase when it finds a stronger match
 - Layout-stable reader highlights use positioned overlays, with bidirectional contextual alignment and English auxiliary grouping for Russian and Farsi
 - Speech and translation skip punctuation-only fragments, including Persian/Arabic punctuation, so a voice never reads a symbol as a word
@@ -57,6 +59,14 @@ python3 -m http.server 8000
 ```
 
 Open `http://localhost:8000`.
+
+## Optional study music
+
+The music-note control opens an independent background player in every Wordfreak mode, including the frequency decks. Music is Off by default. Choose **Classical** or **Lo-fi**, then use the dedicated Previous, Play/Pause, Next, volume, and **Lower during speech** controls. Ducking temporarily lowers only the music while a System/iPhone or Piper track speaks.
+
+Wordfreak discovers its study catalog through the Wikimedia Commons categories [Classical music from Free Music Archive](https://commons.wikimedia.org/wiki/Category:Classical_music_from_Free_Music_Archive) and [Lo-fi music from Free Music Archive](https://commons.wikimedia.org/wiki/Category:Lo-fi_music_from_Free_Music_Archive). Together they listed more than 500 source files on 6 August 2026. Commons is live, so availability can change. Before a track can enter the player, Wordfreak checks its media type, duration, Commons warning categories, and requires a recognized license on its file page; when recognizable embedded license metadata is present, it must agree with the page. Contradictory, noncommercial, and derivative-restricted entries are skipped. When Commons still marks a recording's license review as pending, Wordfreak says so beside the license instead of presenting it as independently verified. The current track always exposes its Commons source page and individual license; those per-track terms govern reuse.
+
+Study music is online streaming. Remote Commons API responses and audio are not bundled with Wordfreak or added to its service-worker precache. Playback uses one HTML media element, with a small Web Audio gain path used only for the music-volume control and speech ducking; it does not load a second music engine or decode a whole collection into memory. Wordfreak is not affiliated with or endorsed by the Wikimedia Foundation, Free Music Archive, or the contributing artists.
 
 ## Optional Piper voices
 

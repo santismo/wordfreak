@@ -112,6 +112,23 @@ Voice model cards and their upstream training-dataset notices are part of that c
 
 Downloaded voice files persist in the browser's Origin Private File System under the package's `piper` directory. The Settings control labeled **Clear downloaded Piper voices** removes that voice-storage directory, including all downloaded language models. Wordfreak permits no more than two active Piper voices. Their runtime sessions stay in disposable module workers and are not retained across Stop, language/engine changes, page exit, timeout, or idle cleanup.
 
+## Study Music
+
+The optional Classical and Lo-fi player streams freely licensed recordings from Wikimedia Commons. Wordfreak discovers candidates through these Commons categories:
+
+- https://commons.wikimedia.org/wiki/Category:Classical_music_from_Free_Music_Archive
+- https://commons.wikimedia.org/wiki/Category:Lo-fi_music_from_Free_Music_Archive
+
+Together those live categories listed more than 500 source files on 6 August 2026. Wordfreak requests only a small randomized metadata batch at a time and admits a track only after checking its media type, duration, Commons warning categories, and a recognized license on its file page. When recognizable embedded license metadata is present, it must agree with the page; contradictory, noncommercial, and derivative-restricted entries are excluded. A Commons `License review needed (audio)` marker is disclosed in the player as **Commons review pending**; it is not represented as independent verification. Wikimedia Commons is a live repository, so the available set and metadata can change after that date.
+
+Accepted tracks may carry Creative Commons Attribution, Attribution-ShareAlike, CC0, or Public Domain Mark terms. The music title, creator/credit when supplied, Commons description page, license name, and license link are shown for the current track. The license attached to each Commons file—not Wordfreak's MIT code license—governs copying or reuse of that recording. Consult the file page and the Commons reuse guidance before redistributing a track:
+
+- https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia
+
+The recordings and Commons API responses are fetched only when the online player needs them. They are not bundled with Wordfreak and are not added to its service-worker precache. Playback uses one HTML media element; a Web Audio gain node is used only for the user's music-volume setting and optional temporary lowering during speech. Wordfreak does not remix, resynthesize, or combine the recordings with its speech output.
+
+Wordfreak is not affiliated with or endorsed by the Wikimedia Foundation, Free Music Archive, or any contributing artist. The Commons category names identify source provenance and do not imply sponsorship.
+
 ## Live News
 
 News mode reads current public feeds from Meduza, VOA Persian, Radio Farda, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and Google News. Article text is fetched live in the user's browser, is not bundled with Wordfreak, and remains subject to each publisher's terms; every reader view links to the original article. Google Persian headlines are filtered by script because that locale can return English-language results.
