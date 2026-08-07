@@ -62,6 +62,30 @@
   const SPEECH_VOLUME_BOOST_MIN = 0.5;
   const SPEECH_VOLUME_BOOST_MAX = 1.5;
   const SPEECH_VOLUME_BOOST_DEFAULT = 1;
+  const STUDY_MUSIC_API_URL = "https://commons.wikimedia.org/w/api.php";
+  const STUDY_MUSIC_COLLECTIONS = {
+    classical: {
+      label: "Classical",
+      category: "Classical music from Free Music Archive",
+      corpusUrl: "https://commons.wikimedia.org/wiki/Category:Classical_music_from_Free_Music_Archive"
+    },
+    lofi: {
+      label: "Lo-fi",
+      category: "Lo-fi music from Free Music Archive",
+      corpusUrl: "https://commons.wikimedia.org/wiki/Category:Lo-fi_music_from_Free_Music_Archive"
+    }
+  };
+  const STUDY_MUSIC_VOLUME_DEFAULT = 0.2;
+  const STUDY_MUSIC_DUCK_FACTOR = 0.3;
+  const STUDY_MUSIC_METADATA_BATCH_SIZE = 20;
+  const STUDY_MUSIC_PREFETCH_REMAINING = 5;
+  const STUDY_MUSIC_FETCH_TIMEOUT_MS = 12000;
+  const STUDY_MUSIC_STALL_TIMEOUT_MS = 12000;
+  const STUDY_MUSIC_STABLE_PLAYBACK_MS = 8000;
+  const STUDY_MUSIC_MAX_CONSECUTIVE_FAILURES = 3;
+  const STUDY_MUSIC_MIN_DURATION_SECONDS = 60;
+  const STUDY_MUSIC_MIN_BYTES = 400 * 1024;
+  const STUDY_MUSIC_MAX_BYTES = 80 * 1024 * 1024;
   const PIPER_SILENCE_DATA_URL = "data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgICA";
   const VOICE_LOAD_TIMEOUT_MS = 3600;
   const VOICE_LOAD_POLL_MS = 120;
@@ -393,6 +417,21 @@
     bandSelect: document.getElementById("bandSelect"),
     bookToggle: document.getElementById("bookToggle"),
     newsToggle: document.getElementById("newsToggle"),
+    studyMusicToggle: document.getElementById("studyMusicToggle"),
+    studyMusicPanel: document.getElementById("studyMusicPanel"),
+    studyMusicStyleSelect: document.getElementById("studyMusicStyleSelect"),
+    studyMusicPrevBtn: document.getElementById("studyMusicPrevBtn"),
+    studyMusicPlayBtn: document.getElementById("studyMusicPlayBtn"),
+    studyMusicNextBtn: document.getElementById("studyMusicNextBtn"),
+    studyMusicVolume: document.getElementById("studyMusicVolume"),
+    studyMusicVolumeValue: document.getElementById("studyMusicVolumeValue"),
+    studyMusicDuck: document.getElementById("studyMusicDuck"),
+    studyMusicTitle: document.getElementById("studyMusicTitle"),
+    studyMusicSourceLink: document.getElementById("studyMusicSourceLink"),
+    studyMusicLicenseLink: document.getElementById("studyMusicLicenseLink"),
+    studyMusicCorpusLink: document.getElementById("studyMusicCorpusLink"),
+    studyMusicStatus: document.getElementById("studyMusicStatus"),
+    studyMusicAudio: document.getElementById("studyMusicAudio"),
     settingsToggle: document.getElementById("settingsToggle"),
     settingsPanel: document.getElementById("settingsPanel"),
     rankLabel: document.getElementById("rankLabel"),
@@ -599,6 +638,29 @@
     piperHighlightTimer: 0,
     piperFailures: new Map(),
     piperStorageBusy: false,
+    studyMusicStyle: "off",
+    studyMusicVolume: STUDY_MUSIC_VOLUME_DEFAULT,
+    studyMusicDuckEnabled: true,
+    studyMusicMembers: [],
+    studyMusicMemberCursor: 0,
+    studyMusicTracks: [],
+    studyMusicTrackIndex: -1,
+    studyMusicLoadToken: 0,
+    studyMusicAbortController: null,
+    studyMusicLoadPromise: null,
+    studyMusicRefillPromise: null,
+    studyMusicWantedPlaying: false,
+    studyMusicPlaybackToken: 0,
+    studyMusicNavigationToken: 0,
+    studyMusicPageHidden: false,
+    studyMusicConsecutiveFailures: 0,
+    studyMusicFailurePending: false,
+    studyMusicStallTimer: 0,
+    studyMusicStableTimer: 0,
+    studyMusicAudioContext: null,
+    studyMusicSourceNode: null,
+    studyMusicGainNode: null,
+    studyMusicDuckOwners: new Set(),
     activeHighlights: [],
     activeCorrespondingHighlights: [],
     scrollTimer: 0,
@@ -647,6 +709,15 @@
       if (savedTrack3Language) state.speechTrack3Language = savedTrack3Language;
       state.speechTrack2Engine = normalizeSpeechTrackEngine(prefs.speechTrack2Engine);
       state.speechTrack3Engine = normalizeSpeechTrackEngine(prefs.speechTrack3Engine);
+      state.studyMusicStyle = STUDY_MUSIC_COLLECTIONS[prefs.studyMusicStyle]
+        ? prefs.studyMusicStyle
+        : "off";
+      state.studyMusicVolume = clamp(
+        prefs.studyMusicVolume ?? STUDY_MUSIC_VOLUME_DEFAULT,
+        0,
+        1
+      );
+      state.studyMusicDuckEnabled = prefs.studyMusicDuckEnabled !== false;
       if (prefs.speechVolumeBoosts && typeof prefs.speechVolumeBoosts === "object") {
         Object.keys(LANGUAGES).forEach((languageKey) => {
           state.speechVolumeBoosts[languageKey] = normalizeSpeechVolumeBoost(
@@ -694,6 +765,9 @@
           normalizeSpeechVolumeBoost(state.speechVolumeBoosts[languageKey])
         ])
       ),
+      studyMusicStyle: state.studyMusicStyle,
+      studyMusicVolume: state.studyMusicVolume,
+      studyMusicDuckEnabled: state.studyMusicDuckEnabled,
       bookSourceWpm: els.bookSourceRate.value,
       bookEnWpm: els.bookEnRate.value,
       voicePrefs: state.voicePrefs,
@@ -876,6 +950,618 @@
 
   function setStatus(message) {
     els.statusText.textContent = message || "";
+  }
+
+  function setStudyMusicStatus(message) {
+    if (els.studyMusicStatus) els.studyMusicStatus.textContent = message || "";
+  }
+
+  function currentStudyMusicCollection() {
+    return STUDY_MUSIC_COLLECTIONS[state.studyMusicStyle] || null;
+  }
+
+  function currentStudyMusicTrack() {
+    return state.studyMusicTracks[state.studyMusicTrackIndex] || null;
+  }
+
+  function studyMusicLicenseDisplay(track) {
+    if (!track) return "License";
+    return track.reviewPending
+      ? `${track.licenseName} · Commons review pending`
+      : track.licenseName;
+  }
+
+  function studyMusicPlainText(value, fallback = "") {
+    const withoutMarkup = String(value || "")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]*>/g, " ");
+    const clean = normalizeSpaces(decodeHtmlText(withoutMarkup));
+    return (clean || fallback).slice(0, 220);
+  }
+
+  function studyMusicFileTitle(value) {
+    return studyMusicPlainText(value, "Untitled track")
+      .replace(/^File:/i, "")
+      .replace(/\.(?:flac|m4a|mp3|oga|ogg|opus|wav)$/i, "")
+      .replace(/_/g, " ")
+      .trim()
+      .slice(0, 180) || "Untitled track";
+  }
+
+  function studyMusicMetadataText(value) {
+    if (value === null || value === undefined) return "";
+    if (Array.isArray(value)) return value.map(studyMusicMetadataText).join(" ");
+    if (typeof value === "object") {
+      return Object.entries(value)
+        .map(([key, nested]) => `${key} ${studyMusicMetadataText(nested)}`)
+        .join(" ");
+    }
+    return String(value);
+  }
+
+  function studyMusicCommonMetadataValue(info, name) {
+    const entries = Array.isArray(info?.commonmetadata) ? info.commonmetadata : [];
+    const match = entries.find((entry) => String(entry?.name || "").toLowerCase() === name.toLowerCase());
+    return match ? studyMusicMetadataText(match.value) : "";
+  }
+
+  function studyMusicSafeUrl(value, allowedHosts) {
+    try {
+      const url = new URL(studyMusicPlainText(value));
+      if (url.protocol !== "https:") return "";
+      const hostname = url.hostname.toLowerCase();
+      if (!allowedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`))) return "";
+      return url.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function studyMusicLicenseUrl(value) {
+    try {
+      const raw = studyMusicPlainText(value);
+      const url = new URL(raw);
+      if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+      if (!/^(?:www\.)?creativecommons\.org$/i.test(url.hostname)) return "";
+      url.protocol = "https:";
+      const path = url.pathname.toLowerCase();
+      if (
+        !path.startsWith("/licenses/by/")
+        && !path.startsWith("/licenses/by-sa/")
+        && !path.startsWith("/publicdomain/zero/")
+        && !path.startsWith("/publicdomain/mark/")
+      ) return "";
+      return url.href;
+    } catch {
+      return "";
+    }
+  }
+
+  function studyMusicMetadataHasConflict(info, page) {
+    const hiddenCategories = (page?.categories || [])
+      .map((category) => String(category?.title || ""))
+      .join(" ");
+    if (
+      /copyright violation|possible copyright|deletion request|speedy deletion|without (?:a )?license|no machine-readable license|media without a license/i.test(hiddenCategories)
+    ) return true;
+
+    const embeddedEntries = (Array.isArray(info?.commonmetadata) ? info.commonmetadata : [])
+      .filter((entry) => /copyright|license|usage\s*terms?/i.test(String(entry?.name || "")));
+    const embeddedMetadata = studyMusicMetadataText(embeddedEntries);
+    return /(?:by[-_\s]?nc|by[-_\s]?nd|non[-_\s]?commercial|no[-_\s]?derivatives?|all rights reserved)/i.test(embeddedMetadata);
+  }
+
+  function studyMusicLicenseFingerprint(value) {
+    const text = studyMusicPlainText(value).toLowerCase().replace(/_/g, "-");
+    if (!text) return null;
+    let match = text.match(/creativecommons\.org\/licenses\/(by-sa|by)\/([\d.]+)/i);
+    if (match) return { family: match[1].toLowerCase(), version: match[2].replace(/\.$/, "") };
+    match = text.match(/creativecommons\.org\/publicdomain\/(zero|mark)\/([\d.]+)/i);
+    if (match) return { family: match[1].toLowerCase() === "zero" ? "cc0" : "pdm", version: match[2].replace(/\.$/, "") };
+    match = text.match(/\bcc[-\s]*by(?:[-\s]+(sa))?[-\s]*([\d.]+)?/i);
+    if (match) return { family: match[1] ? "by-sa" : "by", version: (match[2] || "").replace(/\.$/, "") };
+    match = text.match(/\battribution(?:[-\s]+share[-\s]*alike)?[-\s]*([\d.]+)?/i);
+    if (match) return { family: /share[-\s]*alike/i.test(match[0]) ? "by-sa" : "by", version: (match[1] || "").replace(/\.$/, "") };
+    match = text.match(/\bcc[-\s]*0[-\s]*([\d.]+)?/i);
+    if (match) return { family: "cc0", version: (match[1] || "").replace(/\.$/, "") };
+    if (/\bpublic domain\b/i.test(text)) return { family: "pdm", version: "" };
+    return null;
+  }
+
+  function studyMusicEmbeddedLicenseConflict(info, licenseUrl) {
+    const pageLicense = studyMusicLicenseFingerprint(licenseUrl);
+    if (!pageLicense) return true;
+    const embeddedLicenses = (Array.isArray(info?.commonmetadata) ? info.commonmetadata : [])
+      .filter((entry) => /copyright|license|usage\s*terms?/i.test(String(entry?.name || "")))
+      .map((entry) => studyMusicLicenseFingerprint(studyMusicMetadataText(entry.value)))
+      .filter(Boolean);
+    return embeddedLicenses.some((embedded) => (
+      embedded.family !== pageLicense.family
+      || (
+        embedded.version
+        && pageLicense.version
+        && embedded.version !== pageLicense.version
+      )
+    ));
+  }
+
+  function studyMusicReviewPending(page) {
+    return (page?.categories || []).some((category) => (
+      /license review needed/i.test(String(category?.title || ""))
+    ));
+  }
+
+  function studyMusicDuration(info) {
+    const direct = Number(info?.duration);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const embedded = studyMusicCommonMetadataValue(info, "Duration");
+    const parsed = Number.parseFloat(embedded.match(/\d+(?:\.\d+)?/)?.[0] || "");
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function normalizeStudyMusicTrack(page) {
+    const info = page?.imageinfo?.[0];
+    if (!info || studyMusicMetadataHasConflict(info, page)) return null;
+    const metadata = info.extmetadata || {};
+    const mediaUrl = studyMusicSafeUrl(info.url, ["upload.wikimedia.org"]);
+    const sourceUrl = studyMusicSafeUrl(info.descriptionurl, ["commons.wikimedia.org"]);
+    const licenseUrl = studyMusicLicenseUrl(metadata.LicenseUrl?.value);
+    const licenseName = studyMusicPlainText(metadata.LicenseShortName?.value || metadata.UsageTerms?.value);
+    const mime = String(info.mime || "").toLowerCase();
+    const size = Number(info.size) || 0;
+    const duration = studyMusicDuration(info);
+    if (!mediaUrl || !sourceUrl || !licenseUrl || !licenseName) return null;
+    if (studyMusicEmbeddedLicenseConflict(info, licenseUrl)) return null;
+    if (/\b(?:nc|nd)\b|noncommercial|no derivatives/i.test(licenseName)) return null;
+    if (!/^audio\//.test(mime) && mime !== "application/ogg") return null;
+    if (!/\.(?:m4a|mp3|oga|ogg|opus|wav)(?:$|[?#])/i.test(mediaUrl)) return null;
+    if (size < STUDY_MUSIC_MIN_BYTES || size > STUDY_MUSIC_MAX_BYTES) return null;
+    if (duration > 0 && duration < STUDY_MUSIC_MIN_DURATION_SECONDS) return null;
+    const playableMime = mime === "application/ogg" ? "audio/ogg" : mime;
+    if (typeof els.studyMusicAudio?.canPlayType === "function") {
+      const support = els.studyMusicAudio.canPlayType(playableMime) || els.studyMusicAudio.canPlayType(mime);
+      if (!support) return null;
+    }
+    const title = studyMusicFileTitle(metadata.ObjectName?.value || page.title);
+    if (/\b(?:fuck|shit|cunt|porn|bitch)\b/i.test(title)) return null;
+    const artist = studyMusicPlainText(metadata.Artist?.value || metadata.Credit?.value, "Unknown artist");
+    return {
+      id: String(page.pageid || info.sha1 || mediaUrl),
+      title,
+      artist,
+      mediaUrl,
+      mime: playableMime,
+      sourceUrl,
+      licenseName,
+      licenseUrl,
+      reviewPending: studyMusicReviewPending(page),
+      duration,
+      size
+    };
+  }
+
+  function studyMusicApiUrl(parameters) {
+    const url = new URL(STUDY_MUSIC_API_URL);
+    Object.entries({ action: "query", format: "json", formatversion: "2", origin: "*", ...parameters })
+      .forEach(([key, value]) => url.searchParams.set(key, String(value)));
+    return url.href;
+  }
+
+  async function fetchStudyMusicJson(parameters, token) {
+    if (token !== state.studyMusicLoadToken || !state.studyMusicAbortController) {
+      throw new Error("Study music request cancelled");
+    }
+    const controller = state.studyMusicAbortController;
+    const timeout = window.setTimeout(() => controller.abort(), STUDY_MUSIC_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(studyMusicApiUrl(parameters), {
+        cache: "default",
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error(`Wikimedia Commons returned ${response.status}`);
+      return await response.json();
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  function shuffledStudyMusicMembers(members) {
+    const shuffled = [...members];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+    }
+    return shuffled;
+  }
+
+  async function refillStudyMusicTracksInner(token, minimumToAdd = 1) {
+    let added = 0;
+    let attempts = 0;
+    const knownIds = new Set(state.studyMusicTracks.map((track) => track.id));
+    while (
+      token === state.studyMusicLoadToken
+      && added < minimumToAdd
+      && state.studyMusicMemberCursor < state.studyMusicMembers.length
+      && attempts < 4
+    ) {
+      attempts += 1;
+      const members = state.studyMusicMembers.slice(
+        state.studyMusicMemberCursor,
+        state.studyMusicMemberCursor + STUDY_MUSIC_METADATA_BATCH_SIZE
+      );
+      state.studyMusicMemberCursor += members.length;
+      const pageids = members.map((member) => Number(member.pageid)).filter(Number.isFinite);
+      if (!pageids.length) continue;
+      const payload = await fetchStudyMusicJson({
+        prop: "imageinfo|categories",
+        pageids: pageids.join("|"),
+        iiprop: "url|mime|size|mediatype|extmetadata|commonmetadata",
+        iiextmetadatafilter: "ObjectName|ImageDescription|Artist|Credit|LicenseShortName|LicenseUrl|UsageTerms|AttributionRequired",
+        iiextmetadatalanguage: "en",
+        iilimit: "1",
+        clshow: "hidden",
+        cllimit: "max"
+      }, token);
+      if (token !== state.studyMusicLoadToken) return added;
+      for (const page of payload?.query?.pages || []) {
+        const track = normalizeStudyMusicTrack(page);
+        if (!track || knownIds.has(track.id)) continue;
+        knownIds.add(track.id);
+        state.studyMusicTracks.push(track);
+        added += 1;
+      }
+    }
+    return added;
+  }
+
+  function refillStudyMusicTracks(token, minimumToAdd = 1) {
+    if (state.studyMusicRefillPromise) return state.studyMusicRefillPromise;
+    const pending = refillStudyMusicTracksInner(token, minimumToAdd);
+    state.studyMusicRefillPromise = pending;
+    return pending.finally(() => {
+      if (state.studyMusicRefillPromise === pending) state.studyMusicRefillPromise = null;
+    });
+  }
+
+  function studyMusicTargetGain() {
+    const ducked = state.studyMusicDuckEnabled && state.studyMusicDuckOwners.size > 0;
+    return clamp(state.studyMusicVolume * (ducked ? STUDY_MUSIC_DUCK_FACTOR : 1), 0, 1);
+  }
+
+  function syncStudyMusicGain() {
+    const target = studyMusicTargetGain();
+    if (state.studyMusicGainNode) {
+      const gain = state.studyMusicGainNode.gain;
+      const now = Number(state.studyMusicAudioContext?.currentTime) || 0;
+      try {
+        gain.cancelScheduledValues(now);
+        if (typeof gain.setTargetAtTime === "function") gain.setTargetAtTime(target, now, 0.035);
+        else gain.value = target;
+      } catch {
+        gain.value = target;
+      }
+      els.studyMusicAudio.volume = 1;
+      return;
+    }
+    try {
+      els.studyMusicAudio.volume = target;
+    } catch {
+      // iPhone ignores media-element volume; the lazy gain node takes over on Play.
+    }
+  }
+
+  function ensureStudyMusicAudioGraph() {
+    if (state.studyMusicGainNode) return state.studyMusicAudioContext;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    let context;
+    try {
+      context = new AudioContextClass();
+      const source = context.createMediaElementSource(els.studyMusicAudio);
+      const gain = context.createGain();
+      source.connect(gain);
+      gain.connect(context.destination);
+      state.studyMusicAudioContext = context;
+      state.studyMusicSourceNode = source;
+      state.studyMusicGainNode = gain;
+      syncStudyMusicGain();
+      return context;
+    } catch (error) {
+      try {
+        context?.close?.();
+      } catch {
+        // Fall through to the native element volume path.
+      }
+      console.warn("Study music mixer unavailable:", error);
+      return null;
+    }
+  }
+
+  function suspendStudyMusicAudioContext() {
+    try {
+      const suspended = state.studyMusicAudioContext?.suspend?.();
+      Promise.resolve(suspended).catch(() => {});
+    } catch {
+      // The media element is also paused, so this is only an idle-resource guard.
+    }
+  }
+
+  function acquireStudyMusicDuck(owner) {
+    if (!owner) return;
+    state.studyMusicDuckOwners.add(owner);
+    syncStudyMusicGain();
+  }
+
+  function releaseStudyMusicDuck(owner) {
+    if (!owner) return;
+    state.studyMusicDuckOwners.delete(owner);
+    syncStudyMusicGain();
+  }
+
+  function clearStudyMusicDucks() {
+    if (!state.studyMusicDuckOwners.size) return;
+    state.studyMusicDuckOwners.clear();
+    syncStudyMusicGain();
+  }
+
+  function renderStudyMusic() {
+    const collection = currentStudyMusicCollection();
+    const track = currentStudyMusicTrack();
+    const playing = Boolean(track && !els.studyMusicAudio.paused && !els.studyMusicAudio.ended);
+    els.studyMusicStyleSelect.value = state.studyMusicStyle;
+    els.studyMusicVolume.value = String(state.studyMusicVolume);
+    els.studyMusicVolumeValue.textContent = `${Math.round(state.studyMusicVolume * 100)}%`;
+    els.studyMusicVolume.setAttribute("aria-valuetext", `${Math.round(state.studyMusicVolume * 100)}%`);
+    els.studyMusicDuck.checked = state.studyMusicDuckEnabled;
+    els.studyMusicPlayBtn.disabled = !track;
+    els.studyMusicPrevBtn.disabled = !track;
+    els.studyMusicNextBtn.disabled = !track;
+    els.studyMusicPlayBtn.textContent = playing ? "Pause" : "Play";
+    els.studyMusicPlayBtn.setAttribute("aria-pressed", String(playing));
+    els.studyMusicToggle.setAttribute("aria-pressed", String(playing));
+    els.studyMusicToggle.title = playing ? "Study music playing" : "Study music";
+    els.studyMusicTitle.textContent = track
+      ? `${track.title} — ${track.artist}`
+      : collection
+        ? `${collection.label} collection`
+        : "Study music off";
+    const links = [
+      [els.studyMusicSourceLink, track?.sourceUrl, "Wikimedia Commons source"],
+      [els.studyMusicLicenseLink, track?.licenseUrl, studyMusicLicenseDisplay(track)],
+      [els.studyMusicCorpusLink, collection?.corpusUrl, collection ? `Browse ${collection.label} corpus` : "Browse full corpus"]
+    ];
+    links.forEach(([link, href, label]) => {
+      if (!link) return;
+      link.hidden = !href;
+      if (href) {
+        link.href = href;
+        link.textContent = label;
+      } else {
+        link.removeAttribute("href");
+      }
+    });
+  }
+
+  function clearStudyMusicStallTimer() {
+    window.clearTimeout(state.studyMusicStallTimer);
+    state.studyMusicStallTimer = 0;
+  }
+
+  function clearStudyMusicStableTimer() {
+    window.clearTimeout(state.studyMusicStableTimer);
+    state.studyMusicStableTimer = 0;
+  }
+
+  function releaseStudyMusicSource() {
+    clearStudyMusicStallTimer();
+    clearStudyMusicStableTimer();
+    els.studyMusicAudio.pause();
+    els.studyMusicAudio.removeAttribute("src");
+    els.studyMusicAudio.load();
+  }
+
+  function pauseStudyMusic({ releaseSource = false } = {}) {
+    state.studyMusicPlaybackToken += 1;
+    state.studyMusicNavigationToken += 1;
+    state.studyMusicWantedPlaying = false;
+    clearStudyMusicStableTimer();
+    els.studyMusicAudio.pause();
+    if (releaseSource) releaseStudyMusicSource();
+    suspendStudyMusicAudioContext();
+    renderStudyMusic();
+  }
+
+  function setStudyMusicTrack(index, { autoplay = false } = {}) {
+    const track = state.studyMusicTracks[index];
+    if (!track) return false;
+    clearStudyMusicStallTimer();
+    clearStudyMusicStableTimer();
+    state.studyMusicPlaybackToken += 1;
+    state.studyMusicTrackIndex = index;
+    els.studyMusicAudio.pause();
+    els.studyMusicAudio.crossOrigin = "anonymous";
+    els.studyMusicAudio.src = track.mediaUrl;
+    els.studyMusicAudio.load();
+    state.studyMusicWantedPlaying = autoplay;
+    renderStudyMusic();
+    setStudyMusicStatus(`${studyMusicLicenseDisplay(track)} · streamed from Wikimedia Commons`);
+    if (
+      state.studyMusicTracks.length - index <= STUDY_MUSIC_PREFETCH_REMAINING
+      && state.studyMusicMemberCursor < state.studyMusicMembers.length
+    ) {
+      const token = state.studyMusicLoadToken;
+      void refillStudyMusicTracks(token, STUDY_MUSIC_METADATA_BATCH_SIZE / 2).then(renderStudyMusic).catch(() => {});
+    }
+    return true;
+  }
+
+  async function playStudyMusic() {
+    const track = currentStudyMusicTrack();
+    if (!track || state.studyMusicPageHidden) return;
+    const token = state.studyMusicLoadToken;
+    const trackId = track.id;
+    const playbackToken = state.studyMusicPlaybackToken + 1;
+    state.studyMusicPlaybackToken = playbackToken;
+    state.studyMusicWantedPlaying = true;
+    const context = ensureStudyMusicAudioGraph();
+    syncStudyMusicGain();
+    let resumePromise = Promise.resolve();
+    try {
+      if (context && context.state !== "running" && context.state !== "closed") {
+        resumePromise = Promise.resolve(context.resume());
+      }
+      // Both calls occur before the first await so the iPhone user gesture is preserved.
+      const playPromise = els.studyMusicAudio.play();
+      await Promise.all([resumePromise, Promise.resolve(playPromise)]);
+      const stale = (
+        playbackToken !== state.studyMusicPlaybackToken
+        || token !== state.studyMusicLoadToken
+        || currentStudyMusicTrack()?.id !== trackId
+      );
+      if (stale) {
+        if (!state.studyMusicWantedPlaying || state.studyMusicPageHidden) {
+          suspendStudyMusicAudioContext();
+        }
+        return;
+      }
+      setStudyMusicStatus(`${studyMusicLicenseDisplay(track)} · streamed from Wikimedia Commons`);
+    } catch (error) {
+      const stale = (
+        playbackToken !== state.studyMusicPlaybackToken
+        || token !== state.studyMusicLoadToken
+        || currentStudyMusicTrack()?.id !== trackId
+      );
+      if (stale) {
+        if (!state.studyMusicWantedPlaying || state.studyMusicPageHidden) {
+          suspendStudyMusicAudioContext();
+        }
+        return;
+      }
+      state.studyMusicWantedPlaying = false;
+      els.studyMusicAudio.pause();
+      setStudyMusicStatus(error?.name === "NotAllowedError"
+        ? "Tap Play again to allow audio"
+        : "This track could not play; try Next");
+      console.warn("Study music play failed:", error);
+    } finally {
+      renderStudyMusic();
+    }
+  }
+
+  async function moveStudyMusic(direction, { autoplay = null } = {}) {
+    if (!currentStudyMusicTrack() || state.studyMusicPageHidden) return;
+    const token = state.studyMusicLoadToken;
+    const navigationToken = state.studyMusicNavigationToken + 1;
+    state.studyMusicNavigationToken = navigationToken;
+    const shouldPlay = autoplay === null
+      ? state.studyMusicWantedPlaying || !els.studyMusicAudio.paused
+      : autoplay;
+    let nextIndex = state.studyMusicTrackIndex + direction;
+    if (direction > 0 && nextIndex >= state.studyMusicTracks.length) {
+      try {
+        await refillStudyMusicTracks(token, 1);
+      } catch (error) {
+        if (token === state.studyMusicLoadToken) console.warn("Study music refill failed:", error);
+      }
+    }
+    if (token !== state.studyMusicLoadToken || navigationToken !== state.studyMusicNavigationToken) return;
+    if (nextIndex >= state.studyMusicTracks.length) nextIndex = 0;
+    if (nextIndex < 0) nextIndex = Math.max(0, state.studyMusicTracks.length - 1);
+    if (!setStudyMusicTrack(nextIndex, { autoplay: shouldPlay })) return;
+    if (shouldPlay) await playStudyMusic();
+  }
+
+  async function handleStudyMusicMediaFailure(message) {
+    if (state.studyMusicFailurePending || state.studyMusicPageHidden) return;
+    state.studyMusicFailurePending = true;
+    clearStudyMusicStallTimer();
+    const wasPlaying = state.studyMusicWantedPlaying || !els.studyMusicAudio.paused;
+    state.studyMusicConsecutiveFailures += 1;
+    try {
+      if (
+        state.studyMusicConsecutiveFailures <= STUDY_MUSIC_MAX_CONSECUTIVE_FAILURES
+        && state.studyMusicTracks.length > 1
+      ) {
+        setStudyMusicStatus(`${message}; skipping to another track`);
+        await moveStudyMusic(1, { autoplay: wasPlaying });
+        return;
+      }
+      pauseStudyMusic();
+      setStudyMusicStatus("Music paused after repeated stream errors. Tap Next to retry.");
+    } finally {
+      state.studyMusicFailurePending = false;
+    }
+  }
+
+  async function loadStudyMusicCollection(style, { persist = true } = {}) {
+    const normalizedStyle = STUDY_MUSIC_COLLECTIONS[style] ? style : "off";
+    state.studyMusicLoadToken += 1;
+    const token = state.studyMusicLoadToken;
+    state.studyMusicAbortController?.abort();
+    state.studyMusicAbortController = normalizedStyle === "off" ? null : new AbortController();
+    state.studyMusicLoadPromise = null;
+    state.studyMusicRefillPromise = null;
+    state.studyMusicStyle = normalizedStyle;
+    state.studyMusicMembers = [];
+    state.studyMusicMemberCursor = 0;
+    state.studyMusicTracks = [];
+    state.studyMusicTrackIndex = -1;
+    state.studyMusicNavigationToken += 1;
+    state.studyMusicConsecutiveFailures = 0;
+    state.studyMusicFailurePending = false;
+    pauseStudyMusic({ releaseSource: true });
+    if (persist) savePrefs();
+    renderStudyMusic();
+    const collection = currentStudyMusicCollection();
+    if (!collection) {
+      setStudyMusicStatus("Choose a collection to begin.");
+      return;
+    }
+    setStudyMusicStatus(`Loading the open ${collection.label} collection…`);
+    const pending = (async () => {
+      const payload = await fetchStudyMusicJson({
+        list: "categorymembers",
+        cmtitle: `Category:${collection.category}`,
+        cmnamespace: "6",
+        cmtype: "file",
+        cmlimit: "max"
+      }, token);
+      if (token !== state.studyMusicLoadToken) return;
+      const members = (payload?.query?.categorymembers || []).filter((member) => (
+        Number.isFinite(Number(member.pageid)) && /^File:/i.test(String(member.title || ""))
+      ));
+      if (!members.length) throw new Error("No audio files were returned");
+      state.studyMusicMembers = shuffledStudyMusicMembers(members);
+      await refillStudyMusicTracks(token, 8);
+      if (token !== state.studyMusicLoadToken) return;
+      if (!state.studyMusicTracks.length) throw new Error("No reviewed, compatible tracks were found");
+      setStudyMusicTrack(0);
+      setStudyMusicStatus(`${state.studyMusicMembers.length} ${collection.label} candidates · tap Play`);
+    })();
+    state.studyMusicLoadPromise = pending;
+    try {
+      await pending;
+    } catch (error) {
+      if (token !== state.studyMusicLoadToken) return;
+      setStudyMusicStatus("The Commons music catalog is unavailable. Check your connection and try again.");
+      console.warn("Study music catalog failed:", error);
+    } finally {
+      if (state.studyMusicLoadPromise === pending) state.studyMusicLoadPromise = null;
+      renderStudyMusic();
+    }
+  }
+
+  function initializeStudyMusic() {
+    els.studyMusicAudio.crossOrigin = "anonymous";
+    els.studyMusicAudio.preload = "none";
+    state.studyMusicVolume = clamp(state.studyMusicVolume, 0, 1);
+    syncStudyMusicGain();
+    renderStudyMusic();
+    if (currentStudyMusicCollection()) {
+      void loadStudyMusicCollection(state.studyMusicStyle, { persist: false });
+    } else {
+      setStudyMusicStatus("Choose a collection to begin.");
+    }
   }
 
   function activeLanguage() {
@@ -4733,6 +5419,7 @@
     clearSpeechHighlights();
     clearCorrespondingHighlights();
     stopPiperAudio();
+    clearStudyMusicDucks();
     terminateAllPiperWorkers(new Error("Piper stopped"));
     if (window.speechSynthesis) {
       try {
@@ -4954,6 +5641,7 @@
         utterance.lang = speechLang;
       }
       const timeout = window.setTimeout(() => {
+        releaseStudyMusicDuck(utterance);
         reject(new Error("Speech did not start"));
       }, 5000);
       const applyHighlight = (charIndex) => {
@@ -4978,6 +5666,12 @@
       };
       utterance.onstart = () => {
         window.clearTimeout(timeout);
+        if (token !== state.playToken) {
+          releaseStudyMusicDuck(utterance);
+          resolve();
+          return;
+        }
+        acquireStudyMusicDuck(utterance);
         applyHighlight(0);
         if (!options.alignment) applyCorrespondingHighlight(options.correspondingTargets);
       };
@@ -4987,12 +5681,14 @@
       };
       utterance.onend = () => {
         window.clearTimeout(timeout);
+        releaseStudyMusicDuck(utterance);
         clearHighlight();
         clearCorrespondingHighlights();
         resolve();
       };
       utterance.onerror = (event) => {
         window.clearTimeout(timeout);
+        releaseStudyMusicDuck(utterance);
         clearHighlight();
         clearCorrespondingHighlights();
         reject(new Error(event.error || "Speech synthesis error"));
@@ -5406,10 +6102,13 @@
         startPiperWordHighlights(clip.text, lang, (audio.duration / playbackRate) * 1000, token, options);
       }
     };
+    const musicDuckOwner = {};
     try {
+      acquireStudyMusicDuck(musicDuckOwner);
       const playStarted = audio.play();
       await Promise.all([Promise.resolve(playStarted), playbackFinished]);
     } finally {
+      releaseStudyMusicDuck(musicDuckOwner);
       if (state.piperAudioUrl === url) {
         state.piperPlaybackCancel = null;
         audio.pause();
@@ -5685,6 +6384,94 @@
   }
 
   function bindEvents() {
+    els.studyMusicToggle.addEventListener("click", () => {
+      els.studyMusicPanel.hidden = !els.studyMusicPanel.hidden;
+      els.studyMusicToggle.setAttribute("aria-expanded", String(!els.studyMusicPanel.hidden));
+    });
+
+    els.studyMusicStyleSelect.addEventListener("change", () => {
+      void loadStudyMusicCollection(els.studyMusicStyleSelect.value);
+    });
+
+    els.studyMusicPlayBtn.addEventListener("click", () => {
+      if (!els.studyMusicAudio.paused && !els.studyMusicAudio.ended) {
+        pauseStudyMusic();
+        setStudyMusicStatus("Music paused");
+        return;
+      }
+      void playStudyMusic();
+    });
+
+    els.studyMusicPrevBtn.addEventListener("click", () => {
+      state.studyMusicConsecutiveFailures = 0;
+      void moveStudyMusic(-1);
+    });
+
+    els.studyMusicNextBtn.addEventListener("click", () => {
+      state.studyMusicConsecutiveFailures = 0;
+      void moveStudyMusic(1);
+    });
+
+    els.studyMusicVolume.addEventListener("input", () => {
+      state.studyMusicVolume = clamp(els.studyMusicVolume.value, 0, 1);
+      syncStudyMusicGain();
+      renderStudyMusic();
+      savePrefs();
+    });
+
+    els.studyMusicDuck.addEventListener("change", () => {
+      state.studyMusicDuckEnabled = els.studyMusicDuck.checked;
+      syncStudyMusicGain();
+      savePrefs();
+    });
+
+    els.studyMusicAudio.addEventListener("playing", () => {
+      clearStudyMusicStallTimer();
+      if (state.studyMusicPageHidden || !state.studyMusicWantedPlaying) {
+        els.studyMusicAudio.pause();
+        renderStudyMusic();
+        return;
+      }
+      state.studyMusicWantedPlaying = true;
+      clearStudyMusicStableTimer();
+      const token = state.studyMusicLoadToken;
+      const trackId = currentStudyMusicTrack()?.id;
+      state.studyMusicStableTimer = window.setTimeout(() => {
+        if (
+          !state.studyMusicPageHidden
+          && token === state.studyMusicLoadToken
+          && trackId
+          && currentStudyMusicTrack()?.id === trackId
+          && !els.studyMusicAudio.paused
+        ) {
+          state.studyMusicConsecutiveFailures = 0;
+        }
+      }, STUDY_MUSIC_STABLE_PLAYBACK_MS);
+      renderStudyMusic();
+    });
+    els.studyMusicAudio.addEventListener("pause", renderStudyMusic);
+    els.studyMusicAudio.addEventListener("ended", () => {
+      clearStudyMusicStallTimer();
+      clearStudyMusicStableTimer();
+      if (!state.studyMusicWantedPlaying || state.studyMusicPageHidden) return;
+      void moveStudyMusic(1, { autoplay: true });
+    });
+    els.studyMusicAudio.addEventListener("error", () => {
+      if (!currentStudyMusicTrack() || state.studyMusicPageHidden) return;
+      void handleStudyMusicMediaFailure("Music stream failed");
+    });
+    const watchForStudyMusicStall = () => {
+      if (state.studyMusicPageHidden || !state.studyMusicWantedPlaying || els.studyMusicAudio.paused) return;
+      clearStudyMusicStallTimer();
+      state.studyMusicStallTimer = window.setTimeout(() => {
+        void handleStudyMusicMediaFailure("Music stream stalled");
+      }, STUDY_MUSIC_STALL_TIMEOUT_MS);
+    };
+    els.studyMusicAudio.addEventListener("waiting", watchForStudyMusicStall);
+    els.studyMusicAudio.addEventListener("stalled", watchForStudyMusicStall);
+    els.studyMusicAudio.addEventListener("canplay", clearStudyMusicStallTimer);
+    els.studyMusicAudio.addEventListener("timeupdate", clearStudyMusicStallTimer);
+
     els.playBtn.addEventListener("click", async () => {
       if (state.playing) {
         stopSpeech();
@@ -6183,9 +6970,31 @@
       fitRussianFocusWord();
       fitEnglishFocusWord();
     });
-    window.addEventListener("pagehide", () => {
+    window.addEventListener("pagehide", (event) => {
+      state.studyMusicPageHidden = true;
       stopSpeech();
       stopPiperAudio({ releasePlayer: true });
+      pauseStudyMusic({ releaseSource: !event.persisted });
+      state.studyMusicLoadToken += 1;
+      state.studyMusicAbortController?.abort();
+      state.studyMusicLoadPromise = null;
+      state.studyMusicRefillPromise = null;
+      suspendStudyMusicAudioContext();
+      savePrefs();
+    });
+    window.addEventListener("pageshow", () => {
+      state.studyMusicPageHidden = false;
+      renderStudyMusic();
+      if (!currentStudyMusicCollection()) return;
+      if (state.studyMusicAbortController && !state.studyMusicAbortController.signal.aborted) return;
+      if (!currentStudyMusicTrack()) {
+        void loadStudyMusicCollection(state.studyMusicStyle, { persist: false });
+        return;
+      }
+      state.studyMusicAbortController = new AbortController();
+      state.studyMusicLoadPromise = null;
+      state.studyMusicRefillPromise = null;
+      setStudyMusicStatus("Music paused · tap Play to resume");
     });
     if (window.speechSynthesis) {
       const handleVoicesChanged = () => syncAvailableVoices();
@@ -6225,6 +7034,7 @@
     }
     syncPiperControls();
     syncBookAudioControlsFromSettings();
+    initializeStudyMusic();
     updateShuffleButton();
     updateSettingLabels();
     updateVoiceSelectors();

@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body>
   <main class="app-shell">
@@ -23,9 +23,57 @@
       <div class="top-controls">
         <button id="bookToggle" class="icon-btn" type="button" aria-label="Books" title="Books">&#128214;</button>
         <button id="newsToggle" class="icon-btn" type="button" aria-label="Current news" title="Current news">&#128240;</button>
+        <button id="studyMusicToggle" class="icon-btn" type="button" aria-label="Study music" aria-controls="studyMusicPanel" aria-expanded="false" title="Study music">&#9835;</button>
         <button id="settingsToggle" class="icon-btn" type="button" aria-label="Settings" aria-controls="settingsPanel" aria-expanded="false" title="Settings">&#9881;</button>
       </div>
     </header>
+
+    <section id="studyMusicPanel" class="study-music-panel" aria-labelledby="studyMusicHeading" hidden>
+      <div class="study-music-main">
+        <div class="study-music-heading">
+          <div>
+            <h2 id="studyMusicHeading">Study music</h2>
+            <div id="studyMusicTitle" class="study-music-title">Study music off</div>
+          </div>
+          <label class="study-music-collection">
+            Collection
+            <select id="studyMusicStyleSelect">
+              <option value="off" selected>Off</option>
+              <option value="classical">Classical</option>
+              <option value="lofi">Lo-fi</option>
+            </select>
+          </label>
+        </div>
+        <div class="study-music-meta">
+          <a id="studyMusicSourceLink" target="_blank" rel="noopener noreferrer" hidden>Source</a>
+          <a id="studyMusicLicenseLink" target="_blank" rel="noopener noreferrer" hidden>License</a>
+          <a id="studyMusicCorpusLink" target="_blank" rel="noopener noreferrer" hidden>Browse full corpus</a>
+        </div>
+      </div>
+
+      <nav class="study-music-transport" aria-label="Study music playback">
+        <button id="studyMusicPrevBtn" type="button" aria-label="Previous study music track">Prev</button>
+        <button id="studyMusicPlayBtn" class="primary" type="button" aria-label="Play study music" aria-pressed="false" disabled>Play</button>
+        <button id="studyMusicNextBtn" type="button" aria-label="Next study music track">Next</button>
+      </nav>
+
+      <div class="study-music-options">
+        <label class="study-music-volume">
+          <span class="setting-title">
+            Music volume
+            <output id="studyMusicVolumeValue" for="studyMusicVolume">20%</output>
+          </span>
+          <input id="studyMusicVolume" type="range" min="0" max="1" step="0.05" value="0.2" aria-label="Study music volume">
+        </label>
+        <label class="study-music-duck checkbox-setting">
+          <input id="studyMusicDuck" type="checkbox" checked>
+          <span>Lower during speech</span>
+        </label>
+      </div>
+
+      <p id="studyMusicStatus" class="study-music-status" role="status" aria-live="polite">Choose a collection to begin.</p>
+      <audio id="studyMusicAudio" preload="none" playsinline crossorigin="anonymous" hidden></audio>
+    </section>
 
     <section class="focus-stage" aria-live="polite">
       <article class="focus-pane focus-ru">
@@ -467,6 +515,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=51" defer></script>
+  <script src="app.js?v=52" defer></script>
 </body>
 </html>
