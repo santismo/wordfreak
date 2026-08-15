@@ -24,6 +24,7 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Dual-language book reader with guided difficulty levels, genre filtering, partial title/author search, and favorite shelves
 - Eighty fast curated Project Gutenberg selections across four guided levels, plus a searchable, paginated Standard Ebooks public-domain library
 - Official-handbooks shelf with the current Air Force Handbook 1, *Airman* (15 February 2025), bundled for reliable sentence navigation and linked to its official USAF PDF
+- English Knowledge reader with randomized, attributed Wikipedia encyclopedia extracts, topic lanes, and a daily "On this day" history feed
 - Current text-news reader using Meduza, VOA Persian, Radio Farda, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and optional Google News feeds
 - News headline filtering, source selection, refresh, random article loading, and full article text browsing without favorites
 - Optional Classical or Lo-fi study music across frequency/vocabulary, English Vernacular, book, and news modes, with its own transport, volume, and automatic speech ducking
@@ -95,6 +96,7 @@ Sources:
 - French, Japanese, and Korean frequency order: Top OpenSubtitles cleaned word frequency lists
 - Hindi frequency order: FrequencyWords Hindi OpenSubtitles list
 - English Vernacular definitions and examples: Princeton WordNet 3.0
+- Knowledge reader: Wikimedia projects via the English Wikipedia Action API and "On this day" feed; individual cards link to their source page
 - English rarity guardrails: wordfreq; the final order is curated and is not presented as a frequency ranking
 - Air Force Handbook 1 reader text: official U.S. Air Force e-Publishing PDF dated 15 February 2025
 - Manual patch list: small Wordfreak-maintained high-frequency fixes
