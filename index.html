@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=29">
+  <link rel="stylesheet" href="styles.css?v=30">
 </head>
 <body>
   <main class="app-shell">
@@ -23,6 +23,7 @@
       <div class="top-controls">
         <button id="bookToggle" class="icon-btn" type="button" aria-label="Books" title="Books">&#128214;</button>
         <button id="newsToggle" class="icon-btn" type="button" aria-label="Current news" title="Current news">&#128240;</button>
+        <button id="knowledgeToggle" class="icon-btn" type="button" aria-label="Knowledge" title="Knowledge">&#129504;</button>
         <button id="studyMusicToggle" class="icon-btn" type="button" aria-label="Study music" aria-controls="studyMusicPanel" aria-expanded="false" title="Study music">&#9835;</button>
         <button id="settingsToggle" class="icon-btn" type="button" aria-label="Settings" aria-controls="settingsPanel" aria-expanded="false" title="Settings">&#9881;</button>
       </div>
@@ -414,6 +415,23 @@
         <button id="newsRandomBtn" type="button">Random</button>
       </form>
 
+      <form id="knowledgeShelfControls" class="book-shelf-controls knowledge-shelf-controls" hidden>
+        <label>
+          Knowledge feed
+          <select id="knowledgeTopicSelect">
+            <option value="general" selected>Random encyclopedia</option>
+            <option value="science">Science &amp; technology</option>
+            <option value="history">History &amp; culture</option>
+            <option value="nature">Nature &amp; Earth</option>
+            <option value="arts">Arts &amp; language</option>
+            <option value="onthisday">On this day</option>
+          </select>
+        </label>
+        <div class="knowledge-shelf-copy">Fresh, attributed English facts and short encyclopedia extracts.</div>
+        <button id="knowledgeRefreshBtn" class="primary" type="button">Refresh</button>
+        <button id="knowledgeRandomBtn" type="button">Random</button>
+      </form>
+
       <div class="book-reader-controls">
         <button id="bookPrevSentenceBtn" type="button">Prev</button>
         <button id="bookPlayBtn" class="primary" type="button">Play</button>
@@ -515,6 +533,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=52" defer></script>
+  <script src="app.js?v=53" defer></script>
 </body>
 </html>

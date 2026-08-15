@@ -11,6 +11,23 @@
   // v3 drops translations saved before reader text decoded entities and normalized diacritics.
   const READER_TRANSLATIONS_KEY = "wordfreak:reader-translations:v3";
   const NEWS_FEED_CACHE_KEY = "wordfreak:news-feeds:v1";
+  const KNOWLEDGE_CACHE_KEY = "wordfreak:knowledge-feeds:v1";
+  const KNOWLEDGE_HISTORY_KEY = "wordfreak:knowledge-history:v1";
+  const KNOWLEDGE_CACHE_LIMIT = 6;
+  const KNOWLEDGE_HISTORY_LIMIT = 240;
+  const KNOWLEDGE_CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+  const KNOWLEDGE_DOCUMENT_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+  const KNOWLEDGE_BATCH_SIZE = 18;
+  const WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php";
+  const WIKIPEDIA_ON_THIS_DAY_URL = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/all";
+  const KNOWLEDGE_TOPICS = {
+    general: { label: "Random encyclopedia" },
+    science: { label: "Science & technology", category: "Category:Science_and_technology" },
+    history: { label: "History & culture", category: "Category:History" },
+    nature: { label: "Nature & Earth", category: "Category:Nature" },
+    arts: { label: "Arts & language", category: "Category:Arts_and_culture" },
+    onthisday: { label: "On this day", onThisDay: true }
+  };
   // v3 drops documents saved before reader text decoded entities and normalized diacritics.
   const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v3";
   const STANDARD_EBOOKS_LIST_URL = "https://standardebooks.org/ebooks";
@@ -417,6 +434,7 @@
     bandSelect: document.getElementById("bandSelect"),
     bookToggle: document.getElementById("bookToggle"),
     newsToggle: document.getElementById("newsToggle"),
+    knowledgeToggle: document.getElementById("knowledgeToggle"),
     studyMusicToggle: document.getElementById("studyMusicToggle"),
     studyMusicPanel: document.getElementById("studyMusicPanel"),
     studyMusicStyleSelect: document.getElementById("studyMusicStyleSelect"),
@@ -508,6 +526,10 @@
     newsSearchBtn: document.getElementById("newsSearchBtn"),
     newsRefreshBtn: document.getElementById("newsRefreshBtn"),
     newsRandomBtn: document.getElementById("newsRandomBtn"),
+    knowledgeShelfControls: document.getElementById("knowledgeShelfControls"),
+    knowledgeTopicSelect: document.getElementById("knowledgeTopicSelect"),
+    knowledgeRefreshBtn: document.getElementById("knowledgeRefreshBtn"),
+    knowledgeRandomBtn: document.getElementById("knowledgeRandomBtn"),
     bookPrevSentenceBtn: document.getElementById("bookPrevSentenceBtn"),
     bookPlayBtn: document.getElementById("bookPlayBtn"),
     bookNextSentenceBtn: document.getElementById("bookNextSentenceBtn"),
@@ -626,6 +648,10 @@
     newsFeedLoadToken: 0,
     newsAllArticles: [],
     newsSearch: "",
+    knowledgeTopic: "general",
+    knowledgeCache: loadKnowledgeCache(),
+    knowledgeHistory: loadKnowledgeHistory(),
+    knowledgeLoadToken: 0,
     piperWorkers: new Map(),
     piperRequestId: 0,
     piperAudio: null,
@@ -697,6 +723,9 @@
       state.newsSourceByLanguage = prefs.newsSourceByLanguage && typeof prefs.newsSourceByLanguage === "object"
         ? { ...prefs.newsSourceByLanguage }
         : {};
+      state.knowledgeTopic = KNOWLEDGE_TOPICS[prefs.knowledgeTopic]
+        ? prefs.knowledgeTopic
+        : state.knowledgeTopic;
       if (prefs.voicePrefs && typeof prefs.voicePrefs === "object") {
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
@@ -753,6 +782,7 @@
       bookGenre: state.bookGenre,
       bookLevel: state.bookLevel,
       newsSourceByLanguage: state.newsSourceByLanguage,
+      knowledgeTopic: state.knowledgeTopic,
       bookReadEnglish: els.bookReadEnglish.checked,
       readEnglishAloud: els.bookReadEnglish.checked,
       speechTrack2Language: state.speechTrack2Language,
@@ -842,6 +872,49 @@
       window.localStorage.setItem(TRANSLATION_CACHE_KEY, JSON.stringify(state.translationCache));
     } catch (error) {
       console.warn("Translation cache save failed:", error);
+    }
+  }
+
+  function loadKnowledgeCache() {
+    try {
+      const value = JSON.parse(window.localStorage.getItem(KNOWLEDGE_CACHE_KEY) || "{}");
+      return value && typeof value === "object" ? value : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveKnowledgeCache() {
+    try {
+      const entries = Object.entries(state.knowledgeCache)
+        .sort((left, right) => Number(right[1]?.savedAt || 0) - Number(left[1]?.savedAt || 0))
+        .slice(0, KNOWLEDGE_CACHE_LIMIT);
+      state.knowledgeCache = Object.fromEntries(entries);
+      window.localStorage.setItem(KNOWLEDGE_CACHE_KEY, JSON.stringify(state.knowledgeCache));
+    } catch (error) {
+      console.warn("Knowledge cache save failed:", error);
+    }
+  }
+
+  function loadKnowledgeHistory() {
+    try {
+      const values = JSON.parse(window.localStorage.getItem(KNOWLEDGE_HISTORY_KEY) || "[]");
+      return Array.isArray(values) ? values.filter((value) => typeof value === "string").slice(-KNOWLEDGE_HISTORY_LIMIT) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function rememberKnowledgeItems(items) {
+    const seen = new Set(state.knowledgeHistory);
+    items.forEach((item) => {
+      if (item?.id) seen.add(item.id);
+    });
+    state.knowledgeHistory = Array.from(seen).slice(-KNOWLEDGE_HISTORY_LIMIT);
+    try {
+      window.localStorage.setItem(KNOWLEDGE_HISTORY_KEY, JSON.stringify(state.knowledgeHistory));
+    } catch (error) {
+      console.warn("Knowledge history save failed:", error);
     }
   }
 
@@ -1786,7 +1859,9 @@
       button.disabled = !available;
       button.title = available ? button.getAttribute("aria-label") : explanation;
     });
-    if (!available && state.bookMode) {
+    els.knowledgeToggle.disabled = false;
+    els.knowledgeToggle.title = els.knowledgeToggle.getAttribute("aria-label") || "Knowledge";
+    if (!available && state.bookMode && !isKnowledgeMode()) {
       setBookMode(false);
     }
   }
@@ -1829,6 +1904,14 @@
 
   function isNewsMode() {
     return state.contentMode === "news";
+  }
+
+  function isKnowledgeMode() {
+    return state.contentMode === "knowledge";
+  }
+
+  function activeKnowledgeTopic() {
+    return KNOWLEDGE_TOPICS[state.knowledgeTopic] || KNOWLEDGE_TOPICS.general;
   }
 
   function activeNewsSources() {
@@ -3828,6 +3911,194 @@
     }
   }
 
+  function knowledgePageUrl(title) {
+    return `https://en.wikipedia.org/wiki/${encodeURIComponent(String(title || "").replace(/ /g, "_"))}`;
+  }
+
+  function knowledgeCategories(rawCategories) {
+    return (rawCategories || [])
+      .map((category) => normalizeSpaces(String(category?.title || "").replace(/^Category:/i, "")))
+      .filter((category) => category && !/^(Articles|Pages|Wikipedia|CS1|All stub|Use )/i.test(category))
+      .slice(0, 3);
+  }
+
+  function normalizeKnowledgeRecord(page, topic = activeKnowledgeTopic()) {
+    const title = cleanBookTitle(page?.title || "");
+    const extract = cleanBookText(page?.extract || "");
+    if (
+      !title
+      || !extract
+      || page?.missing !== undefined
+      || page?.pageprops?.disambiguation !== undefined
+      || /^(?:List of|Index of|Outline of|Timeline of)/i.test(title)
+    ) return null;
+    const sentences = splitBookSentences(extract).slice(0, 18);
+    const summary = sentences.join(" ");
+    if (summary.length < 90) return null;
+    const pageId = String(page?.pageid || title.toLowerCase());
+    return {
+      id: `knowledge:wikipedia:${pageId}`,
+      kind: "knowledge",
+      source: "wikipedia",
+      link: page?.fullurl || knowledgePageUrl(title),
+      title,
+      author: "Wikipedia",
+      sourceLabel: topic?.onThisDay ? "Wikipedia · On this day" : "Wikipedia",
+      summary,
+      categories: knowledgeCategories(page?.categories),
+      thumbnail: page?.thumbnail?.source || ""
+    };
+  }
+
+  async function fetchWikipediaKnowledge(topic) {
+    const params = new URLSearchParams({
+      action: "query",
+      format: "json",
+      formatversion: "2",
+      origin: "*",
+      generator: topic?.category ? "categorymembers" : "random",
+      prop: "extracts|info|pageprops|categories|pageimages",
+      exintro: "1",
+      explaintext: "1",
+      inprop: "url",
+      piprop: "thumbnail",
+      pithumbsize: "600",
+      cllimit: "8",
+      redirects: "1"
+    });
+    if (topic?.category) {
+      params.set("gcmtitle", topic.category);
+      params.set("gcmtype", "page");
+      params.set("gcmlimit", "50");
+    } else {
+      params.set("grnnamespace", "0");
+      params.set("grnlimit", String(KNOWLEDGE_BATCH_SIZE));
+    }
+    const response = await withTimeout(
+      fetch(`${WIKIPEDIA_API_URL}?${params.toString()}`, { cache: "no-store" }),
+      BOOK_FETCH_TIMEOUT_MS,
+      "Wikipedia"
+    );
+    if (!response.ok) throw new Error(`Wikipedia ${response.status}`);
+    const payload = await response.json();
+    const pages = Array.isArray(payload?.query?.pages)
+      ? payload.query.pages
+      : Object.values(payload?.query?.pages || {});
+    return pages
+      .map((page) => normalizeKnowledgeRecord(page, topic))
+      .filter(Boolean)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, KNOWLEDGE_BATCH_SIZE);
+  }
+
+  async function fetchOnThisDayKnowledge() {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const response = await withTimeout(
+      fetch(`${WIKIPEDIA_ON_THIS_DAY_URL}/${month}/${day}`, { cache: "no-store" }),
+      BOOK_FETCH_TIMEOUT_MS,
+      "Wikipedia history"
+    );
+    if (!response.ok) throw new Error(`Wikipedia history ${response.status}`);
+    const payload = await response.json();
+    const sourceGroups = ["selected", "events", "births", "deaths"];
+    const records = [];
+    sourceGroups.forEach((group) => {
+      (payload?.[group] || []).forEach((entry) => {
+        const page = entry?.pages?.[0] || {};
+        const title = cleanBookTitle(page?.titles?.normalized || page?.titles?.display || "");
+        const summary = cleanBookText(entry?.text || "");
+        if (!title || summary.length < 35) return;
+        records.push({
+          id: `knowledge:onthisday:${entry?.year || "date"}:${title.toLowerCase()}`,
+          kind: "knowledge",
+          source: "wikipedia",
+          link: page?.content_urls?.desktop?.page || knowledgePageUrl(title),
+          title: entry?.year ? `${entry.year} · ${title}` : title,
+          author: "Wikipedia",
+          sourceLabel: "Wikipedia · On this day",
+          summary,
+          categories: ["On this day", group === "births" ? "Birth" : group === "deaths" ? "Death" : "History"],
+          thumbnail: page?.thumbnail?.source || ""
+        });
+      });
+    });
+    return records.sort(() => Math.random() - 0.5).slice(0, KNOWLEDGE_BATCH_SIZE);
+  }
+
+  async function fetchKnowledgeItems(topic = activeKnowledgeTopic()) {
+    const records = topic?.onThisDay
+      ? await fetchOnThisDayKnowledge()
+      : await fetchWikipediaKnowledge(topic);
+    const history = new Set(state.knowledgeHistory);
+    const unseen = records.filter((record) => !history.has(record.id));
+    return unseen.length ? unseen : records;
+  }
+
+  async function loadKnowledgeFeed(options = {}) {
+    const topic = activeKnowledgeTopic();
+    const cacheKey = state.knowledgeTopic;
+    const cached = state.knowledgeCache[cacheKey];
+    const cachedItems = Array.isArray(cached?.items) ? cached.items.filter((item) => item?.kind === "knowledge") : [];
+    const cacheFresh = cachedItems.length && Date.now() - Number(cached?.savedAt || 0) < KNOWLEDGE_CACHE_MAX_AGE_MS;
+    const token = state.knowledgeLoadToken + 1;
+    state.knowledgeLoadToken = token;
+    if (cacheFresh && !options.force) {
+      state.bookBooks = cachedItems;
+      renderBookShelf();
+      setStatus(`Showing cached ${topic.label.toLowerCase()} · updating`);
+    } else {
+      state.bookBooks = [];
+      renderBookShelf();
+      setStatus(`Finding ${topic.label.toLowerCase()}`);
+    }
+    try {
+      const items = await fetchKnowledgeItems(topic);
+      if (token !== state.knowledgeLoadToken || !isKnowledgeMode() || state.knowledgeTopic !== cacheKey) return;
+      if (!items.length) throw new Error("Wikipedia returned no readable knowledge cards");
+      state.bookBooks = items;
+      rememberKnowledgeItems(items);
+      state.knowledgeCache[cacheKey] = { savedAt: Date.now(), items };
+      saveKnowledgeCache();
+      renderBookShelf();
+      setStatus(`Loaded ${items.length} ${topic.label.toLowerCase()} cards`);
+    } catch (error) {
+      if (cachedItems.length) {
+        state.bookBooks = cachedItems;
+        renderBookShelf();
+        setStatus(`Showing cached ${topic.label.toLowerCase()}; refresh unavailable`);
+        return;
+      }
+      throw error;
+    }
+  }
+
+  function knowledgeSummaryDocument(item) {
+    const paragraphs = [item?.summary].filter(Boolean);
+    const sentences = [];
+    let paragraphIndex = 0;
+    paragraphs.forEach((paragraph) => {
+      const values = splitBookSentences(paragraph);
+      values.forEach((text) => {
+        sentences.push({ text, paragraphIndex, chapterIndex: 0 });
+      });
+      if (values.length) paragraphIndex += 1;
+    });
+    const parsed = finalizeBookParse(sentences, [{ title: "Knowledge", start: 0 }]);
+    if (!parsed.sentences.length) throw new Error("Knowledge card has no readable text");
+    return { ...parsed, sourceUrl: item?.link || "", proxy: "Wikipedia API" };
+  }
+
+  async function loadRandomKnowledgeArticle() {
+    stopSpeech();
+    if (!state.bookBooks.length) await loadKnowledgeFeed();
+    const item = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
+    if (!item) throw new Error("No knowledge card found");
+    await loadBook(item, { random: true });
+    setStatus(`Random knowledge extract from ${item.sourceLabel || "Wikipedia"}`);
+  }
+
   function formatNewsDate(value) {
     const time = Date.parse(value || "");
     if (!Number.isFinite(time)) return "Latest";
@@ -4171,6 +4442,10 @@
   }
 
   function updateBookShelfControlState() {
+    if (isKnowledgeMode()) {
+      els.knowledgeTopicSelect.value = state.knowledgeTopic;
+      return;
+    }
     if (isNewsMode()) {
       els.newsLanguageSelect.value = state.language;
       populateNewsSourceSelect();
@@ -4189,6 +4464,9 @@
   }
 
   function bookShelfTitle() {
+    if (isKnowledgeMode()) {
+      return activeKnowledgeTopic().label;
+    }
     if (isNewsMode()) {
       const source = activeNewsSource();
       return state.newsSearch
@@ -4222,6 +4500,31 @@
   function renderBookShelf() {
     if (!els.bookShelf) return;
     updateBookShelfControlState();
+    if (isKnowledgeMode()) {
+      if (state.bookViewMode === "shelf") {
+        els.bookModeTitle.textContent = bookShelfTitle();
+      }
+      if (!state.bookBooks.length) {
+        els.bookShelf.innerHTML = `<div class="book-empty">Finding fresh English knowledge…</div>`;
+        return;
+      }
+      els.bookShelf.innerHTML = state.bookBooks.map((item, index) => {
+        const category = item.categories?.[0] || activeKnowledgeTopic().label;
+        return `
+          <article class="book-card knowledge-card" data-book-index="${index}">
+            <button class="book-open-btn" type="button" data-book-index="${index}">
+              <span class="book-card-title">${escapeHtml(item.title)}</span>
+              <span class="book-card-author">${escapeHtml(item.summary)}</span>
+              <span class="book-card-badges">
+                <span class="book-level-badge">${escapeHtml(category)}</span>
+                <span class="book-source-badge">${escapeHtml(item.sourceLabel || "Wikipedia")}</span>
+              </span>
+            </button>
+          </article>
+        `;
+      }).join("");
+      return;
+    }
     if (isNewsMode()) {
       if (state.bookViewMode === "shelf") {
         els.bookModeTitle.textContent = bookShelfTitle();
@@ -4543,7 +4846,7 @@
   }
 
   function rememberMeasuredBookDifficulty(book, sentences) {
-    if (!book?.id || book.kind === "news") return;
+    if (!book?.id || book.kind === "news" || book.kind === "knowledge") return;
     if (bookLevelInfo(book) && book.wordCount && optionalBookNumber(book.estimatedGrade) !== null) return;
     const difficulty = measureBookDifficulty(sentences);
     if (!difficulty) return;
@@ -4799,6 +5102,9 @@
   }
 
   async function fetchAndParseBookUncached(book) {
+    if (book?.kind === "knowledge") {
+      return knowledgeSummaryDocument(book);
+    }
     if (book?.kind === "news") {
       return fetchAndParseNewsArticle(book);
     }
@@ -4826,7 +5132,8 @@
 
   function readerDocumentKey(book) {
     const identity = book?.id || book?.link || "";
-    return identity ? `${book?.kind === "news" ? "news" : "book"}:${identity}` : "";
+    const kind = book?.kind === "news" ? "news" : book?.kind === "knowledge" ? "knowledge" : "book";
+    return identity ? `${kind}:${identity}` : "";
   }
 
   function rememberReaderDocument(key, parsed) {
@@ -4852,7 +5159,9 @@
       const payload = await response.json();
       const maxAge = key.startsWith("news:")
         ? NEWS_DOCUMENT_CACHE_MAX_AGE_MS
-        : BOOK_DOCUMENT_CACHE_MAX_AGE_MS;
+        : key.startsWith("knowledge:")
+          ? KNOWLEDGE_DOCUMENT_CACHE_MAX_AGE_MS
+          : BOOK_DOCUMENT_CACHE_MAX_AGE_MS;
       if (payload?.key !== key || !payload?.parsed || Date.now() - Number(payload.savedAt || 0) > maxAge) {
         await cache.delete(persistentReaderDocumentUrl(key));
         return null;
@@ -4941,6 +5250,7 @@
   }
 
   function bookModeKickerText() {
+    if (isKnowledgeMode()) return "Fresh English knowledge";
     if (isNewsMode()) return "Live text news";
     if (state.bookShelfKind === "guided") return "Curated public-domain levels";
     if (state.bookShelfKind === "official") return "Official source editions";
@@ -4962,21 +5272,25 @@
       bookLevelInfo(book)?.label || "",
       bookDifficultySummary(book)
     ].filter(Boolean).join(" · ");
-    els.bookReaderMeta.textContent = book.kind === "news"
-      ? `${book.sourceLabel || book.author || "News"} · ${formatNewsDate(book.publishedAt)}`
-      : bookMeta;
+    els.bookReaderMeta.textContent = book.kind === "knowledge"
+      ? [book.sourceLabel || "Wikipedia", ...(book.categories || []).slice(0, 2)].filter(Boolean).join(" · ")
+      : book.kind === "news"
+        ? `${book.sourceLabel || book.author || "News"} · ${formatNewsDate(book.publishedAt)}`
+        : bookMeta;
     els.bookSourceLink.href = book.link || STANDARD_EBOOKS_LIST_URL;
-    els.bookSourceLink.textContent = book.kind === "news"
-      ? "Original article"
-      : book.source === "usaf"
-        ? "Official USAF PDF"
-        : bookSourceLabel(book);
+    els.bookSourceLink.textContent = book.kind === "knowledge"
+      ? (book.sourceLabel || "Wikipedia")
+      : book.kind === "news"
+        ? "Original article"
+        : book.source === "usaf"
+          ? "Official USAF PDF"
+          : bookSourceLabel(book);
     els.bookSourceLink.title = book.source === "usaf"
       ? "Official Air Force Handbook 1 source PDF"
-      : "";
+      : "Open the original source";
     els.bookSourceNotice.hidden = book.source !== "usaf";
-    els.bookChapterLabel.textContent = book.kind === "news" ? "Section" : "Chapter";
-    const englishLabel = book.kind === "news" ? "English translation" : "English original";
+    els.bookChapterLabel.textContent = book.kind === "news" || book.kind === "knowledge" ? "Section" : "Chapter";
+    const englishLabel = book.kind === "knowledge" ? "English knowledge" : book.kind === "news" ? "English translation" : "English original";
     els.bookEnglishLabel.textContent = `${englishLabel}${englishSpeechEnabled() ? "" : " · display only"}`;
     els.bookProgressRange.max = String(Math.max(0, state.bookSentences.length - 1));
     els.bookProgressRange.value = String(state.bookCurrentIndex);
@@ -5064,7 +5378,27 @@
     const sentence = currentBookSentence();
     const language = activeLanguage();
     const languageKey = state.language;
+    const knowledgeMode = isKnowledgeMode() || state.bookLoadedBook?.kind === "knowledge";
     const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
+    if (knowledgeMode) {
+      els.bookSourceLabel.textContent = "English knowledge";
+      els.bookSourceSentence.lang = "en";
+      els.bookSourceSentence.dir = "ltr";
+      els.bookEnglishLabel.textContent = "Source";
+      els.bookEnglishSentence.textContent = state.bookLoadedBook?.sourceLabel || "Wikipedia";
+      if (!sentence) {
+        els.bookSourceSentence.textContent = "Select a knowledge card to begin.";
+        clearBookSpeechTracks();
+        updateBookProgressControls();
+        renderBookNearby();
+        return;
+      }
+      els.bookSourceSentence.textContent = sentence.text;
+      clearBookSpeechTracks();
+      updateBookProgressControls();
+      renderBookNearby();
+      return;
+    }
     els.bookSourceLabel.textContent = language.label;
     els.bookSourceSentence.lang = sourceLangCode();
     els.bookSourceSentence.dir = language.dir;
@@ -5130,20 +5464,26 @@
   }
 
   async function loadBook(book, options = {}) {
-    if (!book?.link) throw new Error(isNewsMode() ? "Missing article link" : "Missing book link");
+    if (!book?.link) throw new Error(isKnowledgeMode() ? "Missing knowledge source link" : isNewsMode() ? "Missing article link" : "Missing book link");
     stopSpeech();
     state.bookLoadedBook = book;
     state.bookSentences = [];
     state.bookChapters = [];
     state.bookCurrentIndex = 0;
     renderBookReaderShell();
-    els.bookSourceSentence.textContent = book.kind === "news" ? "Loading current article..." : "Loading book text...";
+    els.bookSourceSentence.textContent = book.kind === "knowledge"
+      ? "Loading knowledge..."
+      : book.kind === "news"
+        ? "Loading current article..."
+        : "Loading book text...";
     els.bookEnglishSentence.textContent = book.title;
     setStatus(`Loading ${book.title}`);
 
     let parsed = null;
     let pendingFullDocument = null;
-    if (book.kind === "news") {
+    if (book.kind === "knowledge") {
+      parsed = knowledgeSummaryDocument(book);
+    } else if (book.kind === "news") {
       const preview = newsFeedSummaryDocument(book);
       const fullDocumentPromise = fetchAndParseBook(book);
       if (preview) {
@@ -5240,8 +5580,9 @@
     state.bookRenderToken += 1;
     els.bookModeKicker.textContent = bookModeKickerText();
     els.bookModeTitle.textContent = bookShelfTitle();
-    els.bookShelfControls.hidden = isNewsMode();
+    els.bookShelfControls.hidden = isNewsMode() || isKnowledgeMode();
     els.newsShelfControls.hidden = !isNewsMode();
+    els.knowledgeShelfControls.hidden = !isKnowledgeMode();
     els.bookShelf.hidden = false;
     els.bookReader.hidden = true;
     els.bookShelfBtn.hidden = true;
@@ -5259,6 +5600,7 @@
     els.bookModeTitle.textContent = isNewsMode() ? "Current article" : "Current book";
     els.bookShelfControls.hidden = true;
     els.newsShelfControls.hidden = true;
+    els.knowledgeShelfControls.hidden = true;
     els.bookShelf.hidden = true;
     els.bookReader.hidden = false;
     els.bookShelfBtn.hidden = false;
@@ -5269,11 +5611,12 @@
   }
 
   function setBookMode(enabled, contentMode = state.contentMode) {
-    if (enabled && !readerEnabled()) {
+    const requestedKnowledge = contentMode === "knowledge";
+    if (enabled && !requestedKnowledge && !readerEnabled()) {
       setStatus("Choose a study language to use books or news");
       return;
     }
-    const nextMode = contentMode === "news" ? "news" : "books";
+    const nextMode = contentMode === "news" ? "news" : requestedKnowledge ? "knowledge" : "books";
     const modeChanged = nextMode !== state.contentMode;
     state.contentMode = nextMode;
     state.bookMode = Boolean(enabled);
@@ -5288,16 +5631,23 @@
     }
     els.bookView.hidden = !state.bookMode;
     document.body.classList.toggle("book-mode", state.bookMode);
-    els.bookToggle.setAttribute("aria-pressed", String(state.bookMode && !isNewsMode()));
+    document.body.classList.toggle("knowledge-reader", state.bookMode && isKnowledgeMode());
+    els.bookToggle.setAttribute("aria-pressed", String(state.bookMode && !isNewsMode() && !isKnowledgeMode()));
     els.newsToggle.setAttribute("aria-pressed", String(state.bookMode && isNewsMode()));
+    els.knowledgeToggle.setAttribute("aria-pressed", String(state.bookMode && isKnowledgeMode()));
     if (state.bookMode) {
       els.bookLanguageSelect.value = state.language;
       els.newsLanguageSelect.value = state.language;
+      els.knowledgeTopicSelect.value = state.knowledgeTopic;
       populateNewsSourceSelect();
       syncBookAudioControlsFromSettings();
       updateSettingLabels();
       showBookShelf();
-      const loadShelf = isNewsMode() ? loadNewsFeed() : ensureBookShelfLoaded();
+      const loadShelf = isKnowledgeMode()
+        ? loadKnowledgeFeed()
+        : isNewsMode()
+          ? loadNewsFeed()
+          : ensureBookShelfLoaded();
       loadShelf.catch((error) => {
         setStatus(error.message || (isNewsMode() ? "News feed failed" : "Book shelf failed"));
         console.error(error);
@@ -5311,6 +5661,20 @@
 
   async function speakBookSentence(sentence, token) {
     if (!sentence || token !== state.playToken) return;
+    if (isKnowledgeMode() || state.bookLoadedBook?.kind === "knowledge") {
+      setStatus(`Knowledge · sentence ${state.bookCurrentIndex + 1}`);
+      await speakTextWithWordPacing(
+        sentence.text,
+        "en-US",
+        Number(els.bookEnRate.value),
+        token,
+        {
+          engine: speechTrackConfig(1).engine,
+          highlightTargets: [{ id: "bookSourceSentence", text: sentence.text }]
+        }
+      );
+      return;
+    }
     const language = activeLanguage();
     const languageKey = state.language;
     const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
@@ -5367,7 +5731,7 @@
       return;
     }
     if (!state.bookSentences.length) {
-      setStatus(isNewsMode() ? "Load a news article first" : "Load a book first");
+      setStatus(isKnowledgeMode() ? "Load a knowledge card first" : isNewsMode() ? "Load a news article first" : "Load a book first");
       return;
     }
     state.bookPlaying = true;
@@ -5394,7 +5758,7 @@
       }
     } catch (error) {
       failed = true;
-      setStatus(playbackErrorMessage(error, isNewsMode() ? "News playback failed" : "Book playback failed"));
+      setStatus(playbackErrorMessage(error, isKnowledgeMode() ? "Knowledge playback failed" : isNewsMode() ? "News playback failed" : "Book playback failed"));
       console.error(error);
     } finally {
       if (token === state.playToken) {
@@ -6564,6 +6928,12 @@
       setBookMode(!active, "news");
     });
 
+    els.knowledgeToggle.addEventListener("click", () => {
+      stopSpeech();
+      const active = state.bookMode && isKnowledgeMode();
+      setBookMode(!active, "knowledge");
+    });
+
     els.bookShelfBtn.addEventListener("click", () => {
       setBookMode(true, state.contentMode);
       stopSpeech();
@@ -6602,6 +6972,33 @@
         setStatus(error.message || "Random article failed");
         console.error(error);
       }
+    });
+
+    els.knowledgeRefreshBtn.addEventListener("click", async () => {
+      try {
+        await loadKnowledgeFeed({ force: true });
+      } catch (error) {
+        setStatus(error.message || "Knowledge refresh failed");
+        console.error(error);
+      }
+    });
+
+    els.knowledgeRandomBtn.addEventListener("click", async () => {
+      try {
+        await loadRandomKnowledgeArticle();
+      } catch (error) {
+        setStatus(error.message || "Random knowledge fact failed");
+        console.error(error);
+      }
+    });
+
+    els.knowledgeTopicSelect.addEventListener("change", () => {
+      state.knowledgeTopic = KNOWLEDGE_TOPICS[els.knowledgeTopicSelect.value]
+        ? els.knowledgeTopicSelect.value
+        : "general";
+      state.bookBooks = [];
+      savePrefs();
+      setBookMode(true, "knowledge");
     });
 
     els.newsSourceSelect.addEventListener("change", async () => {
@@ -7026,6 +7423,7 @@
       populateNewsSourceSelect();
     }
     els.bookShelfViewSelect.value = state.bookShelfKind;
+    els.knowledgeTopicSelect.value = state.knowledgeTopic;
     els.bookGenreSelect.value = state.bookGenre;
     els.bookLevelSelect.value = state.bookLevel;
     els.enLangSelect.value = state.enLang;
