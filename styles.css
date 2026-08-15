@@ -745,6 +745,30 @@ body.book-mode .dataset-meta {
   grid-template-columns: minmax(110px, 0.8fr) minmax(150px, 1fr) minmax(190px, 1.6fr) minmax(72px, 0.55fr) minmax(82px, 0.6fr) minmax(82px, 0.6fr);
 }
 
+.knowledge-shelf-controls {
+  grid-template-columns: minmax(180px, 0.9fr) minmax(190px, 1.5fr) minmax(92px, 0.55fr) minmax(92px, 0.55fr);
+}
+
+.knowledge-shelf-copy {
+  align-self: end;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.34;
+}
+
+body.knowledge-reader .dual-sentence {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.knowledge-reader .english-reader-pane {
+  display: none;
+}
+
+body.knowledge-reader .source-reader-pane .reader-sentence {
+  color: var(--text);
+  font-size: clamp(1.18rem, 4.1vw, 1.95rem);
+}
+
 .book-reader-controls {
   grid-template-columns: repeat(4, minmax(62px, 1fr));
   border-top: 1px solid rgba(42, 49, 54, 0.78);
@@ -1395,8 +1419,14 @@ body.book-mode .dataset-meta {
   #bookRandomBtn,
   #newsSearchBtn,
   #newsRefreshBtn,
-  #newsRandomBtn {
+  #newsRandomBtn,
+  #knowledgeRefreshBtn,
+  #knowledgeRandomBtn {
     grid-column: span 2;
+  }
+
+  .knowledge-shelf-copy {
+    grid-column: 1 / -1;
   }
 
   .book-search-field {
