@@ -746,7 +746,18 @@ body.book-mode .dataset-meta {
 }
 
 .knowledge-shelf-controls {
-  grid-template-columns: minmax(180px, 0.9fr) minmax(190px, 1.5fr) minmax(92px, 0.55fr) minmax(92px, 0.55fr);
+  grid-template-columns: minmax(165px, 0.9fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(190px, 1.35fr) minmax(92px, 0.55fr) minmax(92px, 0.55fr);
+}
+
+.knowledge-people-filter {
+  align-self: end;
+  min-height: 42px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.knowledge-people-filter[hidden] {
+  display: none;
 }
 
 .knowledge-shelf-copy {
@@ -1422,6 +1433,10 @@ body.knowledge-reader .source-reader-pane .reader-sentence {
   #newsRandomBtn,
   #knowledgeRefreshBtn,
   #knowledgeRandomBtn {
+    grid-column: span 2;
+  }
+
+  .knowledge-people-filter {
     grid-column: span 2;
   }
 
