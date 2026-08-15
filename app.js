@@ -22,10 +22,10 @@
   const WIKIPEDIA_ON_THIS_DAY_URL = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/all";
   const KNOWLEDGE_TOPICS = {
     general: { label: "Random encyclopedia" },
-    science: { label: "Science & technology", category: "Category:Science_and_technology" },
-    history: { label: "History & culture", category: "Category:History" },
-    nature: { label: "Nature & Earth", category: "Category:Nature" },
-    arts: { label: "Arts & language", category: "Category:Arts_and_culture" },
+    science: { label: "Science & technology", searches: ["science", "technology", "engineering"] },
+    history: { label: "History & culture", searches: ["history", "archaeology", "culture"] },
+    nature: { label: "Nature & Earth", searches: ["biology", "animals", "Earth science"] },
+    arts: { label: "Arts & language", searches: ["art", "music", "linguistics"] },
     onthisday: { label: "On this day", onThisDay: true }
   };
   // v3 drops documents saved before reader text decoded entities and normalized diacritics.
@@ -528,6 +528,9 @@
     newsRandomBtn: document.getElementById("newsRandomBtn"),
     knowledgeShelfControls: document.getElementById("knowledgeShelfControls"),
     knowledgeTopicSelect: document.getElementById("knowledgeTopicSelect"),
+    knowledgeTranslationSelect: document.getElementById("knowledgeTranslationSelect"),
+    knowledgePeopleFilter: document.getElementById("knowledgePeopleFilter"),
+    knowledgeIncludeBirthDeaths: document.getElementById("knowledgeIncludeBirthDeaths"),
     knowledgeRefreshBtn: document.getElementById("knowledgeRefreshBtn"),
     knowledgeRandomBtn: document.getElementById("knowledgeRandomBtn"),
     bookPrevSentenceBtn: document.getElementById("bookPrevSentenceBtn"),
@@ -649,6 +652,8 @@
     newsAllArticles: [],
     newsSearch: "",
     knowledgeTopic: "general",
+    knowledgeTranslation: "off",
+    knowledgeIncludeBirthDeaths: false,
     knowledgeCache: loadKnowledgeCache(),
     knowledgeHistory: loadKnowledgeHistory(),
     knowledgeLoadToken: 0,
@@ -726,6 +731,10 @@
       state.knowledgeTopic = KNOWLEDGE_TOPICS[prefs.knowledgeTopic]
         ? prefs.knowledgeTopic
         : state.knowledgeTopic;
+      state.knowledgeTranslation = LANGUAGES[prefs.knowledgeTranslation] && prefs.knowledgeTranslation !== "en"
+        ? prefs.knowledgeTranslation
+        : "off";
+      state.knowledgeIncludeBirthDeaths = prefs.knowledgeIncludeBirthDeaths === true;
       if (prefs.voicePrefs && typeof prefs.voicePrefs === "object") {
         state.voicePrefs = { ...state.voicePrefs, ...prefs.voicePrefs };
       }
@@ -783,6 +792,8 @@
       bookLevel: state.bookLevel,
       newsSourceByLanguage: state.newsSourceByLanguage,
       knowledgeTopic: state.knowledgeTopic,
+      knowledgeTranslation: state.knowledgeTranslation,
+      knowledgeIncludeBirthDeaths: state.knowledgeIncludeBirthDeaths,
       bookReadEnglish: els.bookReadEnglish.checked,
       readEnglishAloud: els.bookReadEnglish.checked,
       speechTrack2Language: state.speechTrack2Language,
@@ -3950,13 +3961,13 @@
     };
   }
 
-  async function fetchWikipediaKnowledge(topic) {
+  async function fetchWikipediaKnowledgeBatch(topic, generator, query = "") {
     const params = new URLSearchParams({
       action: "query",
       format: "json",
       formatversion: "2",
       origin: "*",
-      generator: topic?.category ? "categorymembers" : "random",
+      generator,
       prop: "extracts|info|pageprops|categories|pageimages",
       exintro: "1",
       explaintext: "1",
@@ -3966,10 +3977,10 @@
       cllimit: "8",
       redirects: "1"
     });
-    if (topic?.category) {
-      params.set("gcmtitle", topic.category);
-      params.set("gcmtype", "page");
-      params.set("gcmlimit", "50");
+    if (generator === "search") {
+      params.set("gsrnamespace", "0");
+      params.set("gsrlimit", "20");
+      params.set("gsrsearch", query);
     } else {
       params.set("grnnamespace", "0");
       params.set("grnlimit", String(KNOWLEDGE_BATCH_SIZE));
@@ -3986,7 +3997,21 @@
       : Object.values(payload?.query?.pages || {});
     return pages
       .map((page) => normalizeKnowledgeRecord(page, topic))
-      .filter(Boolean)
+      .filter(Boolean);
+  }
+
+  async function fetchWikipediaKnowledge(topic) {
+    const searches = Array.isArray(topic?.searches) ? topic.searches.filter(Boolean) : [];
+    const batches = searches.length
+      ? await Promise.all(searches.map((query) => fetchWikipediaKnowledgeBatch(topic, "search", query)))
+      : [await fetchWikipediaKnowledgeBatch(topic, "random")];
+    const seen = new Set();
+    return batches.flat()
+      .filter((item) => {
+        if (!item || seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      })
       .sort(() => Math.random() - 0.5)
       .slice(0, KNOWLEDGE_BATCH_SIZE);
   }
@@ -4002,7 +4027,9 @@
     );
     if (!response.ok) throw new Error(`Wikipedia history ${response.status}`);
     const payload = await response.json();
-    const sourceGroups = ["selected", "events", "births", "deaths"];
+    const sourceGroups = state.knowledgeIncludeBirthDeaths
+      ? ["selected", "events", "births", "deaths"]
+      : ["selected", "events"];
     const records = [];
     sourceGroups.forEach((group) => {
       (payload?.[group] || []).forEach((entry) => {
@@ -4038,7 +4065,7 @@
 
   async function loadKnowledgeFeed(options = {}) {
     const topic = activeKnowledgeTopic();
-    const cacheKey = state.knowledgeTopic;
+    const cacheKey = `${state.knowledgeTopic}:${state.knowledgeIncludeBirthDeaths ? "people" : "events"}`;
     const cached = state.knowledgeCache[cacheKey];
     const cachedItems = Array.isArray(cached?.items) ? cached.items.filter((item) => item?.kind === "knowledge") : [];
     const cacheFresh = cachedItems.length && Date.now() - Number(cached?.savedAt || 0) < KNOWLEDGE_CACHE_MAX_AGE_MS;
@@ -4088,6 +4115,42 @@
     const parsed = finalizeBookParse(sentences, [{ title: "Knowledge", start: 0 }]);
     if (!parsed.sentences.length) throw new Error("Knowledge card has no readable text");
     return { ...parsed, sourceUrl: item?.link || "", proxy: "Wikipedia API" };
+  }
+
+  async function renderKnowledgeTranslation(sentence, renderToken) {
+    const language = state.knowledgeTranslation;
+    if (!sentence || !LANGUAGES[language] || language === "en") {
+      clearBookSpeechTracks();
+      return;
+    }
+    els.bookSpeechTracks.hidden = false;
+    els.bookSpeechTrack2.hidden = false;
+    els.bookSpeechTrack2Label.textContent = `${languageTrackLabel(language)} translation`;
+    els.bookSpeechTrack2Sentence.textContent = "Translating…";
+    els.bookSpeechTrack3.hidden = true;
+    els.bookSpeechTrack3Sentence.textContent = "";
+    const translated = await ensureBookSourceSentence(sentence.text, language);
+    if (renderToken !== state.bookRenderToken) return;
+    els.bookSpeechTrack2Sentence.textContent = translated || `${languageTrackLabel(language)} translation unavailable.`;
+  }
+
+  async function loadNextKnowledgeArticle(options = {}) {
+    if (!state.bookBooks.length) await loadKnowledgeFeed();
+    let items = state.bookBooks.filter((item) => item?.kind === "knowledge");
+    if (!items.length) throw new Error("No knowledge cards found");
+    const currentId = state.bookLoadedBook?.id;
+    let currentIndex = items.findIndex((item) => item.id === currentId);
+    if (currentIndex < 0) currentIndex = -1;
+    if (currentIndex >= items.length - 1) {
+      await loadKnowledgeFeed({ force: true });
+      items = state.bookBooks.filter((item) => item?.kind === "knowledge");
+      if (!items.length) throw new Error("No new knowledge cards found");
+      currentIndex = items.findIndex((item) => item.id === currentId);
+    }
+    const next = items[(currentIndex + 1) % items.length];
+    if (!next) throw new Error("No next knowledge card found");
+    await loadBook(next, { index: 0, preservePlayback: Boolean(options.preservePlayback) });
+    setStatus(`Opened ${next.title} · ${next.sourceLabel || "Wikipedia"}`);
   }
 
   async function loadRandomKnowledgeArticle() {
@@ -4443,7 +4506,11 @@
 
   function updateBookShelfControlState() {
     if (isKnowledgeMode()) {
+      const onThisDay = Boolean(activeKnowledgeTopic().onThisDay);
       els.knowledgeTopicSelect.value = state.knowledgeTopic;
+      els.knowledgeTranslationSelect.value = state.knowledgeTranslation;
+      els.knowledgePeopleFilter.hidden = !onThisDay;
+      els.knowledgeIncludeBirthDeaths.checked = state.knowledgeIncludeBirthDeaths;
       return;
     }
     if (isNewsMode()) {
@@ -5381,6 +5448,8 @@
     const knowledgeMode = isKnowledgeMode() || state.bookLoadedBook?.kind === "knowledge";
     const newsMode = isNewsMode() || state.bookLoadedBook?.kind === "news";
     if (knowledgeMode) {
+      const renderToken = state.bookRenderToken + 1;
+      state.bookRenderToken = renderToken;
       els.bookSourceLabel.textContent = "English knowledge";
       els.bookSourceSentence.lang = "en";
       els.bookSourceSentence.dir = "ltr";
@@ -5394,9 +5463,9 @@
         return;
       }
       els.bookSourceSentence.textContent = sentence.text;
-      clearBookSpeechTracks();
       updateBookProgressControls();
       renderBookNearby();
+      await renderKnowledgeTranslation(sentence, renderToken);
       return;
     }
     els.bookSourceLabel.textContent = language.label;
@@ -5465,7 +5534,7 @@
 
   async function loadBook(book, options = {}) {
     if (!book?.link) throw new Error(isKnowledgeMode() ? "Missing knowledge source link" : isNewsMode() ? "Missing article link" : "Missing book link");
-    stopSpeech();
+    if (!options.preservePlayback) stopSpeech();
     state.bookLoadedBook = book;
     state.bookSentences = [];
     state.bookChapters = [];
@@ -5639,6 +5708,9 @@
       els.bookLanguageSelect.value = state.language;
       els.newsLanguageSelect.value = state.language;
       els.knowledgeTopicSelect.value = state.knowledgeTopic;
+      els.knowledgeTranslationSelect.value = state.knowledgeTranslation;
+      els.knowledgePeopleFilter.hidden = !activeKnowledgeTopic().onThisDay;
+      els.knowledgeIncludeBirthDeaths.checked = state.knowledgeIncludeBirthDeaths;
       populateNewsSourceSelect();
       syncBookAudioControlsFromSettings();
       updateSettingLabels();
@@ -5662,7 +5734,7 @@
   async function speakBookSentence(sentence, token) {
     if (!sentence || token !== state.playToken) return;
     if (isKnowledgeMode() || state.bookLoadedBook?.kind === "knowledge") {
-      setStatus(`Knowledge · sentence ${state.bookCurrentIndex + 1}`);
+      setStatus(`Knowledge · English · sentence ${state.bookCurrentIndex + 1}`);
       await speakTextWithWordPacing(
         sentence.text,
         "en-US",
@@ -5671,6 +5743,25 @@
         {
           engine: speechTrackConfig(1).engine,
           highlightTargets: [{ id: "bookSourceSentence", text: sentence.text }]
+        }
+      );
+      if (token !== state.playToken || !state.bookPlaying) return;
+      const translationLanguage = state.knowledgeTranslation;
+      if (!LANGUAGES[translationLanguage] || translationLanguage === "en") return;
+      const translation = await ensureBookSourceSentence(sentence.text, translationLanguage);
+      if (token !== state.playToken || !state.bookPlaying || !translation) return;
+      const translationTrack = state.speechTrack2Language === translationLanguage
+        ? speechTrackConfig(2)
+        : { engine: "system" };
+      setStatus(`Knowledge · ${languageTrackLabel(translationLanguage)} · sentence ${state.bookCurrentIndex + 1}`);
+      await speakTextWithWordPacing(
+        translation,
+        speechLanguageForKey(translationLanguage),
+        Number(els.bookSourceRate.value),
+        token,
+        {
+          engine: translationTrack.engine,
+          highlightTargets: [{ id: "bookSpeechTrack2Sentence", text: translation }]
         }
       );
       return;
@@ -5753,7 +5844,17 @@
         await speakBookSentence(sentence, token);
         if (token !== state.playToken || !state.bookPlaying) break;
         const nextIndex = state.bookCurrentIndex + (state.bookPlayDirection || 1);
-        if (nextIndex < 0 || nextIndex >= state.bookSentences.length) break;
+        if (nextIndex < 0 || nextIndex >= state.bookSentences.length) {
+          if (
+            (isKnowledgeMode() || state.bookLoadedBook?.kind === "knowledge")
+            && (state.bookPlayDirection || 1) > 0
+          ) {
+            await loadNextKnowledgeArticle({ preservePlayback: true });
+            if (token !== state.playToken || !state.bookPlaying) break;
+            continue;
+          }
+          break;
+        }
         setBookIndex(nextIndex, { render: false, save: true });
       }
     } catch (error) {
@@ -7001,6 +7102,31 @@
       setBookMode(true, "knowledge");
     });
 
+    els.knowledgeTranslationSelect.addEventListener("change", () => {
+      state.knowledgeTranslation = LANGUAGES[els.knowledgeTranslationSelect.value]
+        && els.knowledgeTranslationSelect.value !== "en"
+        ? els.knowledgeTranslationSelect.value
+        : "off";
+      savePrefs();
+      if (isKnowledgeMode() && state.bookLoadedBook?.kind === "knowledge") {
+        stopSpeech();
+        void renderBookSentence();
+      }
+    });
+
+    els.knowledgeIncludeBirthDeaths.addEventListener("change", async () => {
+      state.knowledgeIncludeBirthDeaths = els.knowledgeIncludeBirthDeaths.checked;
+      savePrefs();
+      if (!isKnowledgeMode() || !activeKnowledgeTopic().onThisDay) return;
+      state.bookBooks = [];
+      try {
+        await loadKnowledgeFeed({ force: true });
+      } catch (error) {
+        setStatus(error.message || "On this day refresh failed");
+        console.error(error);
+      }
+    });
+
     els.newsSourceSelect.addEventListener("change", async () => {
       state.newsSourceByLanguage[state.language] = els.newsSourceSelect.value;
       state.newsSearch = "";
@@ -7155,6 +7281,16 @@
       const wasPlaying = state.bookPlaying;
       stopSpeech();
       state.bookPlayDirection = 1;
+      if (isKnowledgeMode() || state.bookLoadedBook?.kind === "knowledge") {
+        try {
+          await loadNextKnowledgeArticle();
+          if (wasPlaying) await startBookPlayback();
+        } catch (error) {
+          setStatus(error.message || "Next knowledge fact failed");
+          console.error(error);
+        }
+        return;
+      }
       setBookIndex(state.bookCurrentIndex + 1, { save: true });
       if (wasPlaying) {
         await startBookPlayback();
@@ -7424,6 +7560,9 @@
     }
     els.bookShelfViewSelect.value = state.bookShelfKind;
     els.knowledgeTopicSelect.value = state.knowledgeTopic;
+    els.knowledgeTranslationSelect.value = state.knowledgeTranslation;
+    els.knowledgePeopleFilter.hidden = !activeKnowledgeTopic().onThisDay;
+    els.knowledgeIncludeBirthDeaths.checked = state.knowledgeIncludeBirthDeaths;
     els.bookGenreSelect.value = state.bookGenre;
     els.bookLevelSelect.value = state.bookLevel;
     els.enLangSelect.value = state.enLang;
