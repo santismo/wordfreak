@@ -24,7 +24,7 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 - Dual-language book reader with guided difficulty levels, genre filtering, partial title/author search, and favorite shelves
 - Eighty fast curated Project Gutenberg selections across four guided levels, plus a searchable, paginated Standard Ebooks public-domain library
 - Official-handbooks shelf with the current Air Force Handbook 1, *Airman* (15 February 2025), bundled for reliable sentence navigation and linked to its official USAF PDF
-- English Knowledge reader with randomized, attributed Wikipedia encyclopedia extracts, topic lanes, and a daily "On this day" history feed
+- English Knowledge reader with continuous fact-to-fact playback, English-first optional translation speech, enriched topic discovery, adjustable On-this-day births/deaths, and attributed Wikipedia extracts
 - Current text-news reader using Meduza, VOA Persian, Radio Farda, DW Español, RFI, France 24, BBC Hindi, NHK, VOA Korean, and optional Google News feeds
 - News headline filtering, source selection, refresh, random article loading, and full article text browsing without favorites
 - Optional Classical or Lo-fi study music across frequency/vocabulary, English Vernacular, book, and news modes, with its own transport, volume, and automatic speech ducking
