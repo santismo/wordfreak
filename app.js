@@ -4002,9 +4002,21 @@
 
   async function fetchWikipediaKnowledge(topic) {
     const searches = Array.isArray(topic?.searches) ? topic.searches.filter(Boolean) : [];
-    const batches = searches.length
-      ? await Promise.all(searches.map((query) => fetchWikipediaKnowledgeBatch(topic, "search", query)))
-      : [await fetchWikipediaKnowledgeBatch(topic, "random")];
+    let batches = [];
+    if (searches.length) {
+      const settled = await Promise.allSettled(
+        searches.map((query) => fetchWikipediaKnowledgeBatch(topic, "search", query))
+      );
+      batches = settled
+        .filter((result) => result.status === "fulfilled")
+        .map((result) => result.value);
+      if (!batches.length) {
+        const failure = settled.find((result) => result.status === "rejected");
+        throw failure?.reason || new Error("Wikipedia topic search failed");
+      }
+    } else {
+      batches = [await fetchWikipediaKnowledgeBatch(topic, "random")];
+    }
     const seen = new Set();
     return batches.flat()
       .filter((item) => {
@@ -4082,7 +4094,8 @@
     }
     try {
       const items = await fetchKnowledgeItems(topic);
-      if (token !== state.knowledgeLoadToken || !isKnowledgeMode() || state.knowledgeTopic !== cacheKey) return;
+      const currentCacheKey = `${state.knowledgeTopic}:${state.knowledgeIncludeBirthDeaths ? "people" : "events"}`;
+      if (token !== state.knowledgeLoadToken || !isKnowledgeMode() || currentCacheKey !== cacheKey) return;
       if (!items.length) throw new Error("Wikipedia returned no readable knowledge cards");
       state.bookBooks = items;
       rememberKnowledgeItems(items);
@@ -5721,7 +5734,7 @@
           ? loadNewsFeed()
           : ensureBookShelfLoaded();
       loadShelf.catch((error) => {
-        setStatus(error.message || (isNewsMode() ? "News feed failed" : "Book shelf failed"));
+        setStatus(error.message || (isKnowledgeMode() ? "Knowledge feed failed" : isNewsMode() ? "News feed failed" : "Book shelf failed"));
         console.error(error);
         renderBookShelf();
       });
