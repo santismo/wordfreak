@@ -535,6 +535,7 @@
     knowledgeRandomBtn: document.getElementById("knowledgeRandomBtn"),
     bookPrevSentenceBtn: document.getElementById("bookPrevSentenceBtn"),
     bookPlayBtn: document.getElementById("bookPlayBtn"),
+    bookQuickFactsBtn: document.getElementById("bookQuickFactsBtn"),
     bookNextSentenceBtn: document.getElementById("bookNextSentenceBtn"),
     bookAudioSettingsToggle: document.getElementById("bookAudioSettingsToggle"),
     bookAudioPanel: document.getElementById("bookAudioPanel"),
@@ -633,6 +634,7 @@
     bookCurrentIndex: 0,
     bookPlaying: false,
     bookPlayDirection: 1,
+    knowledgeQuickPlayback: false,
     bookAudioSettingsOpen: false,
     bookRenderToken: 0,
     bookProgress: loadBookProgress(),
@@ -4047,7 +4049,9 @@
       (payload?.[group] || []).forEach((entry) => {
         const page = entry?.pages?.[0] || {};
         const title = cleanBookTitle(page?.titles?.normalized || page?.titles?.display || "");
-        const summary = cleanBookText(entry?.text || "");
+        const detail = cleanBookText(entry?.text || "");
+        const year = String(entry?.year || "").trim();
+        const summary = year ? `In the year ${year}, ${detail}` : detail;
         if (!title || summary.length < 35) return;
         records.push({
           id: `knowledge:onthisday:${entry?.year || "date"}:${title.toLowerCase()}`,
@@ -4166,13 +4170,27 @@
     setStatus(`Opened ${next.title} · ${next.sourceLabel || "Wikipedia"}`);
   }
 
-  async function loadRandomKnowledgeArticle() {
-    stopSpeech();
+  async function loadRandomKnowledgeArticle(options = {}) {
+    if (!options.preservePlayback) stopSpeech();
     if (!state.bookBooks.length) await loadKnowledgeFeed();
-    const item = state.bookBooks[Math.floor(Math.random() * state.bookBooks.length)];
+    let items = state.bookBooks.filter((item) => item?.kind === "knowledge");
+    const excludeId = options.excludeId || "";
+    let candidates = items.filter((item) => item.id !== excludeId);
+    if (!candidates.length && excludeId) {
+      await loadKnowledgeFeed({ force: true });
+      items = state.bookBooks.filter((item) => item?.kind === "knowledge");
+      candidates = items.filter((item) => item.id !== excludeId);
+    }
+    const pool = candidates.length ? candidates : items;
+    const item = pool[Math.floor(Math.random() * pool.length)];
     if (!item) throw new Error("No knowledge card found");
-    await loadBook(item, { random: true });
-    setStatus(`Random knowledge extract from ${item.sourceLabel || "Wikipedia"}`);
+    const firstSentence = Boolean(options.firstSentence);
+    await loadBook(item, {
+      random: !firstSentence,
+      index: firstSentence ? 0 : undefined,
+      preservePlayback: Boolean(options.preservePlayback)
+    });
+    setStatus(`${firstSentence ? "Quick fact" : "Random knowledge extract"} from ${item.sourceLabel || "Wikipedia"}`);
   }
 
   function formatNewsDate(value) {
@@ -5369,6 +5387,9 @@
       ? "Official Air Force Handbook 1 source PDF"
       : "Open the original source";
     els.bookSourceNotice.hidden = book.source !== "usaf";
+    const quickFactsAvailable = book.kind === "knowledge" && !activeKnowledgeTopic().onThisDay;
+    els.bookQuickFactsBtn.hidden = !quickFactsAvailable;
+    if (!quickFactsAvailable) els.bookQuickFactsBtn.textContent = "Quick facts";
     els.bookChapterLabel.textContent = book.kind === "news" || book.kind === "knowledge" ? "Section" : "Chapter";
     const englishLabel = book.kind === "knowledge" ? "English knowledge" : book.kind === "news" ? "English translation" : "English original";
     els.bookEnglishLabel.textContent = `${englishLabel}${englishSpeechEnabled() ? "" : " · display only"}`;
@@ -5670,6 +5691,7 @@
     els.bookShelfBtn.hidden = true;
     els.bookPrevSentenceBtn.hidden = true;
     els.bookPlayBtn.hidden = true;
+    els.bookQuickFactsBtn.hidden = true;
     els.bookNextSentenceBtn.hidden = true;
     els.bookAudioSettingsToggle.hidden = true;
     setBookAudioPanel(false);
@@ -5688,6 +5710,7 @@
     els.bookShelfBtn.hidden = false;
     els.bookPrevSentenceBtn.hidden = false;
     els.bookPlayBtn.hidden = false;
+    els.bookQuickFactsBtn.hidden = !(state.bookLoadedBook?.kind === "knowledge" && !activeKnowledgeTopic().onThisDay);
     els.bookNextSentenceBtn.hidden = false;
     els.bookAudioSettingsToggle.hidden = false;
   }
@@ -5828,7 +5851,7 @@
     }
   }
 
-  async function startBookPlayback() {
+  async function startBookPlayback(options = {}) {
     if (state.bookPlaying) return;
     if (state.piperStorageBusy) {
       setStatus("Wait for Piper storage cleanup to finish");
@@ -5838,10 +5861,20 @@
       setStatus(isKnowledgeMode() ? "Load a knowledge card first" : isNewsMode() ? "Load a news article first" : "Load a book first");
       return;
     }
+    const knowledgeQuick = Boolean(
+      options.knowledgeQuick
+      && (isKnowledgeMode() || state.bookLoadedBook?.kind === "knowledge")
+      && !activeKnowledgeTopic().onThisDay
+    );
+    if (knowledgeQuick && state.bookCurrentIndex !== 0) {
+      setBookIndex(0, { render: false, save: true });
+    }
     state.bookPlaying = true;
+    state.knowledgeQuickPlayback = knowledgeQuick;
     const token = state.playToken + 1;
     state.playToken = token;
     els.bookPlayBtn.textContent = "Stop";
+    if (knowledgeQuick) els.bookQuickFactsBtn.textContent = "Stop facts";
     let failed = false;
 
     try {
@@ -5856,6 +5889,15 @@
         const sentence = currentBookSentence();
         await speakBookSentence(sentence, token);
         if (token !== state.playToken || !state.bookPlaying) break;
+        if (knowledgeQuick) {
+          await loadRandomKnowledgeArticle({
+            preservePlayback: true,
+            firstSentence: true,
+            excludeId: state.bookLoadedBook?.id
+          });
+          if (token !== state.playToken || !state.bookPlaying) break;
+          continue;
+        }
         const nextIndex = state.bookCurrentIndex + (state.bookPlayDirection || 1);
         if (nextIndex < 0 || nextIndex >= state.bookSentences.length) {
           if (
@@ -5877,7 +5919,9 @@
     } finally {
       if (token === state.playToken) {
         state.bookPlaying = false;
+        state.knowledgeQuickPlayback = false;
         els.bookPlayBtn.textContent = "Play";
+        els.bookQuickFactsBtn.textContent = "Quick facts";
         clearSpeechHighlights();
         clearCorrespondingHighlights();
         saveCurrentBookProgress();
@@ -5892,8 +5936,10 @@
     state.playToken += 1;
     state.playing = false;
     state.bookPlaying = false;
+    state.knowledgeQuickPlayback = false;
     els.playBtn.textContent = "Play";
     els.bookPlayBtn.textContent = "Play";
+    els.bookQuickFactsBtn.textContent = "Quick facts";
     clearSpeechHighlights();
     clearCorrespondingHighlights();
     stopPiperAudio();
@@ -7276,6 +7322,16 @@
       await startBookPlayback();
     });
 
+    els.bookQuickFactsBtn.addEventListener("click", async () => {
+      if (state.bookPlaying) {
+        const wasQuickFacts = state.knowledgeQuickPlayback;
+        stopSpeech();
+        setStatus(wasQuickFacts ? "Quick facts stopped" : "Paused");
+        return;
+      }
+      await startBookPlayback({ knowledgeQuick: true });
+    });
+
     els.bookAudioSettingsToggle.addEventListener("click", () => {
       setBookAudioPanel(!state.bookAudioSettingsOpen);
     });
@@ -7292,12 +7348,13 @@
 
     els.bookNextSentenceBtn.addEventListener("click", async () => {
       const wasPlaying = state.bookPlaying;
+      const wasQuickFacts = state.knowledgeQuickPlayback;
       stopSpeech();
       state.bookPlayDirection = 1;
       if (isKnowledgeMode() || state.bookLoadedBook?.kind === "knowledge") {
         try {
           await loadNextKnowledgeArticle();
-          if (wasPlaying) await startBookPlayback();
+          if (wasPlaying) await startBookPlayback({ knowledgeQuick: wasQuickFacts });
         } catch (error) {
           setStatus(error.message || "Next knowledge fact failed");
           console.error(error);
