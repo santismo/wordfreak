@@ -4064,7 +4064,9 @@
       renderBookShelf();
       setStatus(`Loaded ${items.length} ${topic.label.toLowerCase()} cards`);
     } catch (error) {
-      if (cacheFresh && !options.force) {
+      if (cachedItems.length) {
+        state.bookBooks = cachedItems;
+        renderBookShelf();
         setStatus(`Showing cached ${topic.label.toLowerCase()}; refresh unavailable`);
         return;
       }
