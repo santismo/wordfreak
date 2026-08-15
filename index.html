@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon.svg">
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="styles.css?v=31">
 </head>
 <body>
   <main class="app-shell">
@@ -427,7 +427,24 @@
             <option value="onthisday">On this day</option>
           </select>
         </label>
-        <div class="knowledge-shelf-copy">Fresh, attributed English facts and short encyclopedia extracts.</div>
+        <label>
+          After English
+          <select id="knowledgeTranslationSelect">
+            <option value="off" selected>No translation</option>
+            <option value="ru">Russian</option>
+            <option value="fa">Farsi</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="hi">Hindi</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+          </select>
+        </label>
+        <label id="knowledgePeopleFilter" class="checkbox-setting knowledge-people-filter" hidden>
+          <input id="knowledgeIncludeBirthDeaths" type="checkbox">
+          <span>Include births &amp; deaths</span>
+        </label>
+        <div class="knowledge-shelf-copy">English always plays first. An optional translation follows each fact.</div>
         <button id="knowledgeRefreshBtn" class="primary" type="button">Refresh</button>
         <button id="knowledgeRandomBtn" type="button">Random</button>
       </form>
@@ -533,6 +550,6 @@
       <span id="progressText">0 / 0</span>
     </footer>
   </main>
-  <script src="app.js?v=53" defer></script>
+  <script src="app.js?v=54" defer></script>
 </body>
 </html>
