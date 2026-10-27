@@ -56,7 +56,7 @@ test('tokenization keeps Farsi half-spaces and merges sentence endings for hold 
 test('page IDs used by the new controller exist and offline assets are versioned together',()=>{
  const html=fs.readFileSync('improved.html','utf8');const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length);
  for(const match of improved.matchAll(/\$\('([^']+)'\)/g))assert.ok(ids.includes(match[1]),`Missing ${match[1]}`);
- const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=6','improved.js?v=7','app.js?v=58','styles.css?v=33'])assert.ok(sw.includes(asset));
+ const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=6','improved.js?v=8','app.js?v=58','styles.css?v=33'])assert.ok(sw.includes(asset));
  assert.ok(fs.readFileSync('index.html','utf8').includes('href="improved.html"'));
 });
 
@@ -175,4 +175,9 @@ test('publications preserve chapter boundaries, source language and reading prog
  assert.equal(bundled.chapters.length,5);
  for(const chapter of bundled.chapters) {assert.ok(chapter.source.startsWith('https://www.intechopen.com/chapters/'));assert.ok(chapter.license.includes('creativecommons.org/licenses/by/'));assert.ok(chapter.paragraphs[0].includes(chapter.author));}
  const book=api.buildDocument({id:'5g',language:'en'},bundled.chapters);assert.ok(book.sentences.length>500);assert.equal(book.chapters.length,5);
+});
+
+test('holding a word in sentence mode keeps translating its sentence',async()=>{
+ const h=lensHarness();h.context.prefs.sentenceMode=true;const work=h.context.translateSelection();
+ assert.deepEqual(h.calls[0],['سلام دنیا.','fa','en']);h.resolve('Hello world.');await work;assert.equal(h.result.mode,'sentence');
 });

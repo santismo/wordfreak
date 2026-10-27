@@ -645,7 +645,7 @@
     if (!word || !api) return;
     clearTimeout(holdTimer);
     const target = word; const token = ++requestVersion; const sentence = target.closest('.reader-sentence');
-    const full = fullSentence || target.classList.contains('sentence-end'); const value = full ? sentence.dataset.text : target.textContent;
+    const full = fullSentence || prefs.sentenceMode || target.classList.contains('sentence-end'); const value = full ? sentence.dataset.text : target.textContent;
     if (full) prefs.sentenceMode=true;
     updateReadingControls();
     closeDock();
