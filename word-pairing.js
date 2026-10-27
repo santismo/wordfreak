@@ -77,13 +77,20 @@
       const words=other.map(n=>n.textContent);
       let sameMatch=[node];
       let match=findPhrase(words,node.textContent,b,ratio);
+      // Persian word senses and attached forms need sentence context before an
+      // isolated dictionary meaning can accidentally match another sentence word.
+      if(!match.length) {
+        const context=markedContext(same===source?sourceSentence:targetSentence,same.map(n=>n.textContent),same.indexOf(node));
+        if(context && (a==='fa' || b==='fa')) {
+          const result=await translated(context,a,b);if(version!==serial)return;
+          match=findPhrase(words,contextualPhrase(result),b,ratio);
+        }
+      }
       if(!match.length) {
         const value=await translated(node.textContent,a,b);if(version!==serial)return;
         match=findPhrase(words,value,b,ratio);
       }
-      // Translating the marked word inside its full sentence resolves senses
-      // such as Persian “کیف” (bag) inside “کیف پول” (wallet), and verb phrases.
-      if(!match.length) {
+      if(!match.length && a!=='fa' && b!=='fa') {
         const context=markedContext(same===source?sourceSentence:targetSentence,same.map(n=>n.textContent),same.indexOf(node));
         if(context) {
           const result=await translated(context,a,b);if(version!==serial)return;

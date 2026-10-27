@@ -189,7 +189,7 @@ function pairHarness(translator, options = {}) {
  vm.runInNewContext(fs.readFileSync('word-pairing.js','utf8'),context);
  const root=make(''),target=make(''),source=(options.source || ['Hello','world']).map(make);
  const pairing=context.window.WordfreakWordPairing.create({sourceRoot:root,targetRoot:target,tokenize:value=>value.split(' ').map(text=>({text,word:true})),translate:translator,announce(){}});
- const configure=()=>pairing.configure({querySelectorAll:()=>source,textContent:source.map(n=>n.textContent).join(' ')},options.target || 'سلام دنیا',options.from || 'en',options.to || 'fa');configure();
+ const configure=()=>pairing.configure({querySelectorAll:()=>source,textContent:options.noContext?'':source.map(n=>n.textContent).join(' ')},options.target || 'سلام دنیا',options.from || 'en',options.to || 'fa');configure();
  return {pairing,source,target,configure,logic:context.window.WordfreakWordPairing};
 }
 test('word pairing works in both directions, toggles off and replaces earlier highlights',async()=>{
@@ -201,10 +201,10 @@ test('word pairing works in both directions, toggles off and replaces earlier hi
  h.pairing.clear();assert.ok(h.source.every(n=>!n.classes.has('paired-word')));
 });
 test('late word matches cannot re-highlight after another tap or sentence change',async()=>{
- let resolve;const h=pairHarness(()=>new Promise(r=>resolve=r));
+ let resolve;const h=pairHarness(()=>new Promise(r=>resolve=r),{noContext:true});
  const pending=h.pairing.toggle(h.source[0]);await Promise.resolve();await h.pairing.toggle(h.source[0]);resolve('سلام');await pending;
  assert.ok(h.source.every(n=>!n.classes.has('paired-word')));assert.ok(h.target.children.every(n=>!n.classes.has('paired-word')));
- const h2=pairHarness(()=>new Promise(r=>resolve=r));const next=h2.pairing.toggle(h2.source[0]);await Promise.resolve();h2.configure();resolve('سلام');await next;
+ const h2=pairHarness(()=>new Promise(r=>resolve=r),{noContext:true});const next=h2.pairing.toggle(h2.source[0]);await Promise.resolve();h2.configure();resolve('سلام');await next;
  assert.ok(h2.source.every(n=>!n.classes.has('paired-word')));assert.ok(h2.target.children.every(n=>!n.classes.has('paired-word')));
 });
 test('pairing supports phrases and repeated words without positional guesses',()=>{
@@ -240,4 +240,9 @@ test('reverse matching reaches a Persian counterpart beyond the old eight-word w
 test('context markers preserve repeated occurrences and reject missing or ambiguous markers',()=>{
  const {logic}=pairHarness(async()=> '');assert.equal(logic.markedContext('کتاب و کتاب',['کتاب','و','کتاب'],2),'کتاب و ⟦کتاب⟧');
  assert.equal(logic.contextualPhrase('the ⟦book⟧'),'book');assert.equal(logic.contextualPhrase('book'),'');assert.equal(logic.contextualPhrase('⟦a⟧ ⟦b⟧'),'');
+});
+
+test('Farsi context wins when an isolated sense also appears elsewhere in the target sentence',async()=>{
+ const h=pairHarness(async value=>value.includes('⟦شیر⟧')?'The ⟦lion⟧ drinks milk':value==='شیر'?'milk':'',{source:['شیر','شیر','می‌نوشد'],target:'The lion drinks milk',from:'fa',to:'en'});
+ await h.pairing.toggle(h.source[0]);assert.ok(h.target.children[1].classes.has('paired-word'));assert.ok(!h.target.children[3].classes.has('paired-word'));
 });
