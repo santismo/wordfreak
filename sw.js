@@ -1,12 +1,16 @@
-const CACHE_NAME = "wordfreak-v56";
+const CACHE_NAME = "wordfreak-v57";
 const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v3";
 const ASSETS = [
   "./",
   "./index.html",
+  "./index.html?reader-engine=1",
+  "./improved.html",
+  "./improved.css?v=1",
+  "./improved.js?v=1",
   "./desktop.html",
   "./desktop.css?v=1",
-  "./styles.css?v=32",
-  "./app.js?v=56",
+  "./styles.css?v=33",
+  "./app.js?v=57",
   "./piper-worker.js?v=1",
   "./manifest.webmanifest",
   "./assets/icon.svg",
@@ -47,8 +51,10 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
         return response;
       });
     })

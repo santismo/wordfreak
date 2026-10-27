@@ -7,6 +7,19 @@ Offline vocabulary edition for SPCK and airplane-mode use:
 
 https://santismo.github.io/wordfreak/wordfreak-offline/
 
+## Word Freak Improved
+
+Open [Improved Reader](https://santismo.github.io/wordfreak/improved.html) for the new book-focused reading page. [Classic](https://santismo.github.io/wordfreak/) stays available at its original address, with its vocabulary, audio, news and knowledge modes.
+
+- Continuous vertical reading, with Times New Roman by default; Georgia, Palatino and system sans; adjustable type size and line spacing; Paper, Sepia, Night and Black themes.
+- Separate **Read in** and **Translate into** settings for English, Farsi, Russian, Spanish, French, Hindi, Japanese and Korean. Read full translated passages with proper right-to-left Farsi; use the lens for English or any other supported second language, including Farsi → Russian.
+- Tap a word to place the magnifying glass, drag its discreet 44px touch handle to move it, and hold still for 480ms to fade into translation. Hold over final punctuation to translate that entire displayed sentence. Arrow buttons move sequentially; a focused handle supports arrow keys and Enter.
+- Paragraph-sized translation requests preserve more context than isolated sentences. Nearby passages preload with a two-request concurrency limit. Direct source-to-target translation tries Google, Lingva, then MyMemory for short requests. Completed translations persist in the existing cache; invalid responses and failures are never cached, and failed passages have a Retry button.
+- Existing book sources, favorites, document cache and progress are shared with Classic on the same browser/origin. Improved also remembers its last book and appearance settings. It loads no vocabulary deck or speech engine.
+- Distraction-free mode fills the reading viewport on iPhone and requests browser fullscreen where supported. Native iPhone browser chrome is controlled by Safari; add the page to the Home Screen for the most immersive view.
+
+Translations are machine-generated and need connectivity for uncached passages. Proper names, literary phrasing and ambiguous individual words can be imperfect; sentence translation provides context. Improved is a reading-focused mode; Classic retains the existing audio tools.
+
 ## Features
 
 - English Vernacular mode with 3,500 rare, expressive, and precise words, definitions, available usage examples, and spoken study cues

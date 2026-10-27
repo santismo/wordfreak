@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#faf9f6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Word Freak Improved">
+  <title>Word Freak Improved · Reader</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="improved.css?v=1">
+  <script src="improved.js?v=1" defer></script>
+</head>
+<body data-theme="paper">
+  <header class="reader-bar" id="readerBar">
+    <button id="libraryButton" class="bar-button" aria-label="Open book library"><span aria-hidden="true">▤</span> Library</button>
+    <a class="wordmark" href="improved.html">word freak <span>IMPROVED</span></a>
+    <div class="bar-actions"><button id="focusButton" class="icon-button" aria-label="Enter distraction-free reading" aria-pressed="false">⛶</button><button id="appearanceButton" class="icon-button" aria-label="Reading appearance">Aa</button></div>
+  </header>
+
+  <main id="readingScroll" tabindex="0" aria-label="Scrollable book">
+    <article id="bookPage" class="book-page">
+      <div class="book-front"><p class="eyebrow" id="editionLabel">A little closer to every word</p><h1 id="bookTitle">Room to read.</h1><p id="bookAuthor">Your books. A quieter view.</p><a id="sourceLink" hidden target="_blank" rel="noopener">Original edition ↗</a></div>
+      <div id="welcome" class="welcome"><p>A page, a story, and a little glass lens. Read at your own pace. Hold a word to see it in another language.</p><button id="chooseBook" class="primary-button">Find your next book <span aria-hidden="true">↗</span></button><p class="welcome-note">Your Classic favorites and reading progress come with you.</p></div>
+      <div id="readingText"></div>
+      <button id="moreText" class="quiet-button" hidden>Continue reading ↓</button>
+    </article>
+  </main>
+
+  <footer class="reader-footer" id="readerFooter">
+    <button id="chaptersButton" aria-label="Chapters and reading position" disabled>Contents</button>
+    <span id="readingProgress">WORD FREAK · A NEW CHAPTER</span>
+    <div class="word-navigation"><button id="previousWord" aria-label="Previous word" disabled>‹</button><button id="lensToggle" aria-label="Toggle glass lens" aria-pressed="true">◉</button><button id="nextWord" aria-label="Next word" disabled>›</button></div>
+  </footer>
+  <button id="exitFocus" class="focus-return" hidden aria-label="Show reading controls">Aa · Menu</button>
+  <div id="readerStatus" class="reader-status" role="status" aria-live="polite">Opening your library…</div>
+
+  <div id="glassLens" class="glass-lens" hidden>
+    <div id="lensSurface" class="lens-surface"><div id="lensOriginal" class="lens-original" dir="auto"></div><div class="lens-result"><span id="lensKind" class="lens-kind">WORD</span><div id="lensTranslation" dir="auto" role="status" aria-live="polite"></div></div></div>
+    <button id="lensHandle" class="lens-handle" aria-label="Drag the glass lens. Hold to translate. Use arrow keys for the previous or next word, Enter to translate." aria-describedby="lensHint"><span></span></button>
+  </div>
+
+  <dialog id="libraryDialog" class="sheet library-sheet" aria-labelledby="libraryTitle">
+    <div class="sheet-heading"><div><p class="eyebrow">WORD FREAK IMPROVED</p><h2 id="libraryTitle">Your next chapter.</h2></div><button class="close-button" data-close aria-label="Close library">×</button></div>
+    <form id="librarySearch" class="search-form"><input id="bookSearch" type="search" placeholder="Search title or author" aria-label="Search title or author"><button type="submit">Search</button></form>
+    <div class="shelf-tabs" role="group" aria-label="Book shelves"><button data-shelf="all" aria-pressed="true">All books</button><button data-shelf="favorites" aria-pressed="false">Favorites</button><button data-shelf="official" aria-pressed="false">Handbooks</button></div>
+    <div id="bookGrid" class="book-grid"></div><button id="searchMore" class="quiet-button" hidden>Search the wider library ↗</button>
+    <p class="sheet-footnote"><a href="index.html">Open Word Freak Classic ↗</a><span>The original experience, always here.</span></p>
+  </dialog>
+
+  <dialog id="appearanceDialog" class="sheet appearance-sheet" aria-labelledby="appearanceTitle">
+    <div class="sheet-heading"><div><p class="eyebrow">MAKE YOURSELF AT HOME</p><h2 id="appearanceTitle">The way you read.</h2></div><button class="close-button" data-close aria-label="Close appearance">×</button></div>
+    <label class="setting-row">Typeface<select id="fontSelect"><option value="times">Times New Roman</option><option value="georgia">Georgia</option><option value="palatino">Palatino</option><option value="sans">System sans</option></select></label>
+    <label class="setting-row">Text size <output id="fontSizeOutput">24 px</output><input id="fontSize" type="range" min="18" max="40" step="1" value="24"></label>
+    <label class="setting-row">Line spacing<select id="spacingSelect"><option value="1.55">Compact</option><option value="1.85" selected>Comfortable</option><option value="2.15">Spacious</option></select></label>
+    <div class="theme-picker" role="group" aria-label="Page color"><button data-theme="paper" aria-pressed="true"><span>Aa</span>Paper</button><button data-theme="sepia" aria-pressed="false"><span>Aa</span>Sepia</button><button data-theme="night" aria-pressed="false"><span>Aa</span>Night</button><button data-theme="black" aria-pressed="false"><span>Aa</span>Black</button></div>
+    <label class="setting-row">Read in<select id="readingLanguage"></select></label>
+    <label class="setting-row">Translate into<select id="translationLanguage"></select></label>
+    <p class="setting-note">Books begin with their English original. Other reading languages use online machine translation, loaded as you read.</p>
+    <div class="lens-instructions" id="lensHint"><strong>A little glass, a little clarity.</strong><p>Tap a word to place the lens. Drag its small handle to move it. Hold still to fade into a translation. Hold over sentence-ending punctuation to translate the whole sentence.</p><p>Use ‹ and › to move word by word. With the handle focused, use arrow keys and Enter.</p></div>
+    <a href="index.html" class="classic-link">Word Freak Classic ↗</a>
+  </dialog>
+
+  <dialog id="chaptersDialog" class="sheet" aria-labelledby="chaptersTitle"><div class="sheet-heading"><h2 id="chaptersTitle">Contents</h2><button class="close-button" data-close aria-label="Close contents">×</button></div><label class="setting-row">Reading position <output id="positionOutput"></output><input id="positionRange" type="range" min="0" max="0" value="0"></label><div id="chapterList" class="chapter-list"></div></dialog>
+  <iframe id="readerEngine" src="index.html?reader-engine=1" title="Word Freak book engine" hidden></iframe>
+  <noscript>This reader needs JavaScript. <a href="index.html">Open Word Freak Classic</a>.</noscript>
+</body>
+</html>

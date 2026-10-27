@@ -7655,6 +7655,61 @@
     registerServiceWorker();
   }
 
+  // Same-origin bridge for Improved. Skip the vocabulary UI, deck downloads,
+  // speech setup and prefetching; reuse the established book/cache providers.
+  if (new URLSearchParams(location.search).get("reader-engine") === "1" && window.parent !== window) {
+    loadPrefs();
+    window.WordfreakReader = Object.freeze({
+      language: state.language,
+      languages: Object.fromEntries(Object.entries(LANGUAGES).map(([key, value]) => [key, { label: key === "en" ? "English" : value.label, dir: value.dir }])),
+      catalog: () => dedupeBooks([...GUIDED_BOOKS, ...OFFICIAL_BOOKS, ...favoriteBooks()]),
+      favorites: () => favoriteBooks().map((book) => book.id),
+      favorite: (book) => { toggleBookFavorite(book); return isBookFavorite(book); },
+      search: async (query, page = 1) => fetchBookCatalogPage(page, query, ""),
+      open: async (book) => {
+        const valid = normalizeBookRecord(book);
+        if (!valid) throw new Error("This book source is not supported.");
+        const parsed = await fetchAndParseBook(valid);
+        if (!parsed?.sentences?.length) throw new Error("No readable text was found. Try another book.");
+        return { book: valid, ...parsed, savedIndex: getBookProgress(valid)?.index || 0 };
+      },
+      save: (book, index, total, language) => {
+        // Re-read so another open Classic tab's progress is not overwritten.
+        state.bookProgress = loadBookProgress();
+        state.bookProgress[book.id] = { id: book.id, title: book.title, author: book.author || "", link: book.link, language, index, total, updatedAt: Date.now() };
+        saveBookProgressStore();
+      },
+      translate: async (text, from, to) => {
+        if (!LANGUAGES[from] || !LANGUAGES[to]) throw new Error("Choose a supported language.");
+        const clean = normalizeReaderText(text);
+        if (from === to) return clean;
+        if (!hasLinguisticContent(clean)) return "";
+        const key = `direct:${from}:${to}:${bookHash(clean)}:${clean.length}`;
+        return sharedBookTranslation(key, async () => {
+          const providers = [
+            { url: `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${from}&tl=${to}&dt=t&q=${encodeURIComponent(clean)}`, read: (data) => Array.isArray(data?.[0]) ? data[0].map((chunk) => chunk?.[0] || "").join("") : "" },
+            { url: `https://lingva.ml/api/v1/${from}/${to}/${encodeURIComponent(clean)}`, read: (data) => data.translation || "" }
+          ];
+          // MyMemory limits query size; do not send long paragraph requests to it.
+          if (new TextEncoder().encode(clean).length <= 450) providers.push({ url: `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean)}&langpair=${from}|${to}`, read: (data) => data.responseData?.translatedText || "" });
+          for (const provider of providers) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 8500);
+            try {
+              const response = await fetch(provider.url, { cache: "no-store", signal: controller.signal });
+              if (!response.ok) continue;
+              const value = normalizeReaderText(provider.read(await response.json()));
+              if (isUsableTranslation(clean, value, to)) return value;
+            } catch { /* Try the next direct provider without caching a failure. */ }
+            finally { clearTimeout(timeout); }
+          }
+          return "";
+        }, (value) => isUsableTranslation(clean, value, to));
+      }
+    });
+    return;
+  }
+
   init().catch((error) => {
     setStatus(error.message || "Failed to start");
     console.error(error);

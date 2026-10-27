@@ -1492,3 +1492,5 @@ body.knowledge-reader .source-reader-pane .reader-sentence {
     min-width: 32px;
   }
 }
+
+.improved-reader-link { display: inline-block; color: var(--accent); font-size: 11px; line-height: 1.6; text-underline-offset: 3px; }
