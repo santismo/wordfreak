@@ -6,7 +6,7 @@
   const fonts = { times: '"Times New Roman", Times, serif', georgia: 'Georgia, serif', palatino: 'Palatino, "Palatino Linotype", serif', sans: '-apple-system, BlinkMacSystemFont, sans-serif' };
   const readStorage = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; } };
   const writeStorage = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { status('Browser storage is full. This session still works, but new settings may not be saved.', 6000); } };
-  const prefs = { font: 'times', size: 24, spacing: '1.85', theme: 'paper', reading: 'en', translation: 'fa', lens: true, ...readStorage(SETTINGS_KEY, {}) };
+  const prefs = { font: 'times', size: 24, spacing: '1.85', theme: 'black', reading: 'en', translation: 'fa', lens: true, ...readStorage(SETTINGS_KEY, {}) };
   let api, catalog = [], shelf = 'all', current = null, generation = 0, renderedStart = 0, renderedEnd = 0, savedIndex = 0;
   let word = null, holding = false, pointerId = null, pointerStart = null, dragging = false, holdTimer = 0, requestVersion = 0, hideTimer = 0, saveTimer = 0, statusTimer = 0, scrollFrame = 0, activeJobs = 0, searchVersion = 0;
   let jobs = [], blocks = new Map(), readingObserver, autoScroll = 0, dragPoint = null, favorites = new Set();
@@ -17,7 +17,7 @@
   function savePrefs() { writeStorage(SETTINGS_KEY, prefs); }
   function applyAppearance() {
     if (!fonts[prefs.font]) prefs.font = 'times';
-    if (!['paper','sepia','night','black'].includes(prefs.theme)) prefs.theme = 'paper';
+    if (!['paper','sepia','night','black'].includes(prefs.theme)) prefs.theme = 'black';
     prefs.size = Math.max(18, Math.min(40, Number(prefs.size) || 24));
     if (!['1.55','1.85','2.15'].includes(String(prefs.spacing))) prefs.spacing = '1.85';
     document.body.dataset.theme = prefs.theme;
@@ -277,7 +277,7 @@
     if (hit && text.contains(hit)) return hit;
     // Snap only to nearby words on the same line; never jump across paragraphs.
     let nearest = null, distance = 36;
-    for (const node of text.querySelectorAll('.reader-word')) { const r = node.getBoundingClientRect(); if (y < r.top-9 || y > r.bottom+9) continue; const d = Math.max(r.left-x,0,x-r.right); if (d < distance) { nearest=node; distance=d; } }
+    for (const block of blocks.values()) { const bounds = block.node.getBoundingClientRect(); if (y < bounds.top-9 || y > bounds.bottom+9) continue; for (const node of block.node.querySelectorAll('.reader-word')) { const r = node.getBoundingClientRect(); if (y < r.top-9 || y > r.bottom+9) continue; const d = Math.max(r.left-x,0,x-r.right); if (d < distance) { nearest=node; distance=d; } } }
     return nearest;
   }
   function dragTick() {

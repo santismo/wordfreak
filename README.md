@@ -11,7 +11,7 @@ https://santismo.github.io/wordfreak/wordfreak-offline/
 
 Open [Improved Reader](https://santismo.github.io/wordfreak/improved.html) for the new book-focused reading page. [Classic](https://santismo.github.io/wordfreak/) stays available at its original address, with its vocabulary, audio, news and knowledge modes.
 
-- Continuous vertical reading, with Times New Roman by default; Georgia, Palatino and system sans; adjustable type size and line spacing; Paper, Sepia, Night and Black themes.
+- Continuous vertical reading, with Times New Roman by default; Georgia, Palatino and system sans; adjustable type size and line spacing; Paper, Sepia, Night and Black themes, with Black as the default.
 - Separate **Read in** and **Translate into** settings for English, Farsi, Russian, Spanish, French, Hindi, Japanese and Korean. Read full translated passages with proper right-to-left Farsi; use the lens for English or any other supported second language, including Farsi → Russian.
 - Tap a word to place the magnifying glass, drag its discreet 44px touch handle to move it, and hold still for 480ms to fade into translation. Hold over final punctuation to translate that entire displayed sentence. Arrow buttons move sequentially; a focused handle supports arrow keys and Enter.
 - Paragraph-sized translation requests preserve more context than isolated sentences. Nearby passages preload with a two-request concurrency limit. Direct source-to-target translation tries Google, Lingva, then MyMemory for short requests. Completed translations persist in the existing cache; invalid responses and failures are never cached, and failed passages have a Retry button.

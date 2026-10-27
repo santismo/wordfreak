@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#faf9f6">
+  <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Word Freak Improved">
   <title>Word Freak Improved · Reader</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="improved.css?v=1">
-  <script src="improved.js?v=1" defer></script>
+  <script src="improved.js?v=2" defer></script>
 </head>
-<body data-theme="paper">
+<body data-theme="black">
   <header class="reader-bar" id="readerBar">
     <button id="libraryButton" class="bar-button" aria-label="Open book library"><span aria-hidden="true">▤</span> Library</button>
     <a class="wordmark" href="improved.html">word freak <span>IMPROVED</span></a>
@@ -53,7 +53,7 @@
     <label class="setting-row">Typeface<select id="fontSelect"><option value="times">Times New Roman</option><option value="georgia">Georgia</option><option value="palatino">Palatino</option><option value="sans">System sans</option></select></label>
     <label class="setting-row">Text size <output id="fontSizeOutput">24 px</output><input id="fontSize" type="range" min="18" max="40" step="1" value="24"></label>
     <label class="setting-row">Line spacing<select id="spacingSelect"><option value="1.55">Compact</option><option value="1.85" selected>Comfortable</option><option value="2.15">Spacious</option></select></label>
-    <div class="theme-picker" role="group" aria-label="Page color"><button data-theme="paper" aria-pressed="true"><span>Aa</span>Paper</button><button data-theme="sepia" aria-pressed="false"><span>Aa</span>Sepia</button><button data-theme="night" aria-pressed="false"><span>Aa</span>Night</button><button data-theme="black" aria-pressed="false"><span>Aa</span>Black</button></div>
+    <div class="theme-picker" role="group" aria-label="Page color"><button data-theme="paper" aria-pressed="false"><span>Aa</span>Paper</button><button data-theme="sepia" aria-pressed="false"><span>Aa</span>Sepia</button><button data-theme="night" aria-pressed="false"><span>Aa</span>Night</button><button data-theme="black" aria-pressed="true"><span>Aa</span>Black</button></div>
     <label class="setting-row">Read in<select id="readingLanguage"></select></label>
     <label class="setting-row">Translate into<select id="translationLanguage"></select></label>
     <p class="setting-note">Books begin with their English original. Other reading languages use online machine translation, loaded as you read.</p>
