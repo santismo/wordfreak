@@ -256,7 +256,7 @@
     lensMeasure ||= document.createElement('canvas').getContext('2d');
     if (!lensMeasure) return false;
     lensMeasure.font = `${preferred}px ${getComputedStyle(text).fontFamily}`;
-    const fit = fitLensFont(lensMeasure.measureText(value).width, Math.max(1,lensBox.width-4), Math.max(1,lensBox.height-4), preferred);
+    const fit = fitLensFont(lensMeasure.measureText(value).width, Math.max(1,lensBox.width-8), Math.max(1,lensBox.height-4), preferred);
     node.style.fontSize = `${fit.size}px`;
     lensFitKey = key; lensFitOverflow = fit.overflow;
     return fit.overflow;

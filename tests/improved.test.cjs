@@ -56,7 +56,7 @@ test('tokenization keeps Farsi half-spaces and merges sentence endings for hold 
 test('page IDs used by the new controller exist and offline assets are versioned together',()=>{
  const html=fs.readFileSync('improved.html','utf8');const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length);
  for(const match of improved.matchAll(/\$\('([^']+)'\)/g))assert.ok(ids.includes(match[1]),`Missing ${match[1]}`);
- const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=2','improved.js?v=3','app.js?v=57','styles.css?v=33'])assert.ok(sw.includes(asset));
+ const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=2','improved.js?v=4','app.js?v=57','styles.css?v=33'])assert.ok(sw.includes(asset));
  assert.ok(fs.readFileSync('index.html','utf8').includes('href="improved.html"'));
 });
 
