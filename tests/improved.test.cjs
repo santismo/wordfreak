@@ -246,3 +246,8 @@ test('Farsi context wins when an isolated sense also appears elsewhere in the ta
  const h=pairHarness(async value=>value.includes('⟦شیر⟧')?'The ⟦lion⟧ drinks milk':value==='شیر'?'milk':'',{source:['شیر','شیر','می‌نوشد'],target:'The lion drinks milk',from:'fa',to:'en'});
  await h.pairing.toggle(h.source[0]);assert.ok(h.target.children[1].classes.has('paired-word'));assert.ok(!h.target.children[3].classes.has('paired-word'));
 });
+
+test('reverse dictionary phrases can include a modifier around the Persian headword',async()=>{
+ const h=pairHarness(async value=>value==='شیر'?'milk':value==='lion'?'شیر نر':'',{source:['شیر','در','جنگل'],target:'The lion lives',from:'fa',to:'en'});
+ await h.pairing.toggle(h.source[0]);assert.ok(h.target.children[1].classes.has('paired-word'));
+});

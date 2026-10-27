@@ -1,4 +1,4 @@
-const CACHE_NAME = "wordfreak-v70";
+const CACHE_NAME = "wordfreak-v71";
 const READER_DOCUMENT_CACHE_NAME = "wordfreak-reader-documents-v3";
 const ASSETS = [
   "./",
@@ -6,7 +6,7 @@ const ASSETS = [
   "./index.html?reader-engine=1",
   "./improved.html",
   "./publications.js?v=3",
-  "./word-pairing.js?v=3",
+  "./word-pairing.js?v=4",
   "./data/books/5g-wireless-2019.json",
   "./improved.css?v=7",
   "./improved.js?v=10",

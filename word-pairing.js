@@ -119,7 +119,13 @@
           if(version!==serial)return;
           const results=await Promise.all(candidates.slice(i,i+2).map(async index=>({index,value:await translated(words[index],b,a)})));
           if(version!==serial)return;
-          const found=results.find(r=>equivalent(r.value,node.textContent,a));if(found)match=[found.index];
+          const found=results.find(r=>{
+            if(equivalent(r.value,node.textContent,a))return true;
+            // Dictionary-style reverse translations may add a modifier, e.g.
+            // lion → شیر نر. Accept the lexical head, not a short function word.
+            const parts=tokenize(r.value,a).filter(part=>part.word).map(part=>part.text);
+            return normalize(node.textContent).length>=3 && !['the','and','for','that','this','with','from','into','are','was','were','have','has','است','بود','برای','این','آن'].includes(normalize(node.textContent)) && parts.length<=3 && parts.length>1 && findPhrase(parts,node.textContent,a).length>0;
+          });if(found)match=[found.index];
         }
       }
       if(version!==serial || !owns(node))return;
