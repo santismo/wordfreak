@@ -81,3 +81,10 @@ body[data-theme=paper] .lens-handle span,body[data-theme=sepia] .lens-handle spa
 .glass-lens.moving .lens-surface::before{opacity:.8}
 .glass-lens.holding{transition-duration:100ms}
 @media(prefers-reduced-motion:reduce){.glass-lens,.lens-surface{transition:none!important}}
+/* Sentence translations use black liquid glass in every page theme. */
+.translation-card{position:relative;isolation:isolate;overflow:hidden;border-radius:24px;border:1px solid #ffffff38;border-top-color:#ffffff65;color:#f1f4f9;color-scheme:dark;background:linear-gradient(135deg,#ffffff13,transparent 42%,#a2d8ff05 75%,#ffffff09),rgba(0,0,0,.94);backdrop-filter:blur(22px) saturate(1.65);-webkit-backdrop-filter:blur(22px) saturate(1.65);box-shadow:0 8px 24px #0004,inset 0 1px 1px #ffffff32,inset 0 -1px 1px #c9eaff1c}
+.translation-card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 1px 0 1px #c9f0ff21,inset -1px 0 1px #ffe8f51c;background:radial-gradient(ellipse at 8% 0%,#ffffff0c,transparent 50%)}
+.translation-card::after{content:"";position:absolute;top:0;left:12%;right:12%;height:1px;pointer-events:none;background:linear-gradient(90deg,transparent,#ffffff85,transparent)}
+.translation-card #dockSource{color:#aab1ba}
+.translation-card #dockTranslation,.translation-card #dockClose{color:#f1f4f9}
+.translation-card #dockClose:hover{color:#fff;background:#ffffff12;border-radius:50%}
