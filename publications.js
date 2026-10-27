@@ -66,7 +66,7 @@
         // Keep each source page as a chapter for citations and navigation.
         sections.push({title:`Page ${i}`,paragraphs:lines.join('\n').split(/\n\s*\n/).map(p=>p.replace(/\n/g,' '))});page.cleanup();
       }
-    } finally {await pdf.destroy();}
+    } finally {await task.destroy();}
     return sections;
   }
   async function importFile(file,language='en',progress) {
