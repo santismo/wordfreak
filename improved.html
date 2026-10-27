@@ -8,8 +8,9 @@
   <meta name="apple-mobile-web-app-title" content="Word Freak Improved">
   <title>Word Freak Improved · Reader</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="improved.css?v=5">
-  <script src="improved.js?v=6" defer></script>
+  <link rel="stylesheet" href="improved.css?v=6">
+  <script src="publications.js?v=1" defer></script>
+  <script src="improved.js?v=7" defer></script>
 </head>
 <body data-theme="black">
   <header class="reader-bar" id="readerBar">
@@ -41,7 +42,7 @@
   <button id="exitFocus" class="focus-return" hidden aria-label="Show reading controls">Aa · Menu</button>
   <div id="readerStatus" class="reader-status" role="status" aria-live="polite">Opening your library…</div>
 
-  <svg class="optical-filters" width="0" height="0" aria-hidden="true" focusable="false"><defs><filter id="wf-glass-refraction" x="-20%" y="-30%" width="140%" height="160%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.012 0.045" numOctaves="1" seed="5" result="glassWaves"/><feGaussianBlur in="glassWaves" stdDeviation="1.5" result="softWaves"/><feDisplacementMap in="SourceGraphic" in2="softWaves" scale="8" xChannelSelector="R" yChannelSelector="G"/></filter></defs></svg>
+  <svg class="optical-filters" width="0" height="0" aria-hidden="true" focusable="false"><defs><filter id="wf-glass-refraction" x="-20%" y="-30%" width="140%" height="160%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.012 0.045" numOctaves="1" seed="5" result="glassWaves"/><feGaussianBlur in="glassWaves" stdDeviation="1.5" result="softWaves"/><feDisplacementMap in="SourceGraphic" in2="softWaves" scale="9" xChannelSelector="R" yChannelSelector="G" result="redShift"/><feColorMatrix in="redShift" type="matrix" values="1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0" result="red"/><feDisplacementMap in="SourceGraphic" in2="softWaves" scale="6" xChannelSelector="R" yChannelSelector="G" result="blueShift"/><feColorMatrix in="blueShift" type="matrix" values="0 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0" result="cyan"/><feBlend in="red" in2="cyan" mode="screen"/></filter></defs></svg>
   <div id="glassLens" class="glass-lens" hidden>
     <button id="lensSurface" class="lens-surface" type="button" aria-label="Translate this word’s full sentence" aria-controls="translationDock" aria-expanded="false">
       <span class="lens-refraction" aria-hidden="true"></span>
@@ -54,7 +55,7 @@
   <aside id="translationDock" class="translation-dock" aria-labelledby="dockKind" hidden>
     <div class="translation-card">
       <div class="translation-heading"><span id="dockKind" class="visually-hidden">SENTENCE</span><button id="dockClose" aria-label="Dismiss translation">×</button></div>
-      <div class="translation-copy"><p id="dockSource" dir="auto"></p><p id="dockTranslation" dir="auto" role="status" aria-live="polite"></p></div>
+      <div class="translation-copy"><p id="dockSource" dir="auto" hidden></p><p id="dockTranslation" dir="auto" role="status" aria-live="polite"></p></div>
     </div>
   </aside>
 
@@ -62,7 +63,8 @@
     <div class="sheet-heading"><div><p class="eyebrow">WORD FREAK IMPROVED</p><h2 id="libraryTitle">Your next chapter.</h2></div><button class="close-button" data-close aria-label="Close library">×</button></div>
     <form id="librarySearch" class="search-form"><input id="bookSearch" type="search" placeholder="Search title, author or topic" aria-label="Search title, author or topic"><button type="submit">Search</button></form>
     <div class="shelf-tabs" role="group" aria-label="Book shelves"><button data-shelf="all" aria-pressed="true">All books</button><button data-shelf="favorites" aria-pressed="false">Favorites</button><button data-shelf="official" aria-pressed="false">Handbooks</button></div>
-    <div class="library-filters"><label>Genre<select id="bookGenre"><option value="">All genres</option><option value="horror">Horror & supernatural</option><option value="telecommunications">Telecommunications</option><option value="5g">5G & wireless</option><option value="gsm">GSM & cellular</option><option value="science">Science & research</option><option value="science-fiction">Science fiction</option><option value="fantasy">Fantasy</option><option value="mystery">Mystery</option><option value="adventure">Adventure</option><option value="fiction">Fiction</option><option value="nonfiction">Nonfiction</option><option value="childrens">Children’s</option><option value="shorts">Short stories</option><option value="poetry">Poetry</option><option value="philosophy">Philosophy</option><option value="biography">Biography</option><option value="autobiography">Autobiography</option><option value="comedy">Comedy</option><option value="drama">Drama</option><option value="memoir">Memoir</option><option value="satire">Satire</option><option value="spirituality">Spirituality</option><option value="travel">Travel</option></select></label><label>Read where<select id="bookAccess"><option value="">All sources</option><option value="reader">In Word Freak</option><option value="external">External libraries</option></select></label></div><p class="setting-note">Read-in-app books support the glass lens. Borrowing links and publisher publications open separately; library availability varies.</p><p id="libraryCount" class="setting-note" role="status"></p>
+    <div class="library-filters"><label>Genre<select id="bookGenre"><option value="">All genres</option><option value="horror">Horror & supernatural</option><option value="telecommunications">Telecommunications</option><option value="5g">5G & wireless</option><option value="gsm">GSM & cellular</option><option value="science">Science & research</option><option value="science-fiction">Science fiction</option><option value="fantasy">Fantasy</option><option value="mystery">Mystery</option><option value="adventure">Adventure</option><option value="fiction">Fiction</option><option value="nonfiction">Nonfiction</option><option value="childrens">Children’s</option><option value="shorts">Short stories</option><option value="poetry">Poetry</option><option value="philosophy">Philosophy</option><option value="biography">Biography</option><option value="autobiography">Autobiography</option><option value="comedy">Comedy</option><option value="drama">Drama</option><option value="memoir">Memoir</option><option value="satire">Satire</option><option value="spirituality">Spirituality</option><option value="travel">Travel</option></select></label><label>Read where<select id="bookAccess"><option value="">All sources</option><option value="reader">In Word Freak</option><option value="external">External libraries</option></select></label></div><p class="setting-note">Read-in-app books support the glass lens. Borrowing links and publisher collections open separately; library availability varies.</p><p id="libraryCount" class="setting-note" role="status"></p>
+    <details class="publication-import"><summary>Import a publication</summary><p class="setting-note">Open a text-based PDF, TXT, Markdown or HTML file in the reader. Files stay on this device. Translating a passage sends that passage to the translation service. Scanned or protected PDFs need an accessible text version. PDF diagrams and equation layouts remain in the original.</p><label>Original language<select id="publicationLanguage"><option value="en">English</option><option value="fa">Farsi</option><option value="ru">Russian</option><option value="es">Spanish</option><option value="fr">French</option><option value="hi">Hindi</option><option value="ja">Japanese</option><option value="ko">Korean</option></select></label><button id="importPublication" type="button">Choose file · up to 30 MB</button><input id="publicationFile" type="file" accept=".pdf,.txt,.md,.html,.htm,.xhtml" hidden><p id="importStatus" class="setting-note" role="status"></p></details>
     <div id="bookGrid" class="book-grid"></div><button id="searchMore" class="quiet-button" hidden>Search the wider library ↗</button>
     <p class="sheet-footnote"><a href="index.html">Open Word Freak Classic ↗</a><span>The original experience, always here.</span></p>
   </dialog>
@@ -76,7 +78,7 @@
     <label class="setting-row controls-setting">Bottom reading controls<input id="navigationToggle" type="checkbox" checked></label>
     <label class="setting-row">Read in<select id="readingLanguage"></select></label>
     <label class="setting-row">Translate into<select id="translationLanguage"></select></label>
-    <p class="setting-note">Books begin with their English original. Other reading languages use online machine translation, loaded as you read.</p>
+    <p class="setting-note">Library books begin in English. Imported publications use the original language you choose. Other reading languages use online machine translation, loaded as you read.</p>
     <div class="lens-instructions" id="lensHint"><strong>A little glass, a little clarity.</strong><p>Tap a word to place the lens. Drag its small handle to move it. Hold still to fade into a translation. Tap the word inside the glass, or hold over sentence-ending punctuation, for the full sentence. Tap elsewhere to dismiss.</p><p>Hold ‹ or › to move at the speed set below them. Tap the center to translate, hold it to lock word translations, or double-tap it to switch between word and sentence navigation. With the handle focused, use arrow keys and Enter; Shift+Enter opens the sentence.</p></div>
     <a href="index.html" class="classic-link">Word Freak Classic ↗</a>
   </dialog>

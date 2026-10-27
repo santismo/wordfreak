@@ -56,7 +56,7 @@ test('tokenization keeps Farsi half-spaces and merges sentence endings for hold 
 test('page IDs used by the new controller exist and offline assets are versioned together',()=>{
  const html=fs.readFileSync('improved.html','utf8');const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length);
  for(const match of improved.matchAll(/\$\('([^']+)'\)/g))assert.ok(ids.includes(match[1]),`Missing ${match[1]}`);
- const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=5','improved.js?v=6','app.js?v=58','styles.css?v=33'])assert.ok(sw.includes(asset));
+ const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=6','improved.js?v=7','app.js?v=58','styles.css?v=33'])assert.ok(sw.includes(asset));
  assert.ok(fs.readFileSync('index.html','utf8').includes('href="improved.html"'));
 });
 
@@ -77,7 +77,7 @@ function lensHarness() {
  const get=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',lang:'',dir:''});return nodes.get(id);};
  let resolve;const calls=[];const result={};
  const selected={textContent:'سلام',classList:{contains:()=>false,remove(){}},closest:()=>({dataset:{text:'سلام دنیا.'}})};
- const context={word:selected,api:{languages:{en:{label:'English',dir:'ltr'}},translate:(...args)=>{calls.push(args);return new Promise(r=>resolve=r);}},prefs:{reading:'fa',translation:'en'},requestVersion:0,holdTimer:0,holding:true,dragging:false,pointerId:1,dragPoint:null,autoScroll:0,lensFitKey:'',lens:{hidden:false,classList:{add:(...names)=>names.forEach(n=>classes.add(n)),remove:(...names)=>names.forEach(n=>classes.delete(n))}},$:get,clearTimeout(){},cancelAnimationFrame(){},positionLens(){},updateReadingControls(){},translationKey:v=>'fa|en|'+v,nearbyTranslations:new Map(),rememberNearby(){},scheduleNearbyTranslations(){},openDock:(mode,source,value)=>Object.assign(result,{mode,source,value}),closeDock:()=>{for(const key of Object.keys(result))delete result[key];}};
+ const context={word:selected,api:{languages:{en:{label:'English',dir:'ltr'}},translate:(...args)=>{calls.push(args);return new Promise(r=>resolve=r);}},prefs:{reading:'fa',translation:'en'},requestVersion:0,holdTimer:0,holding:true,dragging:false,pointerId:1,dragPoint:null,autoScroll:0,lensFitKey:'',lens:{hidden:false,classList:{add:(...names)=>names.forEach(n=>classes.add(n)),remove:(...names)=>names.forEach(n=>classes.delete(n))}},$:get,clearTimeout(){},cancelAnimationFrame(){},positionLens(){},updateReadingControls(){},translationKey:v=>'fa|en|'+v,nearbyTranslations:new Map(),rememberNearby(){},scheduleNearbyTranslations(){},openDock:(mode,source,value)=>Object.assign(result,{mode,source,value}),clearSentenceOutline(){},closeDock:()=>{for(const key of Object.keys(result))delete result[key];}};
  vm.createContext(context);
  vm.runInContext(readerFunction('clearLens','selectWord'),context);
  const start=improved.indexOf('  async function translateSelection('), end=improved.indexOf("  document.addEventListener('pointerdown'",start);
@@ -148,3 +148,31 @@ test('pace slider and runtime allow 300 steps per minute',()=>{
  assert.ok(data.filter(b=>!b.external).length>=8);
  for(const b of data)assert.equal(new URL(b.link).protocol,'https:');
  });
+
+test('sentence mode outlines the complete sentence and removes the floating word lens',()=>{
+ const classes=new Set();const sentence={classList:{add:n=>classes.add(n),remove:n=>classes.delete(n)}};
+ const wordClasses=new Set(['active-word']);
+ const c={outlinedSentence:null,prefs:{lens:true,sentenceMode:true},word:{isConnected:true,closest:()=>sentence,classList:{remove:n=>wordClasses.delete(n)}},lens:{hidden:false}};
+ vm.createContext(c);vm.runInContext(readerFunction('clearSentenceOutline','positionLens')+readerFunction('positionLens','armTranslation'),c);
+ c.positionLens();assert.equal(c.lens.hidden,true);assert.ok(classes.has('active-sentence'));assert.equal(wordClasses.size,0);
+ c.word=null;c.positionLens();assert.equal(classes.size,0);
+});
+test('sentence dock contains only translated text',()=>{
+ const nodes=new Map();const $=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'old source',setAttribute(){}});return nodes.get(id);};
+ const c={$,api:{languages:{en:{label:'English',dir:'ltr'}}},prefs:{translation:'en'},syncDockSpace(){},keepSelectionVisible(){},positionLens(){}};
+ vm.createContext(c);vm.runInContext(readerFunction('openDock','clearLens').split("  if (typeof ResizeObserver")[0],c);
+ c.openDock('sentence','Original sentence.','Translated sentence.');
+ assert.equal($('dockSource').textContent,'');assert.equal($('dockSource').hidden,true);assert.equal($('dockTranslation').textContent,'Translated sentence.');
+});
+test('publications preserve chapter boundaries, source language and reading progress',()=>{
+ const c={window:{},Intl,localStorage:{getItem:()=>JSON.stringify({'publication:test':{index:2}})}};
+ vm.runInNewContext(fs.readFileSync('publications.js','utf8'),c);
+ const api=c.window.WordfreakPublications;
+ const parsed=api.buildDocument({id:'publication:test',language:'fa'},[{title:'اول',paragraphs:['سلام دنیا. چطوری؟']},{title:'دوم',paragraphs:['خوبم.']}]);
+ assert.equal(parsed.chapters.length,2);assert.equal(parsed.chapters[1].start,2);assert.equal(parsed.sentences[2].chapterIndex,1);assert.equal(parsed.savedIndex,2);
+ assert.throws(()=>api.buildDocument({id:'empty'},[{paragraphs:[' ']}]),/No selectable text/);
+ const bundled=JSON.parse(fs.readFileSync('data/books/5g-wireless-2019.json','utf8'));
+ assert.equal(bundled.chapters.length,5);
+ for(const chapter of bundled.chapters) {assert.ok(chapter.source.startsWith('https://www.intechopen.com/chapters/'));assert.ok(chapter.license.includes('creativecommons.org/licenses/by/'));assert.ok(chapter.paragraphs[0].includes(chapter.author));}
+ const book=api.buildDocument({id:'5g',language:'en'},bundled.chapters);assert.ok(book.sentences.length>500);assert.equal(book.chapters.length,5);
+});

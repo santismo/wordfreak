@@ -193,8 +193,9 @@
   },
   {
     "id": "external:3",
-    "source": "external",
-    "external": true,
+    "source": "publication",
+    "dataUrl": "data/books/5g-wireless-2019.json",
+    "language": "en",
     "title": "The Fifth Generation (5G) of Wireless Communication",
     "author": "IntechOpen",
     "link": "https://www.intechopen.com/books/6576",
@@ -204,7 +205,7 @@
       "science",
       "nonfiction"
     ],
-    "access": "Open-access book · publisher reader"
+    "access": "Open-access book · read here · CC BY 3.0"
   },
   {
     "id": "external:4",
@@ -310,12 +311,13 @@
   }
 ];
   const externalFavorites = new Set(readStorage('wordfreak:improved:external-favorites:v1', []));
-  let remoteBooks = [];
-  function libraryBooks() { return [...new Map([...catalog, ...extraBooks, ...remoteBooks].map(book => [book.id || book.link, book])).values()]; }
+  let remoteBooks = [], importedBooks = [];
+  const publications = window.WordfreakPublications;
+  function libraryBooks() { return [...new Map([...catalog, ...extraBooks, ...remoteBooks, ...importedBooks].map(book => [book.id || book.link, book])).values()]; }
   function matchesLibrary(book, query, genre, access) {
     const tags = [...(book.genres || []), ...(book.subjects || [])].join(' ').toLowerCase();
     const haystack = `${book.title} ${book.author} ${tags} ${book.access || ''}`.toLocaleLowerCase();
-    return (!genre || (book.genres || []).includes(genre) || tags.includes(genre)) && (!query || query.split(/\s+/).every(term => haystack.includes(term))) && (!access || (access === 'reader' ? !book.external : book.external));
+    return (!genre || (book.genres || []).includes(genre) || (!(book.genres || []).length && (book.subjects || []).some(subject => subject.toLowerCase().includes(genre)))) && (!query || query.split(/\s+/).every(term => haystack.includes(term))) && (!access || (access === 'reader' ? !book.external : book.external));
   }
   function renderLibrary() {
     if (!api) return;
@@ -334,8 +336,12 @@
       open.append(number, title, author, access);
       if (book.external) { open.href = book.link; open.target = '_blank'; open.rel = 'noopener noreferrer'; } else open.onclick = () => openBook(book);
       const favorite = document.createElement('button'); favorite.className = 'favorite-book'; favorite.textContent = favorites.has(book.id) ? '★' : '☆'; favorite.setAttribute('aria-pressed', String(favorites.has(book.id))); favorite.setAttribute('aria-label', `Favorite ${book.title}`);
-      favorite.onclick = () => { if (book.external) { externalFavorites.has(book.id) ? externalFavorites.delete(book.id) : externalFavorites.add(book.id); writeStorage('wordfreak:improved:external-favorites:v1', [...externalFavorites]); } else api.favorite(book); catalog = api.catalog(); renderLibrary(); };
-      card.append(open, favorite); $('bookGrid').append(card);
+      favorite.onclick = () => { if (book.external || book.source === 'publication') { externalFavorites.has(book.id) ? externalFavorites.delete(book.id) : externalFavorites.add(book.id); writeStorage('wordfreak:improved:external-favorites:v1', [...externalFavorites]); } else api.favorite(book); catalog = api.catalog(); renderLibrary(); };
+      card.append(open, favorite);
+      if (book.external && /\.pdf(?:$|[?#])/i.test(book.link)) {
+        const read = document.createElement('button');read.className='publication-read';read.textContent='Try in reader';read.onclick=()=>openBook(book, null, true);card.append(read);
+      }
+      $('bookGrid').append(card);
     }
     if (!results.length) { const empty = document.createElement('p'); empty.textContent = shelf === 'favorites' ? 'Star a book to keep it here.' : 'No books match. Try another title or search the wider library.'; $('bookGrid').append(empty); }
     $('searchMore').hidden = (!query && !$('bookGenre').value) || shelf !== 'all' || $('bookAccess').value === 'external' || ['science','telecommunications','5g','gsm'].includes($('bookGenre').value);
@@ -351,24 +357,37 @@
     catch { status('The wider library is unavailable. Your curated shelf is still available.', 6000); }
     finally { $('searchMore').disabled = false; $('searchMore').textContent = 'Search the wider library ↗'; }
   };
-  async function openBook(book) {
+  async function openBook(book, prepared = null, remotePdf = false) {
     const token = ++generation;
     persistProgress(); clearLens(); readingObserver?.disconnect(); jobs = [];
     $('libraryDialog').close(); status(`Opening ${book.title}…`);
     try {
-      const result = await api.open(book);
+      const result = prepared || (remotePdf ? await publications.openPdf(book,status) : book.source === 'publication' ? await publications.open(book) : await api.open(book));
       if (token !== generation) return;
       current = result; savedIndex = Math.min(result.savedIndex, result.sentences.length - 1);
       writeStorage(LAST_BOOK_KEY, result.book);
       $('bookTitle').textContent = result.book.title; $('bookAuthor').textContent = result.book.author;
-      $('editionLabel').textContent = 'WORD FREAK IMPROVED · THE READING EDITION';
-      $('sourceLink').href = result.book.link; $('sourceLink').hidden = false;
+      $('editionLabel').textContent = result.book.source === 'publication' ? 'TEXT EDITION · FIGURES & EQUATIONS IN THE ORIGINAL' : 'WORD FREAK IMPROVED · THE READING EDITION';
+      $('sourceLink').href = result.book.link || '#'; $('sourceLink').hidden = !result.book.link;
       $('sourceLink').textContent = result.book.source === 'usaf' ? 'Official USAF source ↗' : 'Original edition ↗';
       $('welcome').hidden = true; $('chaptersButton').disabled = false; $('previousWord').disabled = $('nextWord').disabled = $('translateButton').disabled = false;
       renderWindow(savedIndex); renderChapters();
-      status(prefs.reading === 'en' ? 'Tap a word. Drag the handle. Hold to translate.' : `Preparing your ${api.languages[prefs.reading].label} reading view…`, 6000);
+      status(prefs.reading === (current.book.language || 'en') ? 'Tap a word. Drag the handle. Hold to translate.' : `Preparing your ${api.languages[prefs.reading].label} reading view…`, 6000);
     } catch (error) { if (token === generation) { status(`Could not open this book: ${error.message}`, 10000); renderLibrary(); showDialog('libraryDialog'); } }
   }
+  $('importPublication').onclick = () => $('publicationFile').click();
+  $('publicationFile').onchange = async event => {
+    const file=event.target.files[0];if(!file || !api)return;
+    const token=++searchVersion;$('importPublication').disabled=true;
+    $('importStatus').textContent='Preparing your publication…';
+    try {
+      const result=await publications.importFile(file,$('publicationLanguage').value,message=>{$('importStatus').textContent=message;});
+      importedBooks=await publications.list();renderLibrary();
+      $('importStatus').textContent='Saved on this device.';
+      if(token===searchVersion)await openBook(result.book,result);
+    } catch(error) {$('importStatus').textContent=error.message || 'Could not import this publication.';}
+    finally {$('importPublication').disabled=false;event.target.value='';}
+  };
   function tokenize(value, language) {
     const parts = typeof Intl.Segmenter === 'function'
       ? [...new Intl.Segmenter(language, {granularity:'word'}).segment(value)].map((part) => ({ text: part.segment, word: part.isWordLike }))
@@ -411,7 +430,7 @@
     while (activeJobs < 2 && jobs.length) {
       const job = jobs.shift(); if (job.token !== generation) continue;
       activeJobs++;
-      api.translate(job.block.original, 'en', job.language).then((translated) => {
+      api.translate(job.block.original, current.book.language || 'en', job.language).then((translated) => {
         if (job.token !== generation || job.language !== prefs.reading) return;
         if (!translated) throw new Error('Translation unavailable');
         fillBlock(job.block, translated);
@@ -436,13 +455,13 @@
       const node = document.createElement('p'); node.dataset.block = first;
       const block = {node, start:first, end:i, original:pieces.join(' '), loaded:false, queued:false, failed:false}; blocks.set(first,block);
       fragment.append(node);
-      if (prefs.reading !== 'en') { node.className = 'pending-block'; const waiting = document.createElement('span'); waiting.className = 'translation-pending'; waiting.textContent = `Loading ${api.languages[prefs.reading].label} passage…`; node.append(waiting); node.style.minHeight = `${Math.max(2, Math.min(8, Math.ceil(block.original.length / 60)))*prefs.size*Number(prefs.spacing)}px`; }
+      if (prefs.reading !== (current.book.language || 'en')) { node.className = 'pending-block'; const waiting = document.createElement('span'); waiting.className = 'translation-pending'; waiting.textContent = `Loading ${api.languages[prefs.reading].label} passage…`; node.append(waiting); node.style.minHeight = `${Math.max(2, Math.min(8, Math.ceil(block.original.length / 60)))*prefs.size*Number(prefs.spacing)}px`; }
       i++;
     }
     prepend ? text.prepend(fragment) : text.append(fragment);
     for (const block of blocks.values()) {
       if (block.loaded || block.queued) continue;
-      if (prefs.reading === 'en') fillBlock(block,block.original);
+      if (prefs.reading === (current.book.language || 'en')) fillBlock(block,block.original);
       else readingObserver.observe(block.node);
     }
   }
@@ -460,7 +479,7 @@
       const block = [...blocks.values()].find((b) => b.start <= index && b.end >= index);
       if (index && block) scroll.scrollTop += block.node.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 40;
       else scroll.scrollTop = 0;
-      if (block && prefs.reading !== 'en') queueBlock(block,true);
+      if (block && prefs.reading !== (current.book.language || 'en')) queueBlock(block,true);
       updateProgress(index);
     });
   }
@@ -549,7 +568,7 @@
   function openDock(mode, source, translation) {
     dockMode = mode; $('translationDock').hidden = false;
     $('dockKind').textContent = `${mode === 'sentence' ? 'SENTENCE' : 'WORD'} · ${api.languages[prefs.translation].label.toUpperCase()}`;
-    $('dockSource').textContent = source; $('dockSource').lang = prefs.reading; $('dockSource').dir = api.languages[prefs.reading].dir;
+    $('dockSource').textContent = ''; $('dockSource').hidden = true;
     $('dockTranslation').textContent = translation; $('dockTranslation').lang = prefs.translation; $('dockTranslation').dir = api.languages[prefs.translation].dir;
     $('lensSurface').setAttribute('aria-expanded','true');
     syncDockSpace();
@@ -561,7 +580,7 @@
   if (typeof ResizeObserver === 'function') new ResizeObserver(syncDockSpace).observe($('translationDock'));
   $('dockClose').onclick = () => { clearLens(); scroll.focus({preventScroll:true}); };
   function clearLens() {
-    releaseLens(); requestVersion++; closeDock();
+    releaseLens(); requestVersion++; closeDock(); clearSentenceOutline();
     word?.classList.remove('active-word'); word = null; lens.hidden = true;
     lens.classList.remove('translating','loading'); lensFitKey = '';
   }
@@ -593,8 +612,18 @@
     const delta=r.bottom>bottom ? r.bottom-bottom : r.top<top ? r.top-top : 0;
     if(delta)scroll.scrollTop+=delta;
   }
+  let outlinedSentence = null;
+  function clearSentenceOutline() { outlinedSentence?.classList.remove('active-sentence'); outlinedSentence = null; }
   function positionLens() {
-    if (!word?.isConnected || !prefs.lens) { lens.hidden = true; return; }
+    if (!word?.isConnected || !prefs.lens) { lens.hidden = true; clearSentenceOutline(); return; }
+    const sentence = prefs.sentenceMode ? word.closest('.reader-sentence') : null;
+    if (sentence !== outlinedSentence) { clearSentenceOutline(); outlinedSentence = sentence; }
+    if (sentence) {
+      sentence.classList.add('active-sentence');
+      word.classList.remove('active-word');
+      lens.hidden = true;
+      return;
+    }
     const r = [...word.getClientRects()].find((rect) => rect.width > 0) || word.getBoundingClientRect();
     const viewport = scroll.getBoundingClientRect();
     if (r.top < viewport.top || r.bottom > viewport.bottom) { lens.hidden = true; word.classList.remove('active-word'); return; }
@@ -604,6 +633,7 @@
     const x = Math.max(width/2+4,Math.min(innerWidth-width/2-4,r.left+r.width/2));
     const y = r.top+r.height/2;
     lensBox = {width,height};
+    lens.style.setProperty('--glass-angle',`${110 + x / innerWidth * 70}deg`);
     lens.style.setProperty('--lens-x',`${x}px`); lens.style.setProperty('--lens-y',`${y}px`);
     lens.style.setProperty('--lens-width',`${width}px`); lens.style.setProperty('--lens-height',`${height}px`); lens.style.setProperty('--lens-radius',`${Math.min(height/2,Math.max(7,width*.22))}px`);
     const label = lens.classList.contains('translating') ? $('lensTranslation') : $('lensOriginal');
@@ -646,7 +676,7 @@
     // when they release before a slow translation request completes.
   }
   document.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('#glassLens, #translationDock, .reader-word, #previousWord, #nextWord, #translateButton, .reading-speed')) return;
+    if (event.target.closest('#glassLens, #translationDock, .reader-word, .active-sentence, #previousWord, #nextWord, #translateButton, .reading-speed')) return;
     clearLens();
   }, {capture:true});
   document.addEventListener('pointerup', () => { if (holding && !dragging) releaseLens(); });
@@ -837,9 +867,10 @@
     if(!api.languages[prefs.reading])prefs.reading='en';
     if(!api.languages[prefs.translation])prefs.translation='en';
     if(!readStorage(SETTINGS_KEY,null))prefs.translation=api.language==='en'?'fa':api.language;
-    for(const id of ['readingLanguage','translationLanguage']) { for(const [code,language] of Object.entries(api.languages)) { const option=document.createElement('option');option.value=code;option.textContent=language.label+(id==='readingLanguage'&&code==='en'?' · Original':'');$(id).append(option); } }
+    for(const id of ['readingLanguage','translationLanguage']) { for(const [code,language] of Object.entries(api.languages)) { const option=document.createElement('option');option.value=code;option.textContent=language.label;$(id).append(option); } }
     $('readingLanguage').value=prefs.reading; $('translationLanguage').value=prefs.translation;
     catalog=api.catalog(); renderLibrary(); status('');
+    try { importedBooks=await publications.list(); renderLibrary(); } catch { status('Imported books cannot be saved in this browser session.',5000); }
     const last=readStorage(LAST_BOOK_KEY,null); if(last)await openBook(last);
     if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
   }

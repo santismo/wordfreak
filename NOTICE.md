@@ -155,3 +155,8 @@ The publication states that it has no releasability restrictions. Under 17 U.S.C
 https://www.copyright.gov/title17/92chap1.html#105
 
 Wordfreak is an unofficial study reader. Its inclusion of this publication does not imply endorsement by the U.S. Department of Defense or U.S. Air Force.
+
+## IntechOpen 5G text edition
+`data/books/5g-wireless-2019.json` contains adapted flowing text from five chapters in *The Fifth Generation (5G) of Wireless Communication*, edited by Ahmed Kishk, IntechOpen (2019). Copyright 2019 the respective chapter authors. All five chapters are licensed under Creative Commons Attribution 3.0 (https://creativecommons.org/licenses/by/3.0/). Per-chapter authors, source URLs and license URLs are included in the data and displayed in the reader. Images, mathematical layout and tabular layout are not reproduced. The text is reformatted for sentence navigation and translation.
+
+PDF import loads Mozilla PDF.js (Apache-2.0) on demand from its versioned npm distribution. See https://github.com/mozilla/pdf.js/blob/master/LICENSE .
