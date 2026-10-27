@@ -1,9 +1,32 @@
 /* Conservative lexical correspondence: never guess a pair from position alone. */
 (() => {
   'use strict';
-  const normalize = value => value.normalize('NFKC').toLocaleLowerCase().replace(/[يى]/g,'ی').replace(/ك/g,'ک').replace(/[\p{M}\u200c\u200d]/gu,'').replace(/[^\p{L}\p{N}]/gu,'');
+  const normalize = value => value.normalize('NFKC').toLocaleLowerCase().replace(/[ۀة]/g,'ه').replace(/ـ/g,'').replace(/[يى]/g,'ی').replace(/ك/g,'ک').replace(/[\p{M}\u200c\u200d]/gu,'').replace(/[^\p{L}\p{N}]/gu,'');
+  function persianForms(value) {
+    const clean=normalize(value),forms=new Set([clean]);
+    // Possessive/plural suffixes may be attached with a half-space or no space.
+    const suffixes=['هایمان','هایتان','هایشان','هایم','هایت','هایش','هایی','های','ها','مان','تان','شان','ترین','تر','ام','ات','اش','ی'];
+    for(const suffix of suffixes) if(clean.endsWith(suffix) && clean.length-suffix.length>=3)forms.add(clean.slice(0,-suffix.length));
+    if(/[متش]$/.test(clean)) {const stem=clean.slice(0,-1);if(stem.length>=4 || ['پول','کیف','دست'].includes(stem))forms.add(stem);}
+    return forms;
+  }
+  function markedContext(sentence,words,index) {
+    let cursor=0;
+    for(let i=0;i<words.length;i++) {
+      const start=sentence.indexOf(words[i],cursor);if(start<0)return '';
+      const end=start+words[i].length;
+      if(i===index)return sentence.slice(0,start)+'⟦'+sentence.slice(start,end)+'⟧'+sentence.slice(end);
+      cursor=end;
+    }
+    return '';
+  }
+  function contextualPhrase(value) {
+    const matches=[...String(value || '').matchAll(/⟦([^⟦⟧]+)⟧/gu)];
+    return matches.length===1?matches[0][1].trim():'';
+  }
   function equivalent(a,b,language) {
     a=normalize(a);b=normalize(b);if(!a || !b)return false;if(a===b)return true;
+    if(language==='fa') {const left=persianForms(a),right=persianForms(b);return [...left].some(form=>right.has(form));}
     if(language==='en') { const stem=w=>w.length>4?w.replace(/(?:ing|ed|es|s)$/,''):w;return stem(a)===stem(b); }
     if(language==='ru') { const stem=w=>w.replace(/(?:ыми|ого|ому|ая|ый|ой|ое|ые|ым|ую|ий|ей|ия|ии|ие|ов|ам|ах|ом|ы|и|а|я|у|ю|е|ь)$/,'');const x=stem(a),y=stem(b);return x.length>=4 && x===y; }
     return false;
@@ -12,12 +35,12 @@
     const wanted=normalize(phrase);if(!wanted)return [];
     const matches=[];
     for(let i=0;i<words.length;i++) for(let length=1;length<=5 && i+length<=words.length;length++) {
-      if(equivalent(words.slice(i,i+length).join(' '),wanted,language))matches.push(Array.from({length},(_,offset)=>i+offset));
+      if(equivalent(words.slice(i,i+length).join(' '),wanted,language))matches.push({indexes:Array.from({length},(_,offset)=>i+offset),exact:normalize(words.slice(i,i+length).join(' '))===wanted});
     }
-    return matches.sort((a,b)=>Math.abs(a[0]/Math.max(1,words.length-1)-ratio)-Math.abs(b[0]/Math.max(1,words.length-1)-ratio))[0] || [];
+    return matches.sort((a,b)=>Number(b.exact)-Number(a.exact) || Math.abs(a.indexes[0]/Math.max(1,words.length-1)-ratio)-Math.abs(b.indexes[0]/Math.max(1,words.length-1)-ratio) || a.indexes.length-b.indexes.length)[0]?.indexes || [];
   }
   function create({sourceRoot,targetRoot,tokenize,translate,announce}) {
-    let source=[],target=[],from='en',to='fa',selected=[],serial=0,press=null;
+    let source=[],target=[],from='en',to='fa',sourceSentence='',targetSentence='',selected=[],serial=0,press=null;
     const links=new Map(),translations=new Map();
     const key=node=>source.includes(node)?`s:${source.indexOf(node)}`:`t:${target.indexOf(node)}`;
     const owns=node=>source.includes(node)||target.includes(node);
@@ -28,7 +51,7 @@
       source=[];target=[];
     }
     function configure(sentence,value,sourceLanguage,targetLanguage) {
-      clear();from=sourceLanguage;to=targetLanguage;
+      clear();from=sourceLanguage;to=targetLanguage;sourceSentence=sentence.textContent || sentence.dataset?.text || '';targetSentence=value;
       source=[...sentence.querySelectorAll('.reader-word:not(.sentence-end)')];targetRoot.replaceChildren();
       for(const part of tokenize(value,to)) {
         if(!part.word){targetRoot.append(document.createTextNode(part.text));continue;}
@@ -52,15 +75,39 @@
       const cached=links.get(key(node));
       if(cached){paint(cached);return;}
       const words=other.map(n=>n.textContent);
+      let sameMatch=[node];
       let match=findPhrase(words,node.textContent,b,ratio);
       if(!match.length) {
         const value=await translated(node.textContent,a,b);if(version!==serial)return;
         match=findPhrase(words,value,b,ratio);
       }
-      // A contextual sentence may use a different inflection/synonym. Check a
-      // bounded set in reverse; relative position only orders lexical candidates.
+      // Translating the marked word inside its full sentence resolves senses
+      // such as Persian “کیف” (bag) inside “کیف پول” (wallet), and verb phrases.
       if(!match.length) {
-        const candidates=other.map((n,i)=>i).sort((x,y)=>Math.abs(x/Math.max(1,other.length-1)-ratio)-Math.abs(y/Math.max(1,other.length-1)-ratio)).slice(0,8);
+        const context=markedContext(same===source?sourceSentence:targetSentence,same.map(n=>n.textContent),same.indexOf(node));
+        if(context) {
+          const result=await translated(context,a,b);if(version!==serial)return;
+          match=findPhrase(words,contextualPhrase(result),b,ratio);
+        }
+      }
+      // Compound nouns and light-verb constructions often need adjacent tokens
+      // (e.g. کیف پولم → my wallet), so preserve the whole matched phrase.
+      if(!match.length && (a==='fa' || b==='fa')) {
+        const index=same.indexOf(node),groups=[];
+        for(const [start,end] of [[index,index+2],[index-1,index+1],[index-1,index+2],[index,index+3]]) {
+          if(start>=0 && end<=same.length && end-start>1)groups.push(same.slice(start,end));
+        }
+        for(let i=0;i<groups.length && !match.length;i+=2) {
+          if(version!==serial)return;
+          const results=await Promise.all(groups.slice(i,i+2).map(async group=>({group,value:await translated(group.map(n=>n.textContent).join(' '),a,b)})));
+          if(version!==serial)return;
+          for(const result of results) {const indexes=findPhrase(words,result.value,b,ratio);if(indexes.length){match=indexes;sameMatch=result.group;break;}}
+        }
+      }
+      // Search the entire opposite sentence, including its final verb in RTL
+      // languages. Position orders requests but no longer excludes distant words.
+      if(!match.length) {
+        const candidates=other.map((n,i)=>i).sort((x,y)=>Math.abs(x/Math.max(1,other.length-1)-ratio)-Math.abs(y/Math.max(1,other.length-1)-ratio)).slice(0,48);
         for(let i=0;i<candidates.length && !match.length;i+=2) {
           if(version!==serial)return;
           const results=await Promise.all(candidates.slice(i,i+2).map(async index=>({index,value:await translated(words[index],b,a)})));
@@ -70,7 +117,7 @@
       }
       if(version!==serial || !owns(node))return;
       if(!match.length){announce('No direct word match found in this sentence.');return;}
-      const paired=[node,...match.map(index=>other[index])];
+      const paired=[...sameMatch,...match.map(index=>other[index])];
       for(const n of paired)links.set(key(n),paired);
       paint(paired);announce(`${node.textContent}: ${match.map(i=>words[i]).join(' ')}`);
     }
@@ -84,5 +131,5 @@
     }
     return {configure,clear,toggle};
   }
-  window.WordfreakWordPairing={create,findPhrase,equivalent};
+  window.WordfreakWordPairing={create,findPhrase,equivalent,persianForms,markedContext,contextualPhrase};
 })();

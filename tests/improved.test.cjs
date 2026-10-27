@@ -182,14 +182,14 @@ test('holding a word in sentence mode keeps translating its sentence',async()=>{
  assert.deepEqual(h.calls[0],['سلام دنیا.','fa','en']);h.resolve('Hello world.');await work;assert.equal(h.result.mode,'sentence');
 });
 
-function pairHarness(translator) {
+function pairHarness(translator, options = {}) {
  const node=text=>({textContent:text,classes:new Set(),attrs:{},classList:{},addEventListener(){},setAttribute(k,v){this.attrs[k]=v;},removeAttribute(k){delete this.attrs[k];},append(...nodes){this.children.push(...nodes);},replaceChildren(){this.children=[];},children:[]});
  const make=text=>{const n=node(text);n.classList={add:c=>n.classes.add(c),remove:c=>n.classes.delete(c)};return n;};
  const context={window:{},document:{createElement:()=>make(''),createTextNode:make},console};
  vm.runInNewContext(fs.readFileSync('word-pairing.js','utf8'),context);
- const root=make(''),target=make(''),source=['Hello','world'].map(make);
+ const root=make(''),target=make(''),source=(options.source || ['Hello','world']).map(make);
  const pairing=context.window.WordfreakWordPairing.create({sourceRoot:root,targetRoot:target,tokenize:value=>value.split(' ').map(text=>({text,word:true})),translate:translator,announce(){}});
- const configure=()=>pairing.configure({querySelectorAll:()=>source},'سلام دنیا','en','fa');configure();
+ const configure=()=>pairing.configure({querySelectorAll:()=>source,textContent:source.map(n=>n.textContent).join(' ')},options.target || 'سلام دنیا',options.from || 'en',options.to || 'fa');configure();
  return {pairing,source,target,configure,logic:context.window.WordfreakWordPairing};
 }
 test('word pairing works in both directions, toggles off and replaces earlier highlights',async()=>{
@@ -214,4 +214,30 @@ test('pairing supports phrases and repeated words without positional guesses',()
  assert.deepEqual(Array.from(logic.findPhrase(['unrelated','words'],'hello','en')),[]);
  assert.equal(logic.equivalent('موبايل','موبایل','fa'),true);
  assert.equal(logic.equivalent('мобильной','мобильный','ru'),true);
+});
+
+test('Farsi forms handle half-spaces, attached plurals and possessives without collapsing short words',()=>{
+ const {logic}=pairHarness(async()=> '');
+ for(const [a,b] of [['کتاب‌هایم','کتاب'],['خانه‌هایشان','خانه'],['پولم','پول'],['ماشینم','ماشین'],['برنامه‌ها','برنامه'],['مقدّمۀ','مقدمه']])assert.equal(logic.equivalent(a,b,'fa'),true,`${a} / ${b}`);
+ assert.equal(logic.equivalent('مردم','مرد','fa'),false);
+ assert.equal(logic.equivalent('کار','بار','fa'),false);
+ assert.deepEqual(Array.from(logic.findPhrase(['کتاب','کتاب‌هایم'],'کتاب‌هایم','fa',0)),[1]);
+});
+test('contextual translation resolves a different word sense in the displayed sentence',async()=>{
+ const calls=[];const h=pairHarness(async value=>{calls.push(value);return value==='شیر'?'milk':value.includes('⟦شیر⟧')?'⟦lion⟧ sleeps':'';},{source:['شیر','می‌خوابد'],target:'lion sleeps',from:'fa',to:'en'});
+ await h.pairing.toggle(h.source[0]);assert.ok(h.target.children[0].classes.has('paired-word'));assert.ok(calls.includes('⟦شیر⟧ می‌خوابد'));
+});
+test('Persian compound matches highlight both source words and corresponding target phrase',async()=>{
+ const h=pairHarness(async value=>value==='کیف پولم'?'my wallet':value==='کیف'?'bag':'',{source:['کیف','پولم'],target:'my wallet',from:'fa',to:'en'});
+ await h.pairing.toggle(h.source[0]);assert.ok(h.source.every(n=>n.classes.has('paired-word')));assert.ok(h.target.children.every(n=>n.classes.has('paired-word')));
+ await h.pairing.toggle(h.target.children[1]);assert.ok(h.source.every(n=>!n.classes.has('paired-word')));
+});
+test('reverse matching reaches a Persian counterpart beyond the old eight-word window',async()=>{
+ const far=['یک','دو','سه','چهار','پنج','شش','هفت','هشت','نه','ده','یازده','رسید'];
+ const h=pairHarness(async value=>value==='arrived'?'وارد شد':value==='رسید'?'arrived':'',{source:['arrived','yesterday'],target:far.join(' '),from:'en',to:'fa'});
+ await h.pairing.toggle(h.source[0]);assert.ok(h.target.children[11].classes.has('paired-word'));
+});
+test('context markers preserve repeated occurrences and reject missing or ambiguous markers',()=>{
+ const {logic}=pairHarness(async()=> '');assert.equal(logic.markedContext('کتاب و کتاب',['کتاب','و','کتاب'],2),'کتاب و ⟦کتاب⟧');
+ assert.equal(logic.contextualPhrase('the ⟦book⟧'),'book');assert.equal(logic.contextualPhrase('book'),'');assert.equal(logic.contextualPhrase('⟦a⟧ ⟦b⟧'),'');
 });
