@@ -56,7 +56,7 @@ test('tokenization keeps Farsi half-spaces and merges sentence endings for hold 
 test('page IDs used by the new controller exist and offline assets are versioned together',()=>{
  const html=fs.readFileSync('improved.html','utf8');const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length);
  for(const match of improved.matchAll(/\$\('([^']+)'\)/g))assert.ok(ids.includes(match[1]),`Missing ${match[1]}`);
- const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=4','improved.js?v=5','app.js?v=57','styles.css?v=33'])assert.ok(sw.includes(asset));
+ const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=5','improved.js?v=6','app.js?v=58','styles.css?v=33'])assert.ok(sw.includes(asset));
  assert.ok(fs.readFileSync('index.html','utf8').includes('href="improved.html"'));
 });
 
@@ -132,3 +132,19 @@ test('pace slider and runtime allow 300 steps per minute',()=>{
  assert.match(fs.readFileSync('improved.html','utf8'),/id="stepSpeed"[^>]*max="300"/);
  assert.match(improved,/Math\.min\(300,Number\(prefs\.stepRate\)/);
 });
+
+ test('library combines genre, topic and access filters without treating borrowing links as reader books',()=>{
+ const start=improved.indexOf('  function matchesLibrary(');
+ const end=improved.indexOf('  function renderLibrary(', start);
+ const context={};vm.runInNewContext(improved.slice(start,end)+';this.matches=matchesLibrary;',context);
+ const book={title:'Books of Blood',author:'Clive Barker',genres:['horror','shorts'],external:true};
+ assert.equal(context.matches(book,'clive blood','horror','external'),true);
+ assert.equal(context.matches(book,'clive','horror','reader'),false);
+ assert.equal(context.matches(book,'','science',''),false);
+ const technical={title:'GSM, LTE and 5G specifications',author:'3GPP',genres:['telecommunications','gsm','5g','science'],external:true};
+ assert.equal(context.matches(technical,'5g','telecommunications','external'),true);
+ const data=JSON.parse(improved.slice(improved.indexOf('  const extraBooks = ')+21,improved.indexOf(';\n  const externalFavorites')));
+ assert.equal(new Set(data.map(b=>b.id)).size,data.length);
+ assert.ok(data.filter(b=>!b.external).length>=8);
+ for(const b of data)assert.equal(new URL(b.link).protocol,'https:');
+ });

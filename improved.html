@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-title" content="Word Freak Improved">
   <title>Word Freak Improved · Reader</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="improved.css?v=4">
-  <script src="improved.js?v=5" defer></script>
+  <link rel="stylesheet" href="improved.css?v=5">
+  <script src="improved.js?v=6" defer></script>
 </head>
 <body data-theme="black">
   <header class="reader-bar" id="readerBar">
@@ -60,8 +60,9 @@
 
   <dialog id="libraryDialog" class="sheet library-sheet" aria-labelledby="libraryTitle">
     <div class="sheet-heading"><div><p class="eyebrow">WORD FREAK IMPROVED</p><h2 id="libraryTitle">Your next chapter.</h2></div><button class="close-button" data-close aria-label="Close library">×</button></div>
-    <form id="librarySearch" class="search-form"><input id="bookSearch" type="search" placeholder="Search title or author" aria-label="Search title or author"><button type="submit">Search</button></form>
+    <form id="librarySearch" class="search-form"><input id="bookSearch" type="search" placeholder="Search title, author or topic" aria-label="Search title, author or topic"><button type="submit">Search</button></form>
     <div class="shelf-tabs" role="group" aria-label="Book shelves"><button data-shelf="all" aria-pressed="true">All books</button><button data-shelf="favorites" aria-pressed="false">Favorites</button><button data-shelf="official" aria-pressed="false">Handbooks</button></div>
+    <div class="library-filters"><label>Genre<select id="bookGenre"><option value="">All genres</option><option value="horror">Horror & supernatural</option><option value="telecommunications">Telecommunications</option><option value="5g">5G & wireless</option><option value="gsm">GSM & cellular</option><option value="science">Science & research</option><option value="science-fiction">Science fiction</option><option value="fantasy">Fantasy</option><option value="mystery">Mystery</option><option value="adventure">Adventure</option><option value="fiction">Fiction</option><option value="nonfiction">Nonfiction</option><option value="childrens">Children’s</option><option value="shorts">Short stories</option><option value="poetry">Poetry</option><option value="philosophy">Philosophy</option><option value="biography">Biography</option><option value="autobiography">Autobiography</option><option value="comedy">Comedy</option><option value="drama">Drama</option><option value="memoir">Memoir</option><option value="satire">Satire</option><option value="spirituality">Spirituality</option><option value="travel">Travel</option></select></label><label>Read where<select id="bookAccess"><option value="">All sources</option><option value="reader">In Word Freak</option><option value="external">External libraries</option></select></label></div><p class="setting-note">Read-in-app books support the glass lens. Borrowing links and publisher publications open separately; library availability varies.</p><p id="libraryCount" class="setting-note" role="status"></p>
     <div id="bookGrid" class="book-grid"></div><button id="searchMore" class="quiet-button" hidden>Search the wider library ↗</button>
     <p class="sheet-footnote"><a href="index.html">Open Word Freak Classic ↗</a><span>The original experience, always here.</span></p>
   </dialog>

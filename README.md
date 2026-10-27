@@ -117,3 +117,9 @@ Sources:
 - Machine translation cache files for remaining English glosses
 
 See `NOTICE.md` for attribution and licensing details.
+
+### Expanded Improved library
+
+The Improved library supports combined genre/topic search and an In Word Freak / External libraries filter. Eight additional Gutenberg horror records include Machen, Blackwood, Hodgson, Chambers, Le Fanu, M. R. James and Lovecraft (existing titles are deduplicated). Clive Barker and Shirley Jackson entries open verified OverDrive borrowing pages; availability depends on the reader’s library. External entries have their own saved favorites.
+
+Science and telecommunications resources include the IntechOpen 5G book and subject collections, 3GPP’s GSM/LTE/5G specifications index, the ETSI Release 18 TS 21.205 PDF, arXiv’s engineering archive and OpenStax science textbooks. These are explicitly external publisher/standards readers, not full texts imported into Word Freak. Sources were checked October 27, 2026. The glass lens only operates on books opened inside Word Freak.

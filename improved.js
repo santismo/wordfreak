@@ -55,33 +55,299 @@
   document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { document.body.classList.remove('focus-mode'); $('exitFocus').hidden = true; $('focusButton').setAttribute('aria-pressed','false'); syncFooterSpace(); } });
   $('lensToggle').onclick = () => { prefs.lens = !prefs.lens; if (!prefs.lens) clearLens(); applyAppearance(); savePrefs(); };
 
-  function renderLibrary(books) {
+  const extraBooks = [
+  {
+    "id": "gutenberg:389",
+    "gutenbergId": 389,
+    "source": "gutenberg",
+    "title": "The Great God Pan",
+    "author": "Arthur Machen",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "link": "https://www.gutenberg.org/ebooks/389"
+  },
+  {
+    "id": "gutenberg:11438",
+    "gutenbergId": 11438,
+    "source": "gutenberg",
+    "title": "The Willows",
+    "author": "Algernon Blackwood",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "link": "https://www.gutenberg.org/ebooks/11438"
+  },
+  {
+    "id": "gutenberg:10002",
+    "gutenbergId": 10002,
+    "source": "gutenberg",
+    "title": "The House on the Borderland",
+    "author": "William Hope Hodgson",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "link": "https://www.gutenberg.org/ebooks/10002"
+  },
+  {
+    "id": "gutenberg:8492",
+    "gutenbergId": 8492,
+    "source": "gutenberg",
+    "title": "The King in Yellow",
+    "author": "Robert W. Chambers",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "link": "https://www.gutenberg.org/ebooks/8492"
+  },
+  {
+    "id": "gutenberg:10007",
+    "gutenbergId": 10007,
+    "source": "gutenberg",
+    "title": "Carmilla",
+    "author": "Joseph Sheridan Le Fanu",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "link": "https://www.gutenberg.org/ebooks/10007"
+  },
+  {
+    "id": "gutenberg:8486",
+    "gutenbergId": 8486,
+    "source": "gutenberg",
+    "title": "Ghost Stories of an Antiquary",
+    "author": "M. R. James",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "link": "https://www.gutenberg.org/ebooks/8486"
+  },
+  {
+    "id": "gutenberg:10897",
+    "gutenbergId": 10897,
+    "source": "gutenberg",
+    "title": "The Wendigo",
+    "author": "Algernon Blackwood",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "link": "https://www.gutenberg.org/ebooks/10897"
+  },
+  {
+    "id": "gutenberg:31469",
+    "gutenbergId": 31469,
+    "source": "gutenberg",
+    "title": "The Shunned House",
+    "author": "H. P. Lovecraft",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "link": "https://www.gutenberg.org/ebooks/31469"
+  },
+  {
+    "id": "external:0",
+    "source": "external",
+    "external": true,
+    "title": "The Hellbound Heart",
+    "author": "Clive Barker",
+    "link": "https://www.overdrive.com/media/6765/the-hellbound-heart",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "access": "Borrow through your library"
+  },
+  {
+    "id": "external:1",
+    "source": "external",
+    "external": true,
+    "title": "Books of Blood, Volume 1",
+    "author": "Clive Barker",
+    "link": "https://www.overdrive.com/media/3985730/books-of-blood-volume-1",
+    "genres": [
+      "horror",
+      "shorts"
+    ],
+    "access": "Borrow through your library"
+  },
+  {
+    "id": "external:2",
+    "source": "external",
+    "external": true,
+    "title": "The Haunting of Hill House",
+    "author": "Shirley Jackson",
+    "link": "https://www.overdrive.com/media/273966/the-haunting-of-hill-house",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "access": "Borrow through your library"
+  },
+  {
+    "id": "external:3",
+    "source": "external",
+    "external": true,
+    "title": "The Fifth Generation (5G) of Wireless Communication",
+    "author": "IntechOpen",
+    "link": "https://www.intechopen.com/books/6576",
+    "genres": [
+      "telecommunications",
+      "5g",
+      "science",
+      "nonfiction"
+    ],
+    "access": "Open-access book · publisher reader"
+  },
+  {
+    "id": "external:4",
+    "source": "external",
+    "external": true,
+    "title": "5G system specifications — Release 18 (TS 21.205)",
+    "author": "3GPP / ETSI",
+    "link": "https://www.etsi.org/deliver/etsi_ts/121200_121299/121205/18.00.00_60/ts_121205v180000p.pdf",
+    "genres": [
+      "telecommunications",
+      "5g",
+      "science",
+      "nonfiction"
+    ],
+    "access": "Official technical publication · PDF"
+  },
+  {
+    "id": "external:5",
+    "source": "external",
+    "external": true,
+    "title": "GSM, LTE and 5G specifications by series",
+    "author": "3GPP",
+    "link": "https://www.3gpp.org/specifications-technologies/specifications-by-series",
+    "genres": [
+      "telecommunications",
+      "gsm",
+      "5g",
+      "science",
+      "nonfiction"
+    ],
+    "access": "Official standards library"
+  },
+  {
+    "id": "external:6",
+    "source": "external",
+    "external": true,
+    "title": "Telecommunication — open-access books",
+    "author": "IntechOpen",
+    "link": "https://www.intechopen.com/subjects/1368",
+    "genres": [
+      "telecommunications",
+      "gsm",
+      "5g",
+      "science",
+      "nonfiction"
+    ],
+    "access": "Browse publisher library"
+  },
+  {
+    "id": "external:7",
+    "source": "external",
+    "external": true,
+    "title": "Wireless communication networks",
+    "author": "IntechOpen",
+    "link": "https://www.intechopen.com/subjects/540",
+    "genres": [
+      "telecommunications",
+      "5g",
+      "science",
+      "nonfiction"
+    ],
+    "access": "Browse open-access books"
+  },
+  {
+    "id": "external:8",
+    "source": "external",
+    "external": true,
+    "title": "Electrical Engineering and Systems Science",
+    "author": "arXiv",
+    "link": "https://arxiv.org/archive/eess",
+    "genres": [
+      "science",
+      "telecommunications",
+      "nonfiction"
+    ],
+    "access": "Research papers · preprints"
+  },
+  {
+    "id": "external:9",
+    "source": "external",
+    "external": true,
+    "title": "Science textbooks",
+    "author": "OpenStax",
+    "link": "https://openstax.org/subjects/science",
+    "genres": [
+      "science",
+      "nonfiction"
+    ],
+    "access": "Free textbooks · publisher reader"
+  },
+  {
+    "id": "external:10",
+    "source": "external",
+    "external": true,
+    "title": "Horror collection",
+    "author": "Project Gutenberg",
+    "link": "https://www.gutenberg.org/ebooks/bookshelf/42",
+    "genres": [
+      "horror",
+      "fiction"
+    ],
+    "access": "Browse more free horror books"
+  }
+];
+  const externalFavorites = new Set(readStorage('wordfreak:improved:external-favorites:v1', []));
+  let remoteBooks = [];
+  function libraryBooks() { return [...new Map([...catalog, ...extraBooks, ...remoteBooks].map(book => [book.id || book.link, book])).values()]; }
+  function matchesLibrary(book, query, genre, access) {
+    const tags = [...(book.genres || []), ...(book.subjects || [])].join(' ').toLowerCase();
+    const haystack = `${book.title} ${book.author} ${tags} ${book.access || ''}`.toLocaleLowerCase();
+    return (!genre || (book.genres || []).includes(genre) || tags.includes(genre)) && (!query || query.split(/\s+/).every(term => haystack.includes(term))) && (!access || (access === 'reader' ? !book.external : book.external));
+  }
+  function renderLibrary() {
     if (!api) return;
-    favorites = new Set(api.favorites());
+    favorites = new Set([...api.favorites(), ...externalFavorites]);
     const query = $('bookSearch').value.trim().toLocaleLowerCase();
-    const results = (books || catalog).filter((book) => (shelf !== 'favorites' || favorites.has(book.id)) && (shelf !== 'official' || book.source === 'usaf') && (!query || `${book.title} ${book.author}`.toLocaleLowerCase().includes(query)));
+    const results = libraryBooks().filter(book => (shelf !== 'favorites' || favorites.has(book.id)) && (shelf !== 'official' || book.source === 'usaf') && matchesLibrary(book, query, $('bookGenre').value, $('bookAccess').value));
+    $('libraryCount').textContent = `${results.length} titles and collections`;
     $('bookGrid').replaceChildren();
     for (const [index, book] of results.entries()) {
       const card = document.createElement('article'); card.className = 'library-book';
-      const open = document.createElement('button'); open.className = 'open-book';
-      const number = document.createElement('span'); number.className = 'book-spine'; number.textContent = `${String(index + 1).padStart(2,'0')} / ${book.source === 'usaf' ? 'OFFICIAL EDITION' : 'THE READING LIBRARY'}`;
+      const open = document.createElement(book.external ? 'a' : 'button'); open.className = 'open-book';
+      const number = document.createElement('span'); number.className = 'book-spine'; number.textContent = book.external ? 'EXTERNAL LIBRARY ↗' : 'READ IN WORD FREAK';
       const title = document.createElement('strong'); title.textContent = book.title;
       const author = document.createElement('small'); author.textContent = book.author || 'Unknown author';
-      open.append(number, title, author); open.onclick = () => openBook(book);
+      const access = document.createElement('small'); access.textContent = book.access || 'Full text · glass lens and translations';
+      open.append(number, title, author, access);
+      if (book.external) { open.href = book.link; open.target = '_blank'; open.rel = 'noopener noreferrer'; } else open.onclick = () => openBook(book);
       const favorite = document.createElement('button'); favorite.className = 'favorite-book'; favorite.textContent = favorites.has(book.id) ? '★' : '☆'; favorite.setAttribute('aria-pressed', String(favorites.has(book.id))); favorite.setAttribute('aria-label', `Favorite ${book.title}`);
-      favorite.onclick = () => { api.favorite(book); catalog = api.catalog(); renderLibrary(books); };
+      favorite.onclick = () => { if (book.external) { externalFavorites.has(book.id) ? externalFavorites.delete(book.id) : externalFavorites.add(book.id); writeStorage('wordfreak:improved:external-favorites:v1', [...externalFavorites]); } else api.favorite(book); catalog = api.catalog(); renderLibrary(); };
       card.append(open, favorite); $('bookGrid').append(card);
     }
     if (!results.length) { const empty = document.createElement('p'); empty.textContent = shelf === 'favorites' ? 'Star a book to keep it here.' : 'No books match. Try another title or search the wider library.'; $('bookGrid').append(empty); }
-    $('searchMore').hidden = !query || shelf !== 'all';
+    $('searchMore').hidden = (!query && !$('bookGenre').value) || shelf !== 'all' || $('bookAccess').value === 'external' || ['science','telecommunications','5g','gsm'].includes($('bookGenre').value);
   }
   document.querySelectorAll('[data-shelf]').forEach((button) => button.onclick = () => { shelf = button.dataset.shelf; document.querySelectorAll('[data-shelf]').forEach((tab) => tab.setAttribute('aria-pressed', String(tab === button))); renderLibrary(); });
-  $('bookSearch').oninput = () => { searchVersion++; renderLibrary(); };
+  $('bookGenre').onchange = $('bookAccess').onchange = () => { searchVersion++; remoteBooks = []; renderLibrary(); };
+  $('bookSearch').oninput = () => { searchVersion++; remoteBooks = []; renderLibrary(); };
   $('librarySearch').onsubmit = (event) => { event.preventDefault(); renderLibrary(); };
   $('searchMore').onclick = async () => {
-    const request = ++searchVersion; const query = $('bookSearch').value.trim();
+    const request = ++searchVersion; const query = $('bookSearch').value.trim(); const genre = $('bookGenre').value;
     $('searchMore').disabled = true; $('searchMore').textContent = 'Searching…';
-    try { const result = await api.search(query); if (request === searchVersion) { renderLibrary(result.books); status(`${result.books.length} library results`, 3000); } }
+    try { const result = await api.search(query, 1, genre); if (request === searchVersion) { remoteBooks = result.books.map(book => ({...book, genres: [...new Set([...(book.genres || []), ...(genre ? [genre] : [])])]})); renderLibrary(); status(`${result.books.length} library results`, 3000); } }
     catch { status('The wider library is unavailable. Your curated shelf is still available.', 6000); }
     finally { $('searchMore').disabled = false; $('searchMore').textContent = 'Search the wider library ↗'; }
   };

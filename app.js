@@ -7665,7 +7665,7 @@
       catalog: () => dedupeBooks([...GUIDED_BOOKS, ...OFFICIAL_BOOKS, ...favoriteBooks()]),
       favorites: () => favoriteBooks().map((book) => book.id),
       favorite: (book) => { toggleBookFavorite(book); return isBookFavorite(book); },
-      search: async (query, page = 1) => fetchBookCatalogPage(page, query, ""),
+      search: async (query, page = 1, genre = "") => fetchBookCatalogPage(page, query, BOOK_GENRES[genre] ? genre : ""),
       open: async (book) => {
         const valid = normalizeBookRecord(book);
         if (!valid) throw new Error("This book source is not supported.");
