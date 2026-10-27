@@ -359,6 +359,7 @@
   };
   async function openBook(book, prepared = null, remotePdf = false) {
     const token = ++generation;
+    $('libraryError').hidden=true;
     persistProgress(); clearLens(); readingObserver?.disconnect(); jobs = [];
     $('libraryDialog').close(); status(`Opening ${book.title}…`);
     try {
@@ -373,7 +374,7 @@
       $('welcome').hidden = true; $('chaptersButton').disabled = false; $('previousWord').disabled = $('nextWord').disabled = $('translateButton').disabled = false;
       renderWindow(savedIndex); renderChapters();
       status(prefs.reading === (current.book.language || 'en') ? 'Tap a word. Drag the handle. Hold to translate.' : `Preparing your ${api.languages[prefs.reading].label} reading view…`, 6000);
-    } catch (error) { if (token === generation) { status(`Could not open this book: ${error.message}`, 10000); renderLibrary(); showDialog('libraryDialog'); } }
+    } catch (error) { if (token === generation) { if(current)renderWindow(savedIndex); renderLibrary(); $('libraryError').textContent=`Could not open this book: ${error.message}`; $('libraryError').hidden=false; showDialog('libraryDialog'); } }
   }
   $('importPublication').onclick = () => $('publicationFile').click();
   $('publicationFile').onchange = async event => {

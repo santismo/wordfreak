@@ -102,7 +102,7 @@
       // Persist source attribution with the extracted document.
       const record=await storage('get',result.book.id);record.book=result.book;await storage('put',record);
       return result;
-    } catch {throw Error('This publisher cannot send the PDF directly to this reader. Download it from “Source”, then use “Import a publication”.');}
+    } catch {throw Error('This publisher cannot send the PDF directly to this reader. Download it using its publisher link, then use “Import a publication”.');}
     finally {clearTimeout(timer);}
   }
   window.WordfreakPublications={buildDocument,htmlSections,importFile,open,openPdf,list:async()=> (await storage('getAll')).map(r=>r.book)};
