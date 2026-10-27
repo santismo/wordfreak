@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-title" content="Word Freak Improved">
   <title>Word Freak Improved · Reader</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="improved.css?v=2">
-  <script src="improved.js?v=4" defer></script>
+  <link rel="stylesheet" href="improved.css?v=3">
+  <script src="improved.js?v=5" defer></script>
 </head>
 <body data-theme="black">
   <header class="reader-bar" id="readerBar">
@@ -35,7 +35,7 @@
         <button id="translateButton" class="translate-button" aria-label="Translate word. Hold to lock translations. Double-tap for sentence mode." aria-pressed="false" disabled><span id="translateButtonLabel">Translate</span><small id="translationModeLabel">Hold to lock · double-tap for sentences</small></button>
         <button id="nextWord" class="step-button" aria-label="Next word. Hold to keep moving forward." disabled>›</button>
       </div>
-      <label class="reading-speed"><span>Speed</span><input id="stepSpeed" aria-label="Reading navigation speed" type="range" min="10" max="180" step="5" value="60"><output id="stepSpeedOutput" for="stepSpeed">60 words/min</output></label>
+      <label class="reading-speed"><span>Speed</span><input id="stepSpeed" aria-label="Reading navigation speed" type="range" min="10" max="300" step="5" value="60"><output id="stepSpeedOutput" for="stepSpeed">60 words/min</output></label>
     </div>
   </footer>
   <button id="exitFocus" class="focus-return" hidden aria-label="Show reading controls">Aa · Menu</button>
@@ -53,7 +53,7 @@
 
   <aside id="translationDock" class="translation-dock" aria-labelledby="dockKind" hidden>
     <div class="translation-card">
-      <div class="translation-heading"><span id="dockKind" class="lens-kind">SENTENCE</span><button id="dockClose" aria-label="Dismiss translation">×</button></div>
+      <div class="translation-heading"><span id="dockKind" class="visually-hidden">SENTENCE</span><button id="dockClose" aria-label="Dismiss translation">×</button></div>
       <div class="translation-copy"><p id="dockSource" dir="auto"></p><p id="dockTranslation" dir="auto" role="status" aria-live="polite"></p></div>
     </div>
   </aside>

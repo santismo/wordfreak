@@ -238,10 +238,10 @@
   $('translationLanguage').onchange = (event) => { prefs.translation = event.target.value; clearLens(); savePrefs(); };
 
   let lensMeasure = null, lensBox = null, dockMode = '', surfacePress = null, skipSurfaceClick = false;
-  let lensFitKey = '', lensFitOverflow = false;
+  let lensFitKey = '', lensFitOverflow = false, lensFitHeight = 0;
 
   // Keep the visual footprint tied to the selected glyphs, never to the
-  // translation's length. Very narrow words use the dock instead of tiny type.
+  // translation's length. Long translations wrap inside the glass, never in a dock.
   function fitLensFont(measuredWidth, availableWidth, availableHeight, preferredSize) {
     const maximum = Math.min(preferredSize, availableHeight / 1.12);
     const wanted = Math.min(maximum, preferredSize * availableWidth / Math.max(1, measuredWidth));
@@ -252,12 +252,21 @@
     if (!lensBox) return false;
     const preferred = prefs.size * 1.08;
     const key = `${node.id}|${value}|${prefs.font}|${preferred}|${lensBox.width}|${lensBox.height}`;
-    if (key === lensFitKey) return lensFitOverflow;
+    if (key === lensFitKey) { if(lensFitHeight)lens.style.setProperty('--lens-height',`${lensFitHeight}px`); return lensFitOverflow; }
     lensMeasure ||= document.createElement('canvas').getContext('2d');
     if (!lensMeasure) return false;
     lensMeasure.font = `${preferred}px ${getComputedStyle(text).fontFamily}`;
     const fit = fitLensFont(lensMeasure.measureText(value).width, Math.max(1,lensBox.width-8), Math.max(1,lensBox.height-4), preferred);
-    node.style.fontSize = `${fit.size}px`;
+    lensFitHeight = 0;
+    if(node.id === 'lensTranslation') {
+      node.style.width = `${Math.max(12,lensBox.width-8)}px`;
+      let size=Math.min(preferred,Math.max(8,fit.size));
+      node.style.fontSize=`${size}px`;
+      while(size>8 && node.scrollHeight>lensBox.height-4) {size=Math.max(8,size-.5);node.style.fontSize=`${size}px`;}
+      // Even unusually long word translations remain wholly inside the lens.
+      lensFitHeight=Math.max(lensBox.height,node.scrollHeight+6);
+      lens.style.setProperty('--lens-height',`${lensFitHeight}px`);
+    } else node.style.fontSize = `${fit.size}px`;
     lensFitKey = key; lensFitOverflow = fit.overflow;
     return fit.overflow;
   }
@@ -280,7 +289,7 @@
     syncDockSpace();
     // The panel reserves space, rather than covering the bottom lines of text.
     // Keep the selected word in the now-smaller reading viewport.
-    if (word) { const r=word.getBoundingClientRect(), view=scroll.getBoundingClientRect(); if(r.bottom>view.bottom-10)scroll.scrollTop+=r.bottom-view.bottom+10; }
+    keepSelectionVisible(true);
     positionLens();
   }
   if (typeof ResizeObserver === 'function') new ResizeObserver(syncDockSpace).observe($('translationDock'));
@@ -297,7 +306,7 @@
       word?.classList.remove('active-word'); word = next; word.classList.add('active-word');
       requestVersion++; clearTimeout(holdTimer); closeDock(); lensFitKey = '';
       clearTimeout(moveTimer); lens.classList.add('moving'); moveTimer=setTimeout(()=>lens.classList.remove('moving'),200);
-      lens.classList.remove('translating','loading');
+      lens.classList.remove('translating','loading'); $('lensSurface').title='';
       $('lensOriginal').textContent = word.textContent; $('lensOriginal').lang = prefs.reading;
       $('lensSurface').setAttribute('aria-label', `Translate the full sentence containing ${word.textContent}`);
     }
@@ -306,7 +315,17 @@
     positionLens();
     if (prefs.sentenceMode || prefs.translateLocked) translateSelection(prefs.sentenceMode);
     else if (hold) armTranslation();
+    keepSelectionVisible(prefs.sentenceMode);positionLens();
     scheduleNearbyTranslations();
+  }
+  function keepSelectionVisible(sentence = false) {
+    if(!word?.isConnected || dragging)return;
+    const view=scroll.getBoundingClientRect();
+    const sentenceRect=word.closest('.reader-sentence')?.getBoundingClientRect();
+    const r=sentence && sentenceRect && sentenceRect.height<view.height-120 ? sentenceRect : word.getBoundingClientRect();
+    const top=view.top+24, bottom=view.bottom-90;
+    const delta=r.bottom>bottom ? r.bottom-bottom : r.top<top ? r.top-top : 0;
+    if(delta)scroll.scrollTop+=delta;
   }
   function positionLens() {
     if (!word?.isConnected || !prefs.lens) { lens.hidden = true; return; }
@@ -314,7 +333,7 @@
     const viewport = scroll.getBoundingClientRect();
     if (r.top < viewport.top || r.bottom > viewport.bottom) { lens.hidden = true; word.classList.remove('active-word'); return; }
     lens.hidden = false; word.classList.add('active-word');
-    const width = Math.min(innerWidth-16, r.width+6);
+    const width = Math.min(innerWidth-16, Math.max(lens.classList.contains('translating')?20:0,r.width+6));
     const height = Math.min(r.height+4, prefs.size*1.6);
     const x = Math.max(width/2+4,Math.min(innerWidth-width/2-4,r.left+r.width/2));
     const y = r.top+r.height/2;
@@ -322,8 +341,8 @@
     lens.style.setProperty('--lens-x',`${x}px`); lens.style.setProperty('--lens-y',`${y}px`);
     lens.style.setProperty('--lens-width',`${width}px`); lens.style.setProperty('--lens-height',`${height}px`); lens.style.setProperty('--lens-radius',`${Math.min(height/2,Math.max(7,width*.22))}px`);
     const label = lens.classList.contains('translating') ? $('lensTranslation') : $('lensOriginal');
-    const overflow = fitLensLabel(label,label.textContent);
-    if (overflow && lens.classList.contains('translating') && !dockMode && !lens.classList.contains('loading')) openDock('word',word.textContent,label.textContent);
+    fitLensLabel(label,label.textContent);
+
   }
   function armTranslation() { clearTimeout(holdTimer); holdTimer = setTimeout(() => translateSelection(), 480); }
   async function translateSelection(fullSentence = false) {
@@ -350,7 +369,7 @@
     lens.classList.remove('loading'); lensFitKey = '';
     if (full) openDock('sentence',value,translated || 'Translation unavailable. Tap the glass to retry.');
     else if (translated) { $('lensTranslation').textContent = translated; positionLens(); }
-    else { $('lensTranslation').textContent = '…'; openDock('word',value,'Translation unavailable. Hold the glass or its handle to retry.'); }
+    else { $('lensTranslation').textContent = '↻'; $('lensSurface').title = 'Translation unavailable. Hold to retry.'; positionLens(); }
     scheduleNearbyTranslations();
   }
   function releaseLens() {
@@ -457,11 +476,12 @@
     positionLens();
   }
   function updateReadingControls() {
-    prefs.stepRate=Math.max(10,Math.min(180,Number(prefs.stepRate)||60));
+    prefs.stepRate=Math.max(10,Math.min(300,Number(prefs.stepRate)||60));
     $('readingControls').hidden=prefs.controls===false;
     document.body.classList.toggle('controls-hidden',prefs.controls===false);
     $('navigationToggle').checked=prefs.controls!==false;
     $('stepSpeed').value=prefs.stepRate;
+    lens.style.setProperty('--lens-duration',`${Math.min(240,60000/prefs.stepRate*.68)}ms`);
     $('stepSpeedOutput').textContent=`${prefs.stepRate} ${prefs.sentenceMode?'sentences':'words'}/min`;
     $('translateButtonLabel').textContent=prefs.sentenceMode?'Sentence':prefs.translateLocked?'Translation locked':'Translate';
     $('translationModeLabel').textContent=prefs.sentenceMode?'Double-tap for words':prefs.translateLocked?'Hold to unlock · double-tap for sentences':'Hold to lock · double-tap for sentences';

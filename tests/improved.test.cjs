@@ -56,7 +56,7 @@ test('tokenization keeps Farsi half-spaces and merges sentence endings for hold 
 test('page IDs used by the new controller exist and offline assets are versioned together',()=>{
  const html=fs.readFileSync('improved.html','utf8');const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length);
  for(const match of improved.matchAll(/\$\('([^']+)'\)/g))assert.ok(ids.includes(match[1]),`Missing ${match[1]}`);
- const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=2','improved.js?v=4','app.js?v=57','styles.css?v=33'])assert.ok(sw.includes(asset));
+ const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=3','improved.js?v=5','app.js?v=57','styles.css?v=33'])assert.ok(sw.includes(asset));
  assert.ok(fs.readFileSync('index.html','utf8').includes('href="improved.html"'));
 });
 
@@ -121,4 +121,14 @@ test('preloading is bounded to one worker and skips obsolete language or book jo
  const c={preloadRunning:false,preloadQueue:[{value:'old',from:'en',to:'ru',generation:1},{value:'سلام',from:'fa',to:'en',generation:2},{value:'دنیا',from:'fa',to:'en',generation:2}],generation:2,prefs:{reading:'fa',translation:'en'},nearbyTranslations:cache,rememberNearby:(key,value)=>cache.set(key,value),api:{translate:async(value)=>{active++;peak=Math.max(peak,active);calls.push(value);await Promise.resolve();active--;return value==='سلام'?'Hello':'World';}}};
  vm.createContext(c);const start=improved.indexOf('  async function runNearbyTranslations('),end=improved.indexOf("  $('lensHandle').addEventListener('keydown'",start);vm.runInContext(improved.slice(start,end),c);
  await Promise.all([c.runNearbyTranslations(),c.runNearbyTranslations()]);assert.deepEqual(calls,['سلام','دنیا']);assert.equal(peak,1);assert.equal(cache.size,2);
+});
+
+test('individual translation failures stay in the glass without opening a bottom popup',async()=>{
+ const h=lensHarness();h.nodes.set('lensSurface',{title:''});const work=h.context.translateSelection();h.resolve('');await work;
+ assert.deepEqual(h.result,{});assert.equal(h.nodes.get('lensTranslation').textContent,'↻');
+ assert.ok(!improved.includes("openDock('word'"));
+});
+test('pace slider and runtime allow 300 steps per minute',()=>{
+ assert.match(fs.readFileSync('improved.html','utf8'),/id="stepSpeed"[^>]*max="300"/);
+ assert.match(improved,/Math\.min\(300,Number\(prefs\.stepRate\)/);
 });
