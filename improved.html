@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-title" content="Word Freak Improved">
   <title>Word Freak Improved · Reader</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="improved.css?v=1">
-  <script src="improved.js?v=2" defer></script>
+  <link rel="stylesheet" href="improved.css?v=2">
+  <script src="improved.js?v=3" defer></script>
 </head>
 <body data-theme="black">
   <header class="reader-bar" id="readerBar">
@@ -28,17 +28,35 @@
   </main>
 
   <footer class="reader-footer" id="readerFooter">
-    <button id="chaptersButton" aria-label="Chapters and reading position" disabled>Contents</button>
-    <span id="readingProgress">WORD FREAK · A NEW CHAPTER</span>
-    <div class="word-navigation"><button id="previousWord" aria-label="Previous word" disabled>‹</button><button id="lensToggle" aria-label="Toggle glass lens" aria-pressed="true">◉</button><button id="nextWord" aria-label="Next word" disabled>›</button></div>
+    <div class="reader-meta"><button id="chaptersButton" aria-label="Chapters and reading position" disabled>Contents</button><span id="readingProgress">WORD FREAK · A NEW CHAPTER</span><button id="lensToggle" aria-label="Toggle glass lens" aria-pressed="true">◉</button></div>
+    <div id="readingControls" class="reading-controls">
+      <div class="reading-transport">
+        <button id="previousWord" class="step-button" aria-label="Previous word. Hold to keep moving backward." disabled>‹</button>
+        <button id="translateButton" class="translate-button" aria-label="Translate word. Hold to lock translations. Double-tap for sentence mode." aria-pressed="false" disabled><span id="translateButtonLabel">Translate</span><small id="translationModeLabel">Hold to lock · double-tap for sentences</small></button>
+        <button id="nextWord" class="step-button" aria-label="Next word. Hold to keep moving forward." disabled>›</button>
+      </div>
+      <label class="reading-speed"><span>Speed</span><input id="stepSpeed" aria-label="Reading navigation speed" type="range" min="10" max="180" step="5" value="60"><output id="stepSpeedOutput" for="stepSpeed">60 words/min</output></label>
+    </div>
   </footer>
   <button id="exitFocus" class="focus-return" hidden aria-label="Show reading controls">Aa · Menu</button>
   <div id="readerStatus" class="reader-status" role="status" aria-live="polite">Opening your library…</div>
 
+  <svg class="optical-filters" width="0" height="0" aria-hidden="true" focusable="false"><defs><filter id="wf-glass-refraction" x="-20%" y="-30%" width="140%" height="160%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.012 0.045" numOctaves="1" seed="5" result="glassWaves"/><feGaussianBlur in="glassWaves" stdDeviation="1.5" result="softWaves"/><feDisplacementMap in="SourceGraphic" in2="softWaves" scale="8" xChannelSelector="R" yChannelSelector="G"/></filter></defs></svg>
   <div id="glassLens" class="glass-lens" hidden>
-    <div id="lensSurface" class="lens-surface"><div id="lensOriginal" class="lens-original" dir="auto"></div><div class="lens-result"><span id="lensKind" class="lens-kind">WORD</span><div id="lensTranslation" dir="auto" role="status" aria-live="polite"></div></div></div>
+    <button id="lensSurface" class="lens-surface" type="button" aria-label="Translate this word’s full sentence" aria-controls="translationDock" aria-expanded="false">
+      <span class="lens-refraction" aria-hidden="true"></span>
+      <span id="lensOriginal" class="lens-original" dir="auto"></span>
+      <span class="lens-result"><span id="lensKind" class="visually-hidden">Word translation</span><span id="lensTranslation" dir="auto" role="status" aria-live="polite"></span></span>
+    </button>
     <button id="lensHandle" class="lens-handle" aria-label="Drag the glass lens. Hold to translate. Use arrow keys for the previous or next word, Enter to translate." aria-describedby="lensHint"><span></span></button>
   </div>
+
+  <aside id="translationDock" class="translation-dock" aria-labelledby="dockKind" hidden>
+    <div class="translation-card">
+      <div class="translation-heading"><span id="dockKind" class="lens-kind">SENTENCE</span><button id="dockClose" aria-label="Dismiss translation">×</button></div>
+      <div class="translation-copy"><p id="dockSource" dir="auto"></p><p id="dockTranslation" dir="auto" role="status" aria-live="polite"></p></div>
+    </div>
+  </aside>
 
   <dialog id="libraryDialog" class="sheet library-sheet" aria-labelledby="libraryTitle">
     <div class="sheet-heading"><div><p class="eyebrow">WORD FREAK IMPROVED</p><h2 id="libraryTitle">Your next chapter.</h2></div><button class="close-button" data-close aria-label="Close library">×</button></div>
@@ -54,10 +72,11 @@
     <label class="setting-row">Text size <output id="fontSizeOutput">24 px</output><input id="fontSize" type="range" min="18" max="40" step="1" value="24"></label>
     <label class="setting-row">Line spacing<select id="spacingSelect"><option value="1.55">Compact</option><option value="1.85" selected>Comfortable</option><option value="2.15">Spacious</option></select></label>
     <div class="theme-picker" role="group" aria-label="Page color"><button data-theme="paper" aria-pressed="false"><span>Aa</span>Paper</button><button data-theme="sepia" aria-pressed="false"><span>Aa</span>Sepia</button><button data-theme="night" aria-pressed="false"><span>Aa</span>Night</button><button data-theme="black" aria-pressed="true"><span>Aa</span>Black</button></div>
+    <label class="setting-row controls-setting">Bottom reading controls<input id="navigationToggle" type="checkbox" checked></label>
     <label class="setting-row">Read in<select id="readingLanguage"></select></label>
     <label class="setting-row">Translate into<select id="translationLanguage"></select></label>
     <p class="setting-note">Books begin with their English original. Other reading languages use online machine translation, loaded as you read.</p>
-    <div class="lens-instructions" id="lensHint"><strong>A little glass, a little clarity.</strong><p>Tap a word to place the lens. Drag its small handle to move it. Hold still to fade into a translation. Hold over sentence-ending punctuation to translate the whole sentence.</p><p>Use ‹ and › to move word by word. With the handle focused, use arrow keys and Enter.</p></div>
+    <div class="lens-instructions" id="lensHint"><strong>A little glass, a little clarity.</strong><p>Tap a word to place the lens. Drag its small handle to move it. Hold still to fade into a translation. Tap the word inside the glass, or hold over sentence-ending punctuation, for the full sentence. Tap elsewhere to dismiss.</p><p>Hold ‹ or › to move at the speed set below them. Tap the center to translate, hold it to lock word translations, or double-tap it to switch between word and sentence navigation. With the handle focused, use arrow keys and Enter; Shift+Enter opens the sentence.</p></div>
     <a href="index.html" class="classic-link">Word Freak Classic ↗</a>
   </dialog>
 

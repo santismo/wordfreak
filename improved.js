@@ -6,9 +6,12 @@
   const fonts = { times: '"Times New Roman", Times, serif', georgia: 'Georgia, serif', palatino: 'Palatino, "Palatino Linotype", serif', sans: '-apple-system, BlinkMacSystemFont, sans-serif' };
   const readStorage = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; } };
   const writeStorage = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { status('Browser storage is full. This session still works, but new settings may not be saved.', 6000); } };
-  const prefs = { font: 'times', size: 24, spacing: '1.85', theme: 'black', reading: 'en', translation: 'fa', lens: true, ...readStorage(SETTINGS_KEY, {}) };
+  const prefs = { font: 'times', size: 24, spacing: '1.85', theme: 'black', reading: 'en', translation: 'fa', lens: true, controls: true, stepRate: 60, translateLocked: false, sentenceMode: false, ...readStorage(SETTINGS_KEY, {}) };
   let api, catalog = [], shelf = 'all', current = null, generation = 0, renderedStart = 0, renderedEnd = 0, savedIndex = 0;
-  let word = null, holding = false, pointerId = null, pointerStart = null, dragging = false, holdTimer = 0, requestVersion = 0, hideTimer = 0, saveTimer = 0, statusTimer = 0, scrollFrame = 0, activeJobs = 0, searchVersion = 0;
+  let word = null, holding = false, pointerId = null, pointerStart = null, dragging = false, holdTimer = 0, requestVersion = 0, saveTimer = 0, statusTimer = 0, scrollFrame = 0, activeJobs = 0, searchVersion = 0;
+  let repeatTimer = 0, repeatDirection = 0, centerHoldTimer = 0, centerTapTimer = 0, lastCenterTap = 0, centerHeld = false, centerCancelled = false, moveTimer = 0;
+  let preloadTimer = 0, preloadQueue = [], preloadRunning = false;
+  const nearbyTranslations = new Map();
   let jobs = [], blocks = new Map(), readingObserver, autoScroll = 0, dragPoint = null, favorites = new Set();
   const scroll = $('readingScroll');
   const text = $('readingText');
@@ -28,9 +31,10 @@
     document.querySelectorAll('.theme-picker button').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.theme === prefs.theme)));
     $('lensToggle').setAttribute('aria-pressed', String(prefs.lens));
     document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.body).getPropertyValue('--paper').trim();
+    updateReadingControls();
     if (word) positionLens();
   }
-  function showDialog(id) { releaseLens(); $(id).showModal(); }
+  function showDialog(id) { clearLens(); $(id).showModal(); }
   document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
   document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target !== dialog) return; const r = dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close(); }));
   $('appearanceButton').onclick = () => showDialog('appearanceDialog');
@@ -44,11 +48,11 @@
     // Fullscreen is optional: the edge-to-edge layout also works on iPhone Safari.
     if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
     if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    positionLens();
+    syncFooterSpace(); positionLens();
   }
   $('focusButton').onclick = () => focusMode(true);
   $('exitFocus').onclick = () => focusMode(false);
-  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { document.body.classList.remove('focus-mode'); $('exitFocus').hidden = true; $('focusButton').setAttribute('aria-pressed','false'); } });
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) { document.body.classList.remove('focus-mode'); $('exitFocus').hidden = true; $('focusButton').setAttribute('aria-pressed','false'); syncFooterSpace(); } });
   $('lensToggle').onclick = () => { prefs.lens = !prefs.lens; if (!prefs.lens) clearLens(); applyAppearance(); savePrefs(); };
 
   function renderLibrary(books) {
@@ -94,7 +98,7 @@
       $('editionLabel').textContent = 'WORD FREAK IMPROVED · THE READING EDITION';
       $('sourceLink').href = result.book.link; $('sourceLink').hidden = false;
       $('sourceLink').textContent = result.book.source === 'usaf' ? 'Official USAF source ↗' : 'Original edition ↗';
-      $('welcome').hidden = true; $('chaptersButton').disabled = false; $('previousWord').disabled = $('nextWord').disabled = false;
+      $('welcome').hidden = true; $('chaptersButton').disabled = false; $('previousWord').disabled = $('nextWord').disabled = $('translateButton').disabled = false;
       renderWindow(savedIndex); renderChapters();
       status(prefs.reading === 'en' ? 'Tap a word. Drag the handle. Hold to translate.' : `Preparing your ${api.languages[prefs.reading].label} reading view…`, 6000);
     } catch (error) { if (token === generation) { status(`Could not open this book: ${error.message}`, 10000); renderLibrary(); showDialog('libraryDialog'); } }
@@ -231,47 +235,155 @@
     if (prefs.translation === prefs.reading) prefs.translation = prefs.reading === 'en' ? (api.language === 'en' ? 'fa' : api.language) : 'en';
     $('translationLanguage').value = prefs.translation; savePrefs(); renderWindow(savedIndex);
   };
-  $('translationLanguage').onchange = (event) => { prefs.translation = event.target.value; releaseLens(); savePrefs(); };
+  $('translationLanguage').onchange = (event) => { prefs.translation = event.target.value; clearLens(); savePrefs(); };
 
-  function clearLens() { releaseLens(); word?.classList.remove('active-word'); word = null; lens.hidden = true; }
+  let lensMeasure = null, lensBox = null, dockMode = '', surfacePress = null, skipSurfaceClick = false;
+  let lensFitKey = '', lensFitOverflow = false;
+
+  // Keep the visual footprint tied to the selected glyphs, never to the
+  // translation's length. Very narrow words use the dock instead of tiny type.
+  function fitLensFont(measuredWidth, availableWidth, availableHeight, preferredSize) {
+    const maximum = Math.min(preferredSize, availableHeight / 1.12);
+    const wanted = Math.min(maximum, preferredSize * availableWidth / Math.max(1, measuredWidth));
+    const size = Math.max(10, Math.floor(wanted * 10) / 10);
+    return { size, overflow: wanted < 10 };
+  }
+  function fitLensLabel(node, value) {
+    if (!lensBox) return false;
+    const preferred = prefs.size * 1.08;
+    const key = `${node.id}|${value}|${prefs.font}|${preferred}|${lensBox.width}|${lensBox.height}`;
+    if (key === lensFitKey) return lensFitOverflow;
+    lensMeasure ||= document.createElement('canvas').getContext('2d');
+    if (!lensMeasure) return false;
+    lensMeasure.font = `${preferred}px ${getComputedStyle(text).fontFamily}`;
+    const fit = fitLensFont(lensMeasure.measureText(value).width, Math.max(1,lensBox.width-4), Math.max(1,lensBox.height-4), preferred);
+    node.style.fontSize = `${fit.size}px`;
+    lensFitKey = key; lensFitOverflow = fit.overflow;
+    return fit.overflow;
+  }
+  function syncDockSpace() {
+    const height = $('translationDock').hidden ? 0 : Math.ceil($('translationDock').getBoundingClientRect().height);
+    document.body.style.setProperty('--translation-dock-height', `${height}px`);
+    positionLens();
+  }
+  function closeDock() {
+    dockMode = ''; $('translationDock').hidden = true;
+    $('lensSurface').setAttribute('aria-expanded','false');
+    document.body.style.setProperty('--translation-dock-height','0px');
+  }
+  function openDock(mode, source, translation) {
+    dockMode = mode; $('translationDock').hidden = false;
+    $('dockKind').textContent = `${mode === 'sentence' ? 'SENTENCE' : 'WORD'} · ${api.languages[prefs.translation].label.toUpperCase()}`;
+    $('dockSource').textContent = source; $('dockSource').lang = prefs.reading; $('dockSource').dir = api.languages[prefs.reading].dir;
+    $('dockTranslation').textContent = translation; $('dockTranslation').lang = prefs.translation; $('dockTranslation').dir = api.languages[prefs.translation].dir;
+    $('lensSurface').setAttribute('aria-expanded','true');
+    syncDockSpace();
+    // The panel reserves space, rather than covering the bottom lines of text.
+    // Keep the selected word in the now-smaller reading viewport.
+    if (word) { const r=word.getBoundingClientRect(), view=scroll.getBoundingClientRect(); if(r.bottom>view.bottom-10)scroll.scrollTop+=r.bottom-view.bottom+10; }
+    positionLens();
+  }
+  if (typeof ResizeObserver === 'function') new ResizeObserver(syncDockSpace).observe($('translationDock'));
+  $('dockClose').onclick = () => { clearLens(); scroll.focus({preventScroll:true}); };
+  function clearLens() {
+    releaseLens(); requestVersion++; closeDock();
+    word?.classList.remove('active-word'); word = null; lens.hidden = true;
+    lens.classList.remove('translating','loading'); lensFitKey = '';
+  }
   function selectWord(next, hold = false) {
     if (!next || !prefs.lens) return;
-    clearTimeout(hideTimer);
-    if (word !== next) { word?.classList.remove('active-word'); word = next; word.classList.add('active-word'); requestVersion++; clearTimeout(holdTimer); lens.classList.remove('translating'); $('lensOriginal').textContent = word.textContent; $('lensOriginal').lang = prefs.reading; lens.classList.toggle('sentence-lens', word.classList.contains('sentence-end')); }
-    lens.hidden = false; positionLens();
-    if (hold) armTranslation();
+    const firstPlacement = lens.hidden;
+    if (word !== next) {
+      word?.classList.remove('active-word'); word = next; word.classList.add('active-word');
+      requestVersion++; clearTimeout(holdTimer); closeDock(); lensFitKey = '';
+      clearTimeout(moveTimer); lens.classList.add('moving'); moveTimer=setTimeout(()=>lens.classList.remove('moving'),200);
+      lens.classList.remove('translating','loading');
+      $('lensOriginal').textContent = word.textContent; $('lensOriginal').lang = prefs.reading;
+      $('lensSurface').setAttribute('aria-label', `Translate the full sentence containing ${word.textContent}`);
+    }
+    lens.hidden = false;
+    if (firstPlacement) { lens.classList.add('placing'); requestAnimationFrame(() => requestAnimationFrame(() => lens.classList.remove('placing'))); }
+    positionLens();
+    if (prefs.sentenceMode || prefs.translateLocked) translateSelection(prefs.sentenceMode);
+    else if (hold) armTranslation();
+    scheduleNearbyTranslations();
   }
   function positionLens() {
     if (!word?.isConnected || !prefs.lens) { lens.hidden = true; return; }
-    const r = word.getBoundingClientRect(); const viewport = scroll.getBoundingClientRect();
-    if (r.bottom < viewport.top || r.top > viewport.bottom) { lens.hidden = true; return; }
-    lens.hidden = false;
-    const expanded = lens.classList.contains('translating'); const maxWidth = Math.min(word.classList.contains('sentence-end') ? 390 : 285,innerWidth-32);
-    const baseWidth = Math.min(Math.max(76,r.width*1.24+34),innerWidth-32);
-    const width = expanded ? maxWidth : baseWidth;
-    const x = Math.max(width/2+16,Math.min(innerWidth-width/2-16,r.left+r.width/2));
-    const y = Math.min(viewport.bottom-44,Math.max(viewport.top+70,r.bottom+5));
-    lens.style.left = `${x}px`; lens.style.top = `${y}px`; lens.style.setProperty('--lens-width',`${baseWidth}px`); lens.style.setProperty('--lens-max-height',`${Math.max(70,Math.min(270,y-viewport.top-10))}px`);
+    const r = [...word.getClientRects()].find((rect) => rect.width > 0) || word.getBoundingClientRect();
+    const viewport = scroll.getBoundingClientRect();
+    if (r.top < viewport.top || r.bottom > viewport.bottom) { lens.hidden = true; word.classList.remove('active-word'); return; }
+    lens.hidden = false; word.classList.add('active-word');
+    const width = Math.min(innerWidth-16, r.width+6);
+    const height = Math.min(r.height+4, prefs.size*1.6);
+    const x = Math.max(width/2+4,Math.min(innerWidth-width/2-4,r.left+r.width/2));
+    const y = r.top+r.height/2;
+    lensBox = {width,height};
+    lens.style.setProperty('--lens-x',`${x}px`); lens.style.setProperty('--lens-y',`${y}px`);
+    lens.style.setProperty('--lens-width',`${width}px`); lens.style.setProperty('--lens-height',`${height}px`); lens.style.setProperty('--lens-radius',`${Math.min(height/2,Math.max(7,width*.22))}px`);
+    const label = lens.classList.contains('translating') ? $('lensTranslation') : $('lensOriginal');
+    const overflow = fitLensLabel(label,label.textContent);
+    if (overflow && lens.classList.contains('translating') && !dockMode && !lens.classList.contains('loading')) openDock('word',word.textContent,label.textContent);
   }
   function armTranslation() { clearTimeout(holdTimer); holdTimer = setTimeout(() => translateSelection(), 480); }
-  async function translateSelection() {
+  async function translateSelection(fullSentence = false) {
     if (!word || !api) return;
+    clearTimeout(holdTimer);
     const target = word; const token = ++requestVersion; const sentence = target.closest('.reader-sentence');
-    const full = target.classList.contains('sentence-end'); const value = full ? sentence.dataset.text : target.textContent;
-    lens.classList.add('translating'); $('lensKind').textContent = `${full ? 'SENTENCE' : 'WORD'} · ${api.languages[prefs.translation].label.toUpperCase()}`;
-    $('lensTranslation').textContent = 'Translating…'; $('lensTranslation').lang = prefs.translation; $('lensTranslation').dir = api.languages[prefs.translation].dir; positionLens();
-    try {
-      const translated = await api.translate(value,prefs.reading,prefs.translation);
-      if (token !== requestVersion || target !== word) return;
-      $('lensTranslation').textContent = translated || 'Translation unavailable. Hold again to retry.';
-    } catch { if (token === requestVersion) $('lensTranslation').textContent = 'Unable to translate. Check your connection and hold again.'; }
+    const full = fullSentence || target.classList.contains('sentence-end'); const value = full ? sentence.dataset.text : target.textContent;
+    if (full) prefs.sentenceMode=true;
+    updateReadingControls();
+    closeDock();
+    const cached=nearbyTranslations.get(translationKey(value));
+    if (full) {
+      lens.classList.remove('translating','loading');
+      openDock('sentence',value,cached || 'Translating…');
+    } else {
+      lens.classList.add('translating','loading'); $('lensKind').textContent = `Word · ${api.languages[prefs.translation].label}`;
+      $('lensTranslation').textContent = cached || '···'; $('lensTranslation').lang = prefs.translation; $('lensTranslation').dir = api.languages[prefs.translation].dir;
+    }
     positionLens();
+    let translated = cached || '';
+    try { if(!translated) translated = await api.translate(value,prefs.reading,prefs.translation); } catch { /* Keep failures visible and retryable. */ }
+    if (token !== requestVersion || target !== word) return;
+    if(translated) rememberNearby(translationKey(value),translated);
+    lens.classList.remove('loading'); lensFitKey = '';
+    if (full) openDock('sentence',value,translated || 'Translation unavailable. Tap the glass to retry.');
+    else if (translated) { $('lensTranslation').textContent = translated; positionLens(); }
+    else { $('lensTranslation').textContent = '…'; openDock('word',value,'Translation unavailable. Hold the glass or its handle to retry.'); }
+    scheduleNearbyTranslations();
   }
   function releaseLens() {
-    holding = false; dragging = false; pointerId = null; dragPoint = null; clearTimeout(holdTimer); cancelAnimationFrame(autoScroll); autoScroll = 0; lens.classList.remove('holding');
-    if (lens.classList.contains('translating')) { clearTimeout(hideTimer); hideTimer = setTimeout(() => { requestVersion++; lens.classList.remove('translating'); positionLens(); }, 2200); }
-    else requestVersion++;
+    holding = false; dragging = false; pointerId = null; dragPoint = null;
+    clearTimeout(holdTimer); cancelAnimationFrame(autoScroll); autoScroll = 0;
+    lens.classList.remove('holding');
+    // Keep the result until the user moves the lens or taps outside, including
+    // when they release before a slow translation request completes.
   }
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('#glassLens, #translationDock, .reader-word, #previousWord, #nextWord, #translateButton, .reading-speed')) return;
+    clearLens();
+  }, {capture:true});
+  document.addEventListener('pointerup', () => { if (holding && !dragging) releaseLens(); });
+  document.addEventListener('keydown',(event) => { if(event.key==='Escape')clearLens(); });
+  $('lensSurface').addEventListener('pointerdown',(event) => {
+    if (event.button > 0) return;
+    surfacePress={x:event.clientX,y:event.clientY,time:performance.now(),moved:false};
+    skipSurfaceClick=false; holding=true; armTranslation();
+  });
+  $('lensSurface').addEventListener('pointermove',(event) => {
+    if(surfacePress && Math.hypot(event.clientX-surfacePress.x,event.clientY-surfacePress.y)>9) { surfacePress.moved=true; releaseLens(); }
+  });
+  $('lensSurface').addEventListener('pointerup',() => {
+    skipSurfaceClick=Boolean(surfacePress && (surfacePress.moved || performance.now()-surfacePress.time>=480));
+    surfacePress=null; releaseLens();
+  });
+  $('lensSurface').addEventListener('pointercancel',() => { surfacePress=null;skipSurfaceClick=true;releaseLens(); });
+  $('lensSurface').addEventListener('contextmenu',(event) => event.preventDefault());
+  $('lensSurface').addEventListener('click',(event) => {
+    if(skipSurfaceClick && event.detail!==0) { skipSurfaceClick=false;return; }
+    skipSurfaceClick=false;translateSelection(true);
+  });
   function wordAt(x,y) {
     let hit = document.elementFromPoint(x,y)?.closest('.reader-word');
     if (hit && text.contains(hit)) return hit;
@@ -289,7 +401,7 @@
   }
   $('lensHandle').addEventListener('pointerdown', (event) => {
     if (!word || event.button > 0) return;
-    event.preventDefault(); clearTimeout(hideTimer); holding=true; dragging=true; pointerId=event.pointerId;
+    event.preventDefault(); holding=true; dragging=true; pointerId=event.pointerId;
     const r=word.getBoundingClientRect(); pointerStart={x:event.clientX,y:event.clientY,offsetX:event.clientX-(r.left+r.width/2),offsetY:event.clientY-(r.top+r.height/2)};
     $('lensHandle').setPointerCapture(event.pointerId); lens.classList.add('holding'); armTranslation();
   });
@@ -309,16 +421,129 @@
   text.addEventListener('contextmenu',(event) => { if(holding && event.target.closest('.reader-word')) event.preventDefault(); });
   function stepWord(direction) {
     if(!prefs.lens) { prefs.lens=true; applyAppearance(); savePrefs(); }
-    const words=[...text.querySelectorAll('.reader-word')];
+    const words=[...text.querySelectorAll('.reader-word:not(.sentence-end)')];
     if(!words.length) return;
     let index=words.indexOf(word); if(index < 0) { const top=scroll.getBoundingClientRect().top; index=words.findIndex((node) => node.getBoundingClientRect().top >= top+25)-direction; }
     let target=words[index+direction];
-    if(!target && direction>0 && renderedEnd<current.sentences.length) { appendText(); target=[...text.querySelectorAll('.reader-word')][index+direction]; }
-    if(!target && direction<0 && renderedStart>0) { prependText(); const expanded=[...text.querySelectorAll('.reader-word')]; target=expanded[expanded.indexOf(word)-1]; }
-    if(!target) return; releaseLens(); target.scrollIntoView({block:'nearest'}); selectWord(target);
+    if(!target && direction>0 && renderedEnd<current.sentences.length) { appendText(); target=[...text.querySelectorAll('.reader-word:not(.sentence-end)')][index+direction]; }
+    if(!target && direction<0 && renderedStart>0) { prependText(); const expanded=[...text.querySelectorAll('.reader-word:not(.sentence-end)')]; target=expanded[expanded.indexOf(word)-1]; }
+    if(!target) { prepareNextPassage(direction); return; } releaseLens(); target.scrollIntoView({block:'nearest'}); selectWord(target);
   }
-  $('previousWord').onclick=()=>stepWord(-1); $('nextWord').onclick=()=>stepWord(1);
-  $('lensHandle').addEventListener('keydown',(event)=> { if(['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Enter',' '].includes(event.key)) event.preventDefault(); if(event.key==='ArrowRight'||event.key==='ArrowDown')stepWord(1); if(event.key==='ArrowLeft'||event.key==='ArrowUp')stepWord(-1); if(event.key==='Enter'||event.key===' ')translateSelection(); if(event.key==='Escape')clearLens(); });
+  function prepareNextPassage(direction) {
+    const index=Number(word?.closest('.reader-sentence')?.dataset.sourceStart ?? savedIndex);
+    const candidates=[...blocks.values()].filter(b=>!b.loaded && (direction>0 ? b.end>=index : b.start<=index)).sort((a,b)=>direction>0?a.start-b.start:b.start-a.start);
+    if(candidates[0]) { queueBlock(candidates[0],true); status('Preparing the next passage…',1500); }
+  }
+  function stepSentence(direction) {
+    let sentences=[...text.querySelectorAll('.reader-sentence')];
+    if(!sentences.length) { prepareNextPassage(direction);return; }
+    const selected=word?.closest('.reader-sentence');
+    let index=sentences.indexOf(selected);
+    if(index<0) {const top=scroll.getBoundingClientRect().top;index=sentences.findIndex(s=>s.getBoundingClientRect().bottom>top+20)-direction;}
+    let target=sentences[index+direction];
+    if(!target && direction>0 && renderedEnd<current.sentences.length) {appendText();sentences=[...text.querySelectorAll('.reader-sentence')];target=sentences[index+direction];}
+    if(!target && direction<0 && renderedStart>0) {prependText();sentences=[...text.querySelectorAll('.reader-sentence')];target=sentences[sentences.indexOf(selected)-1];}
+    const first=target?.querySelector('.reader-word');
+    if(!first) {prepareNextPassage(direction);return;}
+    releaseLens();first.scrollIntoView({block:'nearest'});selectWord(first);
+  }
+  function stepSelection(direction) {
+    if(!current)return;
+    if(!prefs.lens){prefs.lens=true;applyAppearance();savePrefs();}
+    if(prefs.sentenceMode)stepSentence(direction);else stepWord(direction);
+  }
+  function syncFooterSpace() {
+    document.body.style.setProperty('--reader-footer-height',`${Math.ceil($('readerFooter').getBoundingClientRect().height)}px`);
+    positionLens();
+  }
+  function updateReadingControls() {
+    prefs.stepRate=Math.max(10,Math.min(180,Number(prefs.stepRate)||60));
+    $('readingControls').hidden=prefs.controls===false;
+    document.body.classList.toggle('controls-hidden',prefs.controls===false);
+    $('navigationToggle').checked=prefs.controls!==false;
+    $('stepSpeed').value=prefs.stepRate;
+    $('stepSpeedOutput').textContent=`${prefs.stepRate} ${prefs.sentenceMode?'sentences':'words'}/min`;
+    $('translateButtonLabel').textContent=prefs.sentenceMode?'Sentence':prefs.translateLocked?'Translation locked':'Translate';
+    $('translationModeLabel').textContent=prefs.sentenceMode?'Double-tap for words':prefs.translateLocked?'Hold to unlock · double-tap for sentences':'Hold to lock · double-tap for sentences';
+    $('translateButton').setAttribute('aria-pressed',String(prefs.sentenceMode||prefs.translateLocked));
+    $('previousWord').setAttribute('aria-label',`Previous ${prefs.sentenceMode?'sentence':'word'}. Hold to keep moving backward.`);
+    $('nextWord').setAttribute('aria-label',`Next ${prefs.sentenceMode?'sentence':'word'}. Hold to keep moving forward.`);
+    syncFooterSpace();
+  }
+  if(typeof ResizeObserver==='function')new ResizeObserver(syncFooterSpace).observe($('readerFooter'));
+  $('navigationToggle').onchange=event=>{prefs.controls=event.target.checked;stopRepeating();updateReadingControls();savePrefs();};
+  $('stepSpeed').oninput=event=>{prefs.stepRate=Number(event.target.value);updateReadingControls();savePrefs();};
+  function stopRepeating(){clearTimeout(repeatTimer);repeatTimer=0;repeatDirection=0;}
+  function startRepeating(direction) {
+    stopRepeating();repeatDirection=direction;stepSelection(direction);
+    const tick=()=>{if(!repeatDirection)return;stepSelection(repeatDirection);repeatTimer=setTimeout(tick,60000/prefs.stepRate);};
+    repeatTimer=setTimeout(tick,Math.max(350,60000/prefs.stepRate));
+  }
+  for(const [id,direction] of [['previousWord',-1],['nextWord',1]]) {
+    const button=$(id);
+    button.addEventListener('pointerdown',event=>{if(event.button>0)return;event.preventDefault();button.setPointerCapture(event.pointerId);startRepeating(direction);});
+    for(const type of ['pointerup','pointercancel','lostpointercapture','blur'])button.addEventListener(type,stopRepeating);
+    button.addEventListener('click',event=>{if(event.detail===0)stepSelection(direction);});
+    button.addEventListener('keydown',event=>{if(event.key===' '||event.key==='Enter'){event.preventDefault();if(!event.repeat)startRepeating(direction);}});
+    button.addEventListener('keyup',event=>{if(event.key===' '||event.key==='Enter'){event.preventDefault();stopRepeating();}});
+  }
+  function ensureSelection(){if(!word)stepWord(1);return Boolean(word);}
+  function toggleSentenceMode() {
+    if(!ensureSelection())return;
+    prefs.sentenceMode=!prefs.sentenceMode;requestVersion++;closeDock();lens.classList.remove('translating','loading');
+    updateReadingControls();savePrefs();
+    if(prefs.sentenceMode||prefs.translateLocked)translateSelection(prefs.sentenceMode);else positionLens();
+  }
+  function lockTranslation() {
+    centerHeld=true;clearTimeout(centerTapTimer);lastCenterTap=0;
+    if(!ensureSelection())return;
+    prefs.sentenceMode=false;prefs.translateLocked=!prefs.translateLocked;
+    requestVersion++;closeDock();lens.classList.remove('translating','loading');
+    updateReadingControls();savePrefs();
+    if(prefs.translateLocked)translateSelection();else positionLens();
+  }
+  const center=$('translateButton');
+  center.addEventListener('pointerdown',event=>{if(event.button>0)return;centerHeld=false;centerCancelled=false;center.setPointerCapture(event.pointerId);clearTimeout(centerHoldTimer);centerHoldTimer=setTimeout(lockTranslation,520);});
+  center.addEventListener('pointerup',()=>clearTimeout(centerHoldTimer));
+  center.addEventListener('pointercancel',()=>{clearTimeout(centerHoldTimer);centerCancelled=true;});
+  center.addEventListener('lostpointercapture',()=>clearTimeout(centerHoldTimer));
+  center.addEventListener('click',()=>{
+    if(centerHeld||centerCancelled){centerHeld=false;centerCancelled=false;return;}
+    const now=performance.now();
+    if(lastCenterTap&&now-lastCenterTap<320){clearTimeout(centerTapTimer);lastCenterTap=0;toggleSentenceMode();return;}
+    lastCenterTap=now;clearTimeout(centerTapTimer);
+    centerTapTimer=setTimeout(()=>{lastCenterTap=0;if(ensureSelection())translateSelection(prefs.sentenceMode);},320);
+  });
+  center.addEventListener('keydown',event=>{if(event.key===' '||event.key==='Enter'){if(!event.repeat){centerHeld=false;centerCancelled=false;centerHoldTimer=setTimeout(lockTranslation,520);}if(event.repeat)event.preventDefault();}});
+  center.addEventListener('keyup',()=>clearTimeout(centerHoldTimer));
+  window.addEventListener('blur',()=>{stopRepeating();clearTimeout(centerHoldTimer);releaseLens();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){stopRepeating();clearTimeout(centerHoldTimer);}});
+
+  function translationKey(value){return `${prefs.reading}|${prefs.translation}|${value}`;}
+  function rememberNearby(key,value){if(!value)return;nearbyTranslations.set(key,value);while(nearbyTranslations.size>160)nearbyTranslations.delete(nearbyTranslations.keys().next().value);}
+  function scheduleNearbyTranslations() {
+    clearTimeout(preloadTimer);
+    preloadTimer=setTimeout(()=>{
+      if(!word||!api)return;
+      const sentenceMode=prefs.sentenceMode;
+      const items=[...text.querySelectorAll(sentenceMode?'.reader-sentence':'.reader-word:not(.sentence-end)')];
+      const index=items.indexOf(sentenceMode?word.closest('.reader-sentence'):word);
+      if(index<0)return;
+      preloadQueue=[1,-1,2,3].map(offset=>items[index+offset]).filter(Boolean).map(node=>({value:sentenceMode?node.dataset.text:node.textContent,from:prefs.reading,to:prefs.translation,generation})).filter(job=>!nearbyTranslations.has(`${job.from}|${job.to}|${job.value}`));
+      runNearbyTranslations();
+    },100);
+  }
+  async function runNearbyTranslations() {
+    if(preloadRunning)return;preloadRunning=true;
+    try {
+      while(preloadQueue.length){
+        const job=preloadQueue.shift();if(job.generation!==generation||job.from!==prefs.reading||job.to!==prefs.translation)continue;
+        const key=`${job.from}|${job.to}|${job.value}`;if(nearbyTranslations.has(key))continue;
+        try{const translated=await api.translate(job.value,job.from,job.to);if(translated)rememberNearby(key,translated);}catch{/* Foreground translation retains its retry path. */}
+      }
+    } finally {preloadRunning=false;}
+  }
+  $('lensHandle').addEventListener('keydown',(event)=> { if(['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Enter',' '].includes(event.key)) event.preventDefault(); if(event.key==='ArrowRight'||event.key==='ArrowDown')stepSelection(1); if(event.key==='ArrowLeft'||event.key==='ArrowUp')stepSelection(-1); if(event.key==='Enter'||event.key===' ')translateSelection(event.shiftKey); if(event.key==='Escape')clearLens(); });
   document.addEventListener('keydown',(event)=>{if(event.key==='Escape' && document.body.classList.contains('focus-mode'))focusMode(false);});
   async function initialize() {
     api=$('readerEngine').contentWindow.WordfreakReader;

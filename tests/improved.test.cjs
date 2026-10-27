@@ -56,6 +56,69 @@ test('tokenization keeps Farsi half-spaces and merges sentence endings for hold 
 test('page IDs used by the new controller exist and offline assets are versioned together',()=>{
  const html=fs.readFileSync('improved.html','utf8');const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length);
  for(const match of improved.matchAll(/\$\('([^']+)'\)/g))assert.ok(ids.includes(match[1]),`Missing ${match[1]}`);
- const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=1','improved.js?v=2','app.js?v=57','styles.css?v=33'])assert.ok(sw.includes(asset));
+ const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=2','improved.js?v=3','app.js?v=57','styles.css?v=33'])assert.ok(sw.includes(asset));
  assert.ok(fs.readFileSync('index.html','utf8').includes('href="improved.html"'));
+});
+
+function readerFunction(name, nextName) {
+ const start = improved.indexOf(`  function ${name}(`) >= 0 ? improved.indexOf(`  function ${name}(`) : improved.indexOf(`  async function ${name}(`);
+ const end = improved.indexOf(`  function ${nextName}(`,start);
+ return improved.slice(start,end).trim();
+}
+const fitLensFont=vm.runInNewContext(`(${readerFunction('fitLensFont','fitLensLabel')})`);
+test('word translations shrink inside the selected footprint, with a readable overflow fallback',()=>{
+ const short=fitLensFont(40,80,30,24);assert.equal(short.overflow,false);assert.equal(short.size,24);
+ const longer=fitLensFont(120,75,30,24);assert.equal(longer.size,15);assert.equal(longer.overflow,false);
+ const tiny=fitLensFont(220,18,30,24);assert.equal(tiny.size,10);assert.equal(tiny.overflow,true);
+ const tall=fitLensFont(40,100,20,32);assert.ok(tall.size*1.12<=20);
+});
+function lensHarness() {
+ const nodes=new Map(); const classes=new Set();
+ const get=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'',lang:'',dir:''});return nodes.get(id);};
+ let resolve;const calls=[];const result={};
+ const selected={textContent:'سلام',classList:{contains:()=>false,remove(){}},closest:()=>({dataset:{text:'سلام دنیا.'}})};
+ const context={word:selected,api:{languages:{en:{label:'English',dir:'ltr'}},translate:(...args)=>{calls.push(args);return new Promise(r=>resolve=r);}},prefs:{reading:'fa',translation:'en'},requestVersion:0,holdTimer:0,holding:true,dragging:false,pointerId:1,dragPoint:null,autoScroll:0,lensFitKey:'',lens:{hidden:false,classList:{add:(...names)=>names.forEach(n=>classes.add(n)),remove:(...names)=>names.forEach(n=>classes.delete(n))}},$:get,clearTimeout(){},cancelAnimationFrame(){},positionLens(){},updateReadingControls(){},translationKey:v=>'fa|en|'+v,nearbyTranslations:new Map(),rememberNearby(){},scheduleNearbyTranslations(){},openDock:(mode,source,value)=>Object.assign(result,{mode,source,value}),closeDock:()=>{for(const key of Object.keys(result))delete result[key];}};
+ vm.createContext(context);
+ vm.runInContext(readerFunction('clearLens','selectWord'),context);
+ const start=improved.indexOf('  async function translateSelection('), end=improved.indexOf("  document.addEventListener('pointerdown'",start);
+ vm.runInContext(improved.slice(start,end),context);
+ return {context,calls,result,resolve:value=>resolve(value),nodes,classes};
+}
+test('tapping the glass requests the entire displayed sentence and uses the reserved panel',async()=>{
+ const h=lensHarness();const work=h.context.translateSelection(true);
+ assert.deepEqual(h.calls[0],['سلام دنیا.','fa','en']);assert.equal(h.result.mode,'sentence');
+ h.resolve('Hello world.');await work;assert.equal(h.result.value,'Hello world.');assert.ok(!h.classes.has('translating'));
+});
+test('releasing a hold keeps a slow word translation, but dismissing discards it',async()=>{
+ const h=lensHarness();const work=h.context.translateSelection();h.context.releaseLens();h.resolve('Hello');await work;
+ assert.equal(h.nodes.get('lensTranslation').textContent,'Hello');
+ const late=h.context.translateSelection();h.context.clearLens();h.resolve('Stale result');await late;
+ assert.equal(h.context.word,null);assert.equal(h.context.lens.hidden,true);assert.notEqual(h.nodes.get('lensTranslation').textContent,'Stale result');assert.deepEqual(h.result,{});
+});
+
+test('held navigation follows the speed slider and stops without a trailing step',()=>{
+ const pending=new Map();let id=0;const steps=[];
+ const c={prefs:{stepRate:120},repeatTimer:0,repeatDirection:0,stepSelection:d=>steps.push(d),setTimeout:(fn,delay)=>{pending.set(++id,{fn,delay});return id;},clearTimeout:key=>pending.delete(key)};
+ vm.createContext(c);vm.runInContext(readerFunction('stopRepeating','startRepeating'),c);
+ const start=improved.indexOf('  function startRepeating('),end=improved.indexOf('  for(const [id,direction]',start);vm.runInContext(improved.slice(start,end),c);
+ c.startRepeating(1);assert.deepEqual(steps,[1]);assert.equal(pending.get(c.repeatTimer).delay,500);
+ let tick=pending.get(c.repeatTimer);pending.delete(c.repeatTimer);tick.fn();assert.deepEqual(steps,[1,1]);
+ c.prefs.stepRate=60;tick=pending.get(c.repeatTimer);pending.delete(c.repeatTimer);tick.fn();assert.equal(pending.get(c.repeatTimer).delay,1000);
+ c.stopRepeating();assert.equal(pending.size,0);assert.equal(steps.length,3);
+ c.startRepeating(-1);assert.equal(steps.at(-1),-1);c.stopRepeating();
+});
+test('locked translation and sentence navigation have distinct toggle behavior',()=>{
+ const requests=[];const c={prefs:{sentenceMode:false,translateLocked:false},centerHeld:false,centerTapTimer:0,lastCenterTap:1,requestVersion:0,ensureSelection:()=>true,clearTimeout(){},closeDock(){},lens:{classList:{remove(){}}},updateReadingControls(){},savePrefs(){},translateSelection:full=>requests.push(Boolean(full)),positionLens(){}};
+ vm.createContext(c);vm.runInContext(readerFunction('toggleSentenceMode','lockTranslation'),c);
+ const start=improved.indexOf('  function lockTranslation('),end=improved.indexOf("  const center=$('translateButton')",start);vm.runInContext(improved.slice(start,end),c);
+ c.lockTranslation();assert.equal(c.prefs.translateLocked,true);assert.equal(c.prefs.sentenceMode,false);assert.equal(requests.at(-1),false);
+ c.toggleSentenceMode();assert.equal(c.prefs.sentenceMode,true);assert.equal(requests.at(-1),true);
+ c.toggleSentenceMode();assert.equal(c.prefs.sentenceMode,false);assert.equal(c.prefs.translateLocked,true);
+ c.lockTranslation();assert.equal(c.prefs.translateLocked,false);
+});
+test('preloading is bounded to one worker and skips obsolete language or book jobs',async()=>{
+ let active=0,peak=0;const calls=[];const cache=new Map();
+ const c={preloadRunning:false,preloadQueue:[{value:'old',from:'en',to:'ru',generation:1},{value:'سلام',from:'fa',to:'en',generation:2},{value:'دنیا',from:'fa',to:'en',generation:2}],generation:2,prefs:{reading:'fa',translation:'en'},nearbyTranslations:cache,rememberNearby:(key,value)=>cache.set(key,value),api:{translate:async(value)=>{active++;peak=Math.max(peak,active);calls.push(value);await Promise.resolve();active--;return value==='سلام'?'Hello':'World';}}};
+ vm.createContext(c);const start=improved.indexOf('  async function runNearbyTranslations('),end=improved.indexOf("  $('lensHandle').addEventListener('keydown'",start);vm.runInContext(improved.slice(start,end),c);
+ await Promise.all([c.runNearbyTranslations(),c.runNearbyTranslations()]);assert.deepEqual(calls,['سلام','دنیا']);assert.equal(peak,1);assert.equal(cache.size,2);
 });
