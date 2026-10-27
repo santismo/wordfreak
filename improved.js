@@ -8,6 +8,7 @@
   const writeStorage = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { status('Browser storage is full. This session still works, but new settings may not be saved.', 6000); } };
   const prefs = { font: 'times', size: 24, spacing: '1.85', theme: 'black', reading: 'en', translation: 'fa', lens: true, controls: true, stepRate: 60, translateLocked: false, sentenceMode: false, ...readStorage(SETTINGS_KEY, {}) };
   let api, catalog = [], shelf = 'all', current = null, generation = 0, renderedStart = 0, renderedEnd = 0, savedIndex = 0;
+  let pendingPairWord = null;
   let word = null, holding = false, pointerId = null, pointerStart = null, dragging = false, holdTimer = 0, requestVersion = 0, saveTimer = 0, statusTimer = 0, scrollFrame = 0, activeJobs = 0, searchVersion = 0;
   let repeatTimer = 0, repeatDirection = 0, centerHoldTimer = 0, centerTapTimer = 0, lastCenterTap = 0, centerHeld = false, centerCancelled = false, moveTimer = 0;
   let preloadTimer = 0, preloadQueue = [], preloadRunning = false;
@@ -16,6 +17,7 @@
   const scroll = $('readingScroll');
   const text = $('readingText');
   const lens = $('glassLens');
+  const pairing = window.WordfreakWordPairing.create({sourceRoot:text,targetRoot:$('dockTranslation'),tokenize,translate:(value,from,to)=>api.translate(value,from,to),announce:message=>{$('pairStatus').textContent=message;}});
   function status(message, duration = 0) { clearTimeout(statusTimer); $('readerStatus').textContent = message; if (duration) statusTimer = setTimeout(() => { $('readerStatus').textContent = ''; }, duration); }
   function savePrefs() { writeStorage(SETTINGS_KEY, prefs); }
   function applyAppearance() {
@@ -562,15 +564,21 @@
     positionLens();
   }
   function closeDock() {
+    pairing.clear();
     dockMode = ''; $('translationDock').hidden = true;
     $('lensSurface').setAttribute('aria-expanded','false');
     document.body.style.setProperty('--translation-dock-height','0px');
   }
-  function openDock(mode, source, translation) {
+  function openDock(mode, source, translation, ready = true) {
     dockMode = mode; $('translationDock').hidden = false;
     $('dockKind').textContent = `${mode === 'sentence' ? 'SENTENCE' : 'WORD'} · ${api.languages[prefs.translation].label.toUpperCase()}`;
     $('dockSource').textContent = ''; $('dockSource').hidden = true;
-    $('dockTranslation').textContent = translation; $('dockTranslation').lang = prefs.translation; $('dockTranslation').dir = api.languages[prefs.translation].dir;
+    pairing.clear();
+    $('dockTranslation').textContent = translation;
+    if (ready && mode === 'sentence' && word) {
+      pairing.configure(word.closest('.reader-sentence'),translation,prefs.reading,prefs.translation);
+      if(pendingPairWord === word) {const selected=pendingPairWord;pendingPairWord=null;void pairing.toggle(selected);}
+    } $('dockTranslation').lang = prefs.translation; $('dockTranslation').dir = api.languages[prefs.translation].dir;
     $('lensSurface').setAttribute('aria-expanded','true');
     syncDockSpace();
     // The panel reserves space, rather than covering the bottom lines of text.
@@ -581,12 +589,13 @@
   if (typeof ResizeObserver === 'function') new ResizeObserver(syncDockSpace).observe($('translationDock'));
   $('dockClose').onclick = () => { clearLens(); scroll.focus({preventScroll:true}); };
   function clearLens() {
-    releaseLens(); requestVersion++; closeDock(); clearSentenceOutline();
+    pendingPairWord=null;releaseLens(); requestVersion++; closeDock(); clearSentenceOutline();
     word?.classList.remove('active-word'); word = null; lens.hidden = true;
     lens.classList.remove('translating','loading'); lensFitKey = '';
   }
-  function selectWord(next, hold = false) {
+  function selectWord(next, hold = false, pair = false) {
     if (!next || !prefs.lens) return;
+    pendingPairWord=pair?next:null;
     const firstPlacement = lens.hidden;
     if (word !== next) {
       word?.classList.remove('active-word'); word = next; word.classList.add('active-word');
@@ -653,7 +662,7 @@
     const cached=nearbyTranslations.get(translationKey(value));
     if (full) {
       lens.classList.remove('translating','loading');
-      openDock('sentence',value,cached || 'Translating…');
+      openDock('sentence',value,cached || 'Translating…',Boolean(cached));
     } else {
       lens.classList.add('translating','loading'); $('lensKind').textContent = `Word · ${api.languages[prefs.translation].label}`;
       $('lensTranslation').textContent = cached || '···'; $('lensTranslation').lang = prefs.translation; $('lensTranslation').dir = api.languages[prefs.translation].dir;
@@ -664,9 +673,9 @@
     if (token !== requestVersion || target !== word) return;
     if(translated) rememberNearby(translationKey(value),translated);
     lens.classList.remove('loading'); lensFitKey = '';
-    if (full) openDock('sentence',value,translated || 'Translation unavailable. Tap the glass to retry.');
-    else if (translated) { $('lensTranslation').textContent = translated; positionLens(); }
-    else { $('lensTranslation').textContent = '↻'; $('lensSurface').title = 'Translation unavailable. Hold to retry.'; positionLens(); }
+    if (full && !cached) openDock('sentence',value,translated || 'Translation unavailable. Tap the glass to retry.',Boolean(translated));
+    else if (!full && translated) { $('lensTranslation').textContent = translated; positionLens(); }
+    else if (!full) { $('lensTranslation').textContent = '↻'; $('lensSurface').title = 'Translation unavailable. Hold to retry.'; positionLens(); }
     scheduleNearbyTranslations();
   }
   function releaseLens() {
@@ -730,7 +739,7 @@
   for (const type of ['pointerup','pointercancel','lostpointercapture']) $('lensHandle').addEventListener(type,releaseLens);
   text.addEventListener('pointerdown', (event) => {
     const next=event.target.closest('.reader-word'); if (!next || event.button > 0) return;
-    selectWord(next); holding=true; pointerId=event.pointerId; pointerStart={x:event.clientX,y:event.clientY}; armTranslation();
+    selectWord(next,false,prefs.sentenceMode); holding=true; pointerId=event.pointerId; pointerStart={x:event.clientX,y:event.clientY}; armTranslation();
   });
   text.addEventListener('pointermove', (event) => { if(!holding || dragging || event.pointerId !== pointerId) return; if(Math.hypot(event.clientX-pointerStart.x,event.clientY-pointerStart.y)>10) releaseLens(); });
   text.addEventListener('pointerup',releaseLens); text.addEventListener('pointercancel',releaseLens);

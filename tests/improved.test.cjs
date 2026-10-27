@@ -56,7 +56,7 @@ test('tokenization keeps Farsi half-spaces and merges sentence endings for hold 
 test('page IDs used by the new controller exist and offline assets are versioned together',()=>{
  const html=fs.readFileSync('improved.html','utf8');const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length);
  for(const match of improved.matchAll(/\$\('([^']+)'\)/g))assert.ok(ids.includes(match[1]),`Missing ${match[1]}`);
- const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=6','improved.js?v=9','app.js?v=58','styles.css?v=33'])assert.ok(sw.includes(asset));
+ const sw=fs.readFileSync('sw.js','utf8');for(const asset of ['improved.html','improved.css?v=7','improved.js?v=10','app.js?v=58','styles.css?v=33'])assert.ok(sw.includes(asset));
  assert.ok(fs.readFileSync('index.html','utf8').includes('href="improved.html"'));
 });
 
@@ -159,7 +159,7 @@ test('sentence mode outlines the complete sentence and removes the floating word
 });
 test('sentence dock contains only translated text',()=>{
  const nodes=new Map();const $=id=>{if(!nodes.has(id))nodes.set(id,{textContent:'old source',setAttribute(){}});return nodes.get(id);};
- const c={$,api:{languages:{en:{label:'English',dir:'ltr'}}},prefs:{translation:'en'},syncDockSpace(){},keepSelectionVisible(){},positionLens(){}};
+ const c={$,pairing:{clear(){},configure(){}},word:null,api:{languages:{en:{label:'English',dir:'ltr'}}},prefs:{translation:'en'},syncDockSpace(){},keepSelectionVisible(){},positionLens(){}};
  vm.createContext(c);vm.runInContext(readerFunction('openDock','clearLens').split("  if (typeof ResizeObserver")[0],c);
  c.openDock('sentence','Original sentence.','Translated sentence.');
  assert.equal($('dockSource').textContent,'');assert.equal($('dockSource').hidden,true);assert.equal($('dockTranslation').textContent,'Translated sentence.');
@@ -180,4 +180,38 @@ test('publications preserve chapter boundaries, source language and reading prog
 test('holding a word in sentence mode keeps translating its sentence',async()=>{
  const h=lensHarness();h.context.prefs.sentenceMode=true;const work=h.context.translateSelection();
  assert.deepEqual(h.calls[0],['سلام دنیا.','fa','en']);h.resolve('Hello world.');await work;assert.equal(h.result.mode,'sentence');
+});
+
+function pairHarness(translator) {
+ const node=text=>({textContent:text,classes:new Set(),attrs:{},classList:{},addEventListener(){},setAttribute(k,v){this.attrs[k]=v;},removeAttribute(k){delete this.attrs[k];},append(...nodes){this.children.push(...nodes);},replaceChildren(){this.children=[];},children:[]});
+ const make=text=>{const n=node(text);n.classList={add:c=>n.classes.add(c),remove:c=>n.classes.delete(c)};return n;};
+ const context={window:{},document:{createElement:()=>make(''),createTextNode:make},console};
+ vm.runInNewContext(fs.readFileSync('word-pairing.js','utf8'),context);
+ const root=make(''),target=make(''),source=['Hello','world'].map(make);
+ const pairing=context.window.WordfreakWordPairing.create({sourceRoot:root,targetRoot:target,tokenize:value=>value.split(' ').map(text=>({text,word:true})),translate:translator,announce(){}});
+ const configure=()=>pairing.configure({querySelectorAll:()=>source},'سلام دنیا','en','fa');configure();
+ return {pairing,source,target,configure,logic:context.window.WordfreakWordPairing};
+}
+test('word pairing works in both directions, toggles off and replaces earlier highlights',async()=>{
+ const h=pairHarness(async value=>({'Hello':'سلام','world':'دنیا','سلام':'Hello','دنیا':'world'}[value] || ''));
+ await h.pairing.toggle(h.source[0]);assert.ok(h.source[0].classes.has('paired-word'));assert.ok(h.target.children[0].classes.has('paired-word'));
+ await h.pairing.toggle(h.target.children[0]);assert.ok(!h.source[0].classes.has('paired-word'));assert.ok(!h.target.children[0].classes.has('paired-word'));
+ await h.pairing.toggle(h.target.children[1]);assert.ok(h.source[1].classes.has('paired-word'));
+ await h.pairing.toggle(h.source[0]);assert.ok(!h.source[1].classes.has('paired-word'));assert.ok(!h.target.children[1].classes.has('paired-word'));
+ h.pairing.clear();assert.ok(h.source.every(n=>!n.classes.has('paired-word')));
+});
+test('late word matches cannot re-highlight after another tap or sentence change',async()=>{
+ let resolve;const h=pairHarness(()=>new Promise(r=>resolve=r));
+ const pending=h.pairing.toggle(h.source[0]);await Promise.resolve();await h.pairing.toggle(h.source[0]);resolve('سلام');await pending;
+ assert.ok(h.source.every(n=>!n.classes.has('paired-word')));assert.ok(h.target.children.every(n=>!n.classes.has('paired-word')));
+ const h2=pairHarness(()=>new Promise(r=>resolve=r));const next=h2.pairing.toggle(h2.source[0]);await Promise.resolve();h2.configure();resolve('سلام');await next;
+ assert.ok(h2.source.every(n=>!n.classes.has('paired-word')));assert.ok(h2.target.children.every(n=>!n.classes.has('paired-word')));
+});
+test('pairing supports phrases and repeated words without positional guesses',()=>{
+ const {logic}=pairHarness(async()=> '');
+ assert.deepEqual(Array.from(logic.findPhrase(['a','mobile','phone','rings'],'mobile phone','en')),[1,2]);
+ assert.deepEqual(Array.from(logic.findPhrase(['world','hello','world'],'world','en',1)),[2]);
+ assert.deepEqual(Array.from(logic.findPhrase(['unrelated','words'],'hello','en')),[]);
+ assert.equal(logic.equivalent('موبايل','موبایل','fa'),true);
+ assert.equal(logic.equivalent('мобильной','мобильный','ru'),true);
 });

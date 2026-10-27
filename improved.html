@@ -8,9 +8,10 @@
   <meta name="apple-mobile-web-app-title" content="Word Freak Improved">
   <title>Word Freak Improved · Reader</title>
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="improved.css?v=6">
+  <link rel="stylesheet" href="improved.css?v=7">
   <script src="publications.js?v=3" defer></script>
-  <script src="improved.js?v=9" defer></script>
+  <script src="word-pairing.js?v=1" defer></script>
+  <script src="improved.js?v=10" defer></script>
 </head>
 <body data-theme="black">
   <header class="reader-bar" id="readerBar">
@@ -52,6 +53,7 @@
     <button id="lensHandle" class="lens-handle" aria-label="Drag the glass lens. Hold to translate. Use arrow keys for the previous or next word, Enter to translate." aria-describedby="lensHint"><span></span></button>
   </div>
 
+  <span id="pairStatus" class="visually-hidden" role="status" aria-live="polite"></span>
   <aside id="translationDock" class="translation-dock" aria-labelledby="dockKind" hidden>
     <div class="translation-card">
       <div class="translation-heading"><span id="dockKind" class="visually-hidden">SENTENCE</span><button id="dockClose" aria-label="Dismiss translation">×</button></div>
